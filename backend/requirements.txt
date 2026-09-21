@@ -1,0 +1,18 @@
+# Data Analysis Platform - MVP backend dependencies
+# Versions below are the ones actually installed and verified on Python 3.14
+# (pip resolved the newest wheels available; see README for details).
+
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+SQLAlchemy==2.0.54
+pandas==3.0.6
+numpy==2.5.3
+openpyxl==3.1.5
+python-jose[cryptography]==3.5.0
+bcrypt==5.0.0
+python-multipart==0.0.32
+pydantic==2.13.5
+reportlab==5.0.1
+requests==2.34.2
+httpx==0.28.1
+pytest==9.1.1

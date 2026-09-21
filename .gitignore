@@ -1,0 +1,21 @@
+# ---- Python / backend ----
+backend/venv/
+backend/app.db
+backend/storage/
+backend/import_error.log
+backend/uvicorn*.log
+__pycache__/
+*.py[cod]
+
+# ---- Node / frontend ----
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+frontend/*.log
+
+# ---- Logs / editor ----
+*.log
+.DS_Store
+.vscode/
+.idea/
