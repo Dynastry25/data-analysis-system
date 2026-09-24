@@ -127,6 +127,19 @@ export default function StatisticsPage() {
     }
   }
 
+  function downloadResultJson() {
+    if (!result) return;
+    const blob = new Blob([JSON.stringify(result, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${result.analysis_type}_matokeo.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   function toggleMulti(name: string, column: string) {
     setParamValues((previous) => {
       const current = Array.isArray(previous[name]) ? (previous[name] as string[]) : [];
@@ -272,7 +285,23 @@ export default function StatisticsPage() {
             description="Muundo wa kawaida wa matokeo: estimate, test, CI, effect size, diagnostics."
           >
             {result ? (
-              <StandardResultView result={result} />
+              <StandardResultView
+                result={result}
+                actions={
+                  <>
+                    <Button variant="secondary" size="small" onClick={downloadResultJson}>
+                      Pakua ripoti (JSON)
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="small"
+                      onClick={() => setResult(null)}
+                    >
+                      Fanya uchambuzi mwingine
+                    </Button>
+                  </>
+                }
+              />
             ) : (
               <EmptyState
                 title="Hakuna matokeo bado"

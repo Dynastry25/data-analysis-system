@@ -153,7 +153,22 @@ Tumia icon set moja tu (mfano Tabler Icons au Lucide) — outline style, ukubwa 
 
 ---
 
-## 10. Accessibility
+## 10. Muundo wa taarifa kwenye skrini za matokeo (Progressive disclosure)
+
+Skrini yoyote inayoonyesha matokeo ya uchambuzi (Matokeo ya Uchambuzi, Ripoti ya Utafiti, Dataset Profile) ifuate muundo huu wa tabaka 6 — kutoka rahisi kwenda undani — ili mtumiaji asiye na ujuzi wa takwimu aelewe haraka, huku yule mtaalamu akipata undani anaoutaka bila kuzuiwa:
+
+1. **Kichwa cha habari (headline)** — sentensi moja ya lugha rahisi inayoeleza matokeo, pamoja na badge ya "umuhimu wa kitakwimu: ndiyo/hapana". Hii ndiyo kitu cha kwanza jicho linaloona.
+2. **Namba muhimu (metric cards)** — r, p-value, n, method — kwenye cards fupi, si maandishi marefu
+3. **Taswira (chart)** — huonyesha kile namba zinachosema kwa jicho
+4. **Maelezo kamili** — yamefichwa nyuma ya "Angalia zaidi" (expandable/collapsible) — confidence interval, degrees of freedom, test statistic — kwa wale wanaotaka kuthibitisha kitaalamu
+5. **Tafsiri kwa lugha rahisi** — aya fupi inayoeleza maana ya vitendo (practical meaning), si tu maana ya kitakwimu
+6. **Hatua zinazofuata** — vitufe vya action (Pakua ripoti, Ongeza kwenye utafiti, Fanya uchambuzi mwingine)
+
+**Kanuni ya msingi:** kama "piramidi iliyopinduliwa" ya habari — jibu kwanza, ushahidi baadaye. Usimlazimishe mtumiaji kusoma jedwali la namba kabla ya kujua jibu ni nini.
+
+---
+
+## 11. Accessibility
 
 - Mkanganyiko wa rangi (contrast) angalau **4.5:1** kati ya text na background (WCAG AA)
 - Vitufe vyote vinafikika kwa keyboard (Tab, Enter)

@@ -42,6 +42,18 @@ const config: Config = {
           DEFAULT: "#0284C7",
           bg: "#F0F9FF",
         },
+        // Okabe-Ito colorblind-safe chart palette (design system §2).
+        // Keep in sync with lib/constants.ts CHART_PALETTE.
+        chart: {
+          1: "#0072B2",
+          2: "#E69F00",
+          3: "#009E73",
+          4: "#CC79A7",
+          5: "#56B4E9",
+          6: "#D55E00",
+          7: "#F0E442",
+          8: "#999999",
+        },
       },
       fontFamily: {
         sans: ["var(--font-inter)", "-apple-system", "Segoe UI", "sans-serif"],

@@ -82,3 +82,41 @@ body {
     animation: none;
   }
 }
+
+/* Chart entrance (design system §5: 400–600ms ease-out, bars grow from 0). */
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.bar-grow {
+  transform-origin: left;
+  animation: bar-grow 500ms ease-out;
+}
+
+/* Collapsible details reveal (standard transition 200–250ms ease-in-out). */
+@keyframes fade-slide {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.details-content {
+  animation: fade-slide 200ms ease-in-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar-grow,
+  .details-content {
+    animation: none;
+  }
+}
