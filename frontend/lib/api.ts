@@ -308,5 +308,309 @@ export const api = {
   },
 };
 
+
+// ------------------------------------------- StatFlow v1 (MVP-18 hadi 21)
+
+export interface OperationCatalogEntry {
+  type: string;
+  group: "clean" | "transform";
+  label: string;
+  parameters: string[];
+}
+
+export interface OperationHistoryEntry {
+  sequence: number;
+  version: number;
+  type: string;
+  group: string;
+  configuration: Record<string, unknown>;
+  source_version: number;
+  summary: Record<string, unknown>;
+  warnings: string[];
+  created_at: string | null;
+}
+
+export interface VersionInfo {
+  version: number;
+  dataset_id: number;
+  parent_version: number | null;
+  file_format: string;
+  row_count: number;
+  column_count: number;
+  is_current: boolean;
+  label: string | null;
+  created_at: string | null;
+}
+
+export interface VersionLineageEntry extends VersionInfo {
+  operation: {
+    type: string;
+    group: string;
+    configuration: Record<string, unknown>;
+    summary: Record<string, unknown>;
+    warnings: string[];
+  } | null;
+  filename: string;
+}
+
+export interface OperationsHistoryResponse {
+  dataset_id: number;
+  current_version: number | null;
+  operations: OperationHistoryEntry[];
+  versions: VersionLineageEntry[];
+}
+
+export interface ApplyOperationResponse {
+  dataset_id: number;
+  version: number;
+  current_version: number;
+  operation: OperationHistoryEntry;
+  summary: Record<string, unknown>;
+  warnings: string[];
+  row_count: number;
+  column_count: number;
+}
+
+export interface VersionDetailResponse {
+  version: VersionInfo;
+  preview_rows: Record<string, unknown>[];
+}
+
+export interface ResultTest {
+  method?: string;
+  statistic?: number | null;
+  df?: number | null;
+  df1?: number | null;
+  df2?: number | null;
+  p_value?: number | null;
+  alpha?: number;
+  significant?: boolean | null;
+  [key: string]: unknown;
+}
+
+export interface ResultConfidenceInterval {
+  level?: number;
+  lower: number | null;
+  upper: number | null;
+  [key: string]: unknown;
+}
+
+export interface ResultEffectSize {
+  name?: string;
+  value: number | null;
+  interpretation?: string | null;
+  [key: string]: unknown;
+}
+
+export interface StandardResult {
+  analysis_type: string;
+  status: string;
+  sample_size: number | null;
+  estimate: Record<string, unknown>;
+  test: ResultTest | null;
+  confidence_interval: ResultConfidenceInterval | null;
+  effect_size: ResultEffectSize | null;
+  diagnostics: Record<string, unknown>;
+  warnings: string[];
+  tables: Record<string, unknown>;
+  meta: Record<string, unknown>;
+}
+
+export interface AnalysisRunRecord {
+  analysis_id: number;
+  dataset_id: number;
+  dataset_version: number;
+  analysis_type: string;
+  status: string;
+  parameters: Record<string, unknown>;
+  result: StandardResult;
+  created_at: string | null;
+}
+
+export interface AnalysisRunResponse {
+  dataset_id: number;
+  dataset_version: number;
+  analysis_type: string;
+  status: string;
+  result: StandardResult;
+  analysis_id: number | null;
+  created_at?: string | null;
+}
+
+export interface AnalysisTypeInfo {
+  analysis_type: string;
+  description: string;
+  requires: string[];
+}
+
+export interface PlanningVariable {
+  name: string;
+  semantic_type: string;
+  missing_count: number;
+  unique_count: number;
+  characteristics?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface PlanningIssue {
+  severity: string;
+  message: string;
+  variable?: string | null;
+}
+
+export interface PlanningProfileResponse {
+  status: string;
+  sample_size: number;
+  variable_count: number;
+  variables: PlanningVariable[];
+  variables_by_type: Record<string, string[]>;
+  dataset_diagnostics: {
+    rows: number;
+    columns: number;
+    cells_missing_percentage: number;
+    complete_rows: number;
+    duplicate_rows: number;
+  };
+  warnings: string[];
+  meta: Record<string, unknown> & { dataset_id?: number; dataset_version?: number };
+}
+
+export interface Recommendation {
+  question: string | null;
+  intent: string | null;
+  variables: {
+    outcome: PlanningVariable | null;
+    predictor: PlanningVariable | null;
+  };
+  diagnostics: Record<string, unknown>;
+  candidates: Record<string, unknown>[];
+  recommendation: {
+    analysis_type: string;
+    label: string;
+    family: string;
+    parameters: Record<string, unknown>;
+    why: string;
+    assumptions: string[];
+    output: string;
+    alternatives: { analysis_type: string; label: string; reason: string }[];
+  };
+  validation: { status: string; issues: PlanningIssue[] };
+  result?: StandardResult | null;
+  meta: Record<string, unknown> & { dataset_id?: number; dataset_version?: number };
+  analysis_id?: number;
+}
+
+export interface AssistantAnswer {
+  question: string;
+  intent: { intent: string | null; confidence: number; keywords: string[] };
+  plan: {
+    variables: string[];
+    mentions: Record<string, unknown>[];
+    method: string;
+    method_label: string;
+    parameters: Record<string, unknown>;
+    why: string;
+    assumptions: string[];
+    alternatives: { analysis_type: string; label: string; reason: string }[];
+  };
+  validation: { status: string; issues: PlanningIssue[] };
+  diagnostics: Record<string, unknown>;
+  result: StandardResult | null;
+  explanation: string;
+  meta: Record<string, unknown>;
+  analysis_id?: number;
+  dataset_id: number;
+  dataset_version: number;
+}
+
+export const statflowApi = {
+  operationsCatalog: () =>
+    http
+      .get<OperationCatalogEntry[]>("/v1/datasets/operations/catalog")
+      .then((r) => r.data),
+  applyClean: (
+    datasetId: number,
+    payload: {
+      operation_type: string;
+      configuration: Record<string, unknown>;
+      dataset_version?: number;
+      label?: string;
+    }
+  ) =>
+    http
+      .post<ApplyOperationResponse>(`/v1/datasets/${datasetId}/clean`, payload)
+      .then((r) => r.data),
+  applyTransform: (
+    datasetId: number,
+    payload: {
+      operation_type: string;
+      configuration: Record<string, unknown>;
+      dataset_version?: number;
+      label?: string;
+    }
+  ) =>
+    http
+      .post<ApplyOperationResponse>(`/v1/datasets/${datasetId}/transform`, payload)
+      .then((r) => r.data),
+  operationsHistory: (datasetId: number) =>
+    http
+      .get<OperationsHistoryResponse>(`/v1/datasets/${datasetId}/operations`)
+      .then((r) => r.data),
+  versionDetail: (datasetId: number, version: number) =>
+    http
+      .get<VersionDetailResponse>(`/v1/datasets/${datasetId}/versions/${version}`)
+      .then((r) => r.data),
+  downloadVersion: (datasetId: number, version: number) =>
+    http
+      .get(`/v1/datasets/${datasetId}/versions/${version}/download`, {
+        responseType: "blob",
+      })
+      .then((r) => r.data as Blob),
+  analysisTypes: () =>
+    http.get<AnalysisTypeInfo[]>("/v1/analysis/types").then((r) => r.data),
+  runAnalysis: (
+    datasetId: number,
+    payload: {
+      analysis_type: string;
+      parameters: Record<string, unknown>;
+      dataset_version?: number;
+      save?: boolean;
+    }
+  ) =>
+    http
+      .post<AnalysisRunResponse>(`/v1/datasets/${datasetId}/analysis`, payload)
+      .then((r) => r.data),
+  analysisRuns: (datasetId: number) =>
+    http
+      .get<AnalysisRunRecord[]>(`/v1/datasets/${datasetId}/analysis`)
+      .then((r) => r.data),
+  analysisRun: (analysisId: number) =>
+    http.get<AnalysisRunRecord>(`/v1/analysis/${analysisId}`).then((r) => r.data),
+  planningProfile: (datasetId: number, datasetVersion?: number) =>
+    http
+      .post<PlanningProfileResponse>("/v1/planning/profile", {
+        dataset_id: datasetId,
+        dataset_version: datasetVersion,
+      })
+      .then((r) => r.data),
+  recommend: (payload: {
+    dataset_id: number;
+    dataset_version?: number;
+    question?: string;
+    intent?: "difference" | "association" | "prediction" | "distribution";
+    outcome?: string;
+    predictor?: string;
+    method?: string;
+    run?: boolean;
+  }) =>
+    http.post<Recommendation>("/v1/planning/recommend", payload).then((r) => r.data),
+  ask: (payload: { dataset_id: number; question: string; dataset_version?: number }) =>
+    http.post<AssistantAnswer>("/v1/assistant/ask", payload).then((r) => r.data),
+  assistantExamples: () =>
+    http
+      .get<{ examples: string[]; note: string }>("/v1/assistant/examples")
+      .then((r) => r.data),
+};
+
 export default api;
 

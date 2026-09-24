@@ -146,7 +146,9 @@ def to_jsonable(value: Any) -> Any:
         return pd.Timestamp(value).isoformat()
     if isinstance(value, (pd.Timestamp, datetime, date)):
         return value.isoformat()
-    if isinstance(value, (str, int)):
+    # Plain Python scalars pass through untouched (NaN/inf were handled above);
+    # without this branch ``float`` values would fall through to ``str(value)``.
+    if isinstance(value, (str, bool, int, float)):
         return value
     if isinstance(value, dict):
         return {str(k): to_jsonable(v) for k, v in value.items()}

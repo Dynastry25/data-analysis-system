@@ -11,6 +11,10 @@ from app.database import Base, engine
 # `app.routers.*` imports the SQLAlchemy models, which registers every table from
 # schema.sql on ``Base.metadata`` before the lifespan below creates them.
 from app.routers import analysis, auth, charts, cleaning, datasets, reports
+from app.statflow.routers import analysis as v1_analysis
+from app.statflow.routers import assistant as v1_assistant
+from app.statflow.routers import planning as v1_planning
+from app.statflow.routers import versions as v1_versions
 
 
 @asynccontextmanager
@@ -66,3 +70,15 @@ def health() -> dict:
         "status": "ok",
         "max_upload_mb": MAX_UPLOAD_SIZE_BYTES // (1024 * 1024),
     }
+
+
+# StatFlow v1 engines (MVP-18/19/20/21): versioning + operations, unified
+# statistics, planning/recommendation and the assistant.
+V1_PREFIX = "/api/v1"
+for router in (
+    v1_versions.router,
+    v1_analysis.router,
+    v1_planning.router,
+    v1_assistant.router,
+):
+    app.include_router(router, prefix=V1_PREFIX)

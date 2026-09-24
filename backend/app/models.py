@@ -15,6 +15,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -88,6 +89,24 @@ class Dataset(Base):
     )
     reports = relationship(
         "ExportedReport", back_populates="dataset", cascade="all, delete-orphan"
+    )
+    versions = relationship(
+        "DatasetVersion",
+        back_populates="dataset",
+        cascade="all, delete-orphan",
+        order_by="DatasetVersion.version",
+    )
+    operations = relationship(
+        "DatasetOperation",
+        back_populates="dataset",
+        cascade="all, delete-orphan",
+        order_by="DatasetOperation.sequence",
+    )
+    analysis_runs = relationship(
+        "AnalysisRun",
+        back_populates="dataset",
+        cascade="all, delete-orphan",
+        order_by="AnalysisRun.id",
     )
 
     def to_summary_dict(self) -> dict:
@@ -205,6 +224,139 @@ class Chart(Base):
             "dataset_id": self.dataset_id,
             "chart_type": self.chart_type,
             "config": self.config,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class DatasetVersion(Base):
+    """An immutable snapshot of a dataset (v1 = the uploaded file, then v2, v3 ...).
+
+    Every cleaning/transformation operation writes a *new* version file, so the
+    original data is never destroyed and any analysis can be reproduced against the
+    exact version it used.
+    """
+
+    __tablename__ = "dataset_versions"
+
+    id = Column(Integer, primary_key=True)
+    dataset_id = Column(
+        Integer,
+        ForeignKey("datasets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    version = Column(Integer, nullable=False)  # 1, 2, 3 ...
+    parent_version = Column(Integer, nullable=True)
+    storage_path = Column(String(500), nullable=False)
+    file_format = Column(String(20), nullable=False, default="parquet")  # parquet|csv
+    row_count = Column(Integer, default=0)
+    column_count = Column(Integer, default=0)
+    is_current = Column(Integer, default=1)  # 1 for the newest version
+    label = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    dataset = relationship("Dataset", back_populates="versions")
+    operations = relationship(
+        "DatasetOperation",
+        back_populates="resulting_version",
+        cascade="all, delete-orphan",
+        order_by="DatasetOperation.sequence",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("dataset_id", "version", name="uq_dataset_version"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "version": self.version,
+            "dataset_id": self.dataset_id,
+            "parent_version": self.parent_version,
+            "file_format": self.file_format,
+            "row_count": self.row_count or 0,
+            "column_count": self.column_count or 0,
+            "is_current": bool(self.is_current),
+            "label": self.label,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class DatasetOperation(Base):
+    """Audit trail entry: one cleaning/transformation step that produced a version."""
+
+    __tablename__ = "dataset_operations"
+
+    id = Column(Integer, primary_key=True)
+    dataset_id = Column(
+        Integer,
+        ForeignKey("datasets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    dataset_version_id = Column(
+        Integer,
+        ForeignKey("dataset_versions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sequence = Column(Integer, nullable=False)  # 1, 2, 3 ... within the dataset
+    operation_group = Column(String(20), nullable=False)  # clean | transform
+    operation_type = Column(String(50), nullable=False)
+    configuration = Column(JSON, nullable=False)
+    source_version = Column(Integer, nullable=False)
+    result_version = Column(Integer, nullable=False)
+    summary = Column(JSON, nullable=True)
+    warnings = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    dataset = relationship("Dataset", back_populates="operations")
+    resulting_version = relationship("DatasetVersion", back_populates="operations")
+
+    def to_dict(self) -> dict:
+        """Matches the documented history shape: version / type / configuration."""
+        return {
+            "sequence": self.sequence,
+            "version": self.result_version,
+            "type": self.operation_type,
+            "group": self.operation_group,
+            "configuration": self.configuration or {},
+            "source_version": self.source_version,
+            "summary": self.summary or {},
+            "warnings": self.warnings or [],
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class AnalysisRun(Base):
+    """A statistical analysis executed against one dataset version (MVP-19 engine)."""
+
+    __tablename__ = "analysis_runs"
+
+    id = Column(Integer, primary_key=True)
+    dataset_id = Column(
+        Integer,
+        ForeignKey("datasets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    dataset_version = Column(Integer, nullable=False)
+    analysis_type = Column(String(50), nullable=False)
+    status = Column(String(30), nullable=False, default="success")
+    parameters = Column(JSON, nullable=True)
+    result = Column(JSON, nullable=False)  # the standard result structure
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    dataset = relationship("Dataset", back_populates="analysis_runs")
+
+    def to_dict(self) -> dict:
+        return {
+            "analysis_id": self.id,
+            "dataset_id": self.dataset_id,
+            "dataset_version": self.dataset_version,
+            "analysis_type": self.analysis_type,
+            "status": self.status,
+            "parameters": self.parameters or {},
+            "result": self.result,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 

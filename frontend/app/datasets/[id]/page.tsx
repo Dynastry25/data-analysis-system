@@ -62,6 +62,15 @@ export default function DatasetDetailPage() {
           <Link href="/datasets">
             <Button variant="secondary">Rudi kwenye orodha</Button>
           </Link>
+          <Link href={`/datasets/${datasetId}/studio`}>
+            <Button variant="secondary">Data studio</Button>
+          </Link>
+          <Link href={`/datasets/${datasetId}/statistics`}>
+            <Button variant="secondary">Takwimu (v1)</Button>
+          </Link>
+          <Link href={`/datasets/${datasetId}/ask`}>
+            <Button variant="secondary">Msaidizi</Button>
+          </Link>
           <Link href={`/datasets/${datasetId}/analyze`}>
             <Button>Chambua takwimu</Button>
           </Link>
