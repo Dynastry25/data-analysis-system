@@ -30,6 +30,10 @@ Hii ni implementesheni ya MVP kwa mujibu wa nyaraka za mradi:
 | Charts (bar, line, scatter, histogram — interactive) | ✅ | `chart_service.py`, `ChartView.tsx` (Plotly) |
 | Export (PDF + Excel) | ✅ | `export_service.py` (reportlab + openpyxl) |
 | Hifadhi ya metadata (users, datasets, columns, matokeo, chati, ripoti) | ✅ | `models.py` / `schema.sql` |
+| **Mashirika, wanachama na RBAC** (owner > admin > analyst > viewer) | ✅ | `backend/app/rbac.py`, `POST/GET /api/v1/organizations*`, `app/organizations` |
+| **Miradi (project folders)** ndani ya mashirika | ✅ | `projects` table, `/api/v1/organizations/{id}/projects`, `app/organizations/[id]` |
+| **Migration za database (Alembic)** | ✅ | `backend/migrations/`, `alembic upgrade head` |
+| **Ufikiaji wa data kwenye shirika** (dataset iliyo kwenye mradi kufuatwa kwa role) | ✅ | `deps.get_owned_dataset` (`min_role` parameter) |
 
 **Mtiririko wa uendeshaji (UI):** kila dataset inafuata hatua 6 — Pakia → Angalia →
 Safisha → Chambua → Chati → Ripoti — ikionyeshwa mara moja kwenye sidebar, stepper

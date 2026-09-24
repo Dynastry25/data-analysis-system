@@ -210,6 +210,40 @@ export interface ReportStatus {
   created_at: string | null;
 }
 
+export type OrgRole = "owner" | "admin" | "analyst" | "viewer";
+
+export interface Organization {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  created_by: number | null;
+  created_at: string | null;
+  my_role: OrgRole | null;
+  member_count: number;
+  project_count: number;
+}
+
+export interface OrgMember {
+  id: number;
+  organization_id: number;
+  user_id: number;
+  full_name: string | null;
+  email: string | null;
+  role: string;
+  joined_at: string | null;
+}
+
+export interface OrgProject {
+  id: number;
+  organization_id: number;
+  name: string;
+  description: string | null;
+  created_by: number | null;
+  created_at: string | null;
+  dataset_count: number;
+}
+
 // ------------------------------------------------------------ API methods
 
 // Analysis + reports always flow through the unified engine (MVP-19+) —
@@ -260,6 +294,73 @@ export const api = {
       http.get<ReportRecord[]>(`/datasets/${id}/reports`).then((r) => r.data),
     downloadUrl: (reportId: number) =>
       `${API_BASE_URL}/reports/${reportId}/download`,
+  },
+  organizations: {
+    list: () =>
+      http.get<Organization[]>("/v1/organizations").then((r) => r.data),
+    get: (organizationId: number) =>
+      http
+        .get<Organization>(`/v1/organizations/${organizationId}`)
+        .then((r) => r.data),
+    create: (payload: { name: string; description?: string; slug?: string }) =>
+      http
+        .post<Organization>("/v1/organizations", payload)
+        .then((r) => r.data),
+    update: (organizationId: number, payload: { name?: string; description?: string }) =>
+      http
+        .patch<Organization>(`/v1/organizations/${organizationId}`, payload)
+        .then((r) => r.data),
+    remove: (organizationId: number) =>
+      http.delete(`/v1/organizations/${organizationId}`).then((r) => r.data),
+    members: (organizationId: number) =>
+      http
+        .get<OrgMember[]>(`/v1/organizations/${organizationId}/members`)
+        .then((r) => r.data),
+    addMember: (organizationId: number, payload: { email: string; role: OrgRole }) =>
+      http
+        .post<OrgMember>(`/v1/organizations/${organizationId}/members`, payload)
+        .then((r) => r.data),
+    updateMember: (
+      organizationId: number,
+      userId: number,
+      payload: { role: OrgRole }
+    ) =>
+      http
+        .patch<OrgMember>(
+          `/v1/organizations/${organizationId}/members/${userId}`,
+          payload
+        )
+        .then((r) => r.data),
+    removeMember: (organizationId: number, userId: number) =>
+      http
+        .delete(`/v1/organizations/${organizationId}/members/${userId}`)
+        .then((r) => r.data),
+    projects: (organizationId: number) =>
+      http
+        .get<OrgProject[]>(`/v1/organizations/${organizationId}/projects`)
+        .then((r) => r.data),
+    createProject: (
+      organizationId: number,
+      payload: { name: string; description?: string }
+    ) =>
+      http
+        .post<OrgProject>(`/v1/organizations/${organizationId}/projects`, payload)
+        .then((r) => r.data),
+    updateProject: (
+      organizationId: number,
+      projectId: number,
+      payload: { name?: string; description?: string }
+    ) =>
+      http
+        .patch<OrgProject>(
+          `/v1/organizations/${organizationId}/projects/${projectId}`,
+          payload
+        )
+        .then((r) => r.data),
+    removeProject: (organizationId: number, projectId: number) =>
+      http
+        .delete(`/v1/organizations/${organizationId}/projects/${projectId}`)
+        .then((r) => r.data),
   },
 };
 

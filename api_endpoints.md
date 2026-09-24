@@ -102,6 +102,62 @@ Pakua ripoti iliyokamilika (redirect/stream ya faili).
 
 ---
 
+## 7. Organizations, members & projects (Phase 1 — RBAC)
+
+Base URL kwa vikundi hivi: `/api/v1`. Kila endpoint inahitaji JWT bearer token.
+
+Ngazi za ruhusa (role ladder): **owner > admin > analyst > viewer**.
+
+### POST /organizations
+Unda shirika; mwanzilishi anakuwa `owner` pekee.
+**Body:** `{ name, description?, slug? }` (slug inajijenga kutoka name ikiwa haitoletwa)
+**Response:** `{ id, name, slug, description, my_role: "owner", member_count, project_count, created_at }`
+
+### GET /organizations
+Orodha ya mashirika yote ambayo mtumiaji ni mwanachama (na `my_role`).
+
+### GET /organizations/{id}
+Maelezo ya shirika moja (wanachama tu).
+
+### PATCH /organizations/{id}
+Badilisha `name`/`description` (**admin+**).
+
+### DELETE /organizations/{id}
+Futa shirika, wanachama wake na miradi yake yote (**owner pekee**).
+
+### POST /organizations/{id}/members
+Ongeza mwanachama kwa `email`. **Body:** `{ email, role }`. Admin
+hawezi kutoa kiwango `owner`; mtu asiye na akaunti → 404; maradufu → 409.
+
+### GET /organizations/{id}/members
+Orodha ya wanachama wote (jina, email, role).
+
+### PATCH /organizations/{id}/members/{user_id}
+Badilisha `role` ya mwanachama. `owner` anaweza kubadilisha yoyote (ila mwenyekiti
+mwenyewe); admin anaweza kubadilisha **analyst ↔ viewer** tu.
+
+### DELETE /organizations/{id}/members/{user_id}
+Mtoe mwanachama (owner yeyote; admin analyst/viewer tu). Mwenyekiti hawezi
+kuondolewa; mtu hawezi kujiondoa mwenyewe kama mwenyekiti.
+
+### POST /organizations/{id}/projects
+Unda mradi. **Body:** `{ name, description? }` (**analyst+**). Jina maradufu → 409.
+
+### GET /organizations/{id}/projects
+Orodha ya miradi ya shirika (na `dataset_count`).
+
+### PATCH /organizations/{id}/projects/{project_id}
+Badilisha jina/maelezo ya mradi (**admin+**).
+
+### DELETE /organizations/{id}/projects/{project_id}
+Futa mradi (**admin+**).
+
+**Dataset scoping:** dataset inapokuwa na `project_id`, wanachama wa shirika hilo
+wanapata ufikiaji kulingana na role (analyst+ kwa kuandika, viewer kwa kusoma tu);
+datasets bila `project_id` zinabaki za mmiliki pekee.
+
+---
+
 ## Vidokezo vya utekelezaji
 - Endpoints za `upload`, `clean`, `analyze`, na `export` zenye data kubwa zitumie **background tasks** (Celery/RQ) ili zisizuie request — rudisha `job_id` na endpoint ya `GET /jobs/{job_id}` ya kuangalia status.
 - Weka **rate limiting** kwenye `/datasets/upload` kuzuia abuse ya storage.

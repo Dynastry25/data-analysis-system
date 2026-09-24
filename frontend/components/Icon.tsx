@@ -27,7 +27,9 @@ export type IconName =
   | "sliders"
   | "layers"
   | "message-circle"
-  | "folder";
+  | "folder"
+  | "building"
+  | "users";
 
 /**
  * Outline icon set (Lucide-style, 24×24 viewBox). One consistent icon set is
@@ -204,6 +206,21 @@ const PATHS: Record<IconName, ReactNode> = {
   ),
   folder: (
     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+  ),
+  building: (
+    <>
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <path d="M9 22v-4h6v4" />
+      <path d="M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01" />
+    </>
+  ),
+  users: (
+    <>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </>
   ),
 };
 

@@ -160,3 +160,105 @@ class ReportStatusResponse(BaseModel):
     download_url: str
     created_at: Optional[str] = None
 
+
+# -------------------------------------------------------- Organizations
+
+
+OrgRole = Literal["owner", "admin", "analyst", "viewer"]
+
+
+class OrganizationCreateRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=150)
+    description: Optional[str] = Field(default=None, max_length=2000)
+    slug: Optional[str] = Field(
+        default=None,
+        min_length=2,
+        max_length=120,
+        pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        description="URL-safe identifier; auto-generated from the name if omitted",
+    )
+
+    @field_validator("name")
+    @classmethod
+    def _name_stripped(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("name is required")
+        return value
+
+
+class OrganizationUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    description: Optional[str] = Field(default=None, max_length=2000)
+
+
+class OrganizationResponse(BaseModel):
+    id: int
+    name: str
+    slug: str
+    description: Optional[str] = None
+    created_by: Optional[int] = None
+    created_at: Optional[str] = None
+    my_role: Optional[OrgRole] = None
+    member_count: int = 0
+    project_count: int = 0
+
+
+class OrganizationListItem(OrganizationResponse):
+    pass
+
+
+class MemberAddRequest(BaseModel):
+    email: str = Field(..., max_length=150)
+    role: OrgRole = "analyst"
+
+    @field_validator("email")
+    @classmethod
+    def _normalise_email(cls, value: str) -> str:
+        value = (value or "").strip().lower()
+        if not is_valid_email(value):
+            raise ValueError("Enter a valid email address")
+        return value
+
+
+class MemberUpdateRequest(BaseModel):
+    role: OrgRole
+
+
+class MemberResponse(BaseModel):
+    id: int
+    organization_id: int
+    user_id: int
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    role: str
+    joined_at: Optional[str] = None
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=150)
+    description: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("name")
+    @classmethod
+    def _name_stripped(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("name is required")
+        return value
+
+
+class ProjectUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    description: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ProjectResponse(BaseModel):
+    id: int
+    organization_id: int
+    name: str
+    description: Optional[str] = None
+    created_by: Optional[int] = None
+    created_at: Optional[str] = None
+    dataset_count: int = 0
+

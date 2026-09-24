@@ -34,8 +34,9 @@ cd D:\Project\Data-Analysis-system\backend
 
 ```powershell
 cd D:\Project\Data-Analysis-system\backend
-.\venv\Scripts\python.exe tests\smoke_test.py     # end-to-end journey (88 checks)
+.\venv\Scripts\python.exe tests\smoke_test.py     # end-to-end journey (90 checks)
 .\venv\Scripts\python.exe tests\statflow_test.py  # statflow engines (216 checks)
+.\venv\Scripts\python.exe tests\orgs_test.py      # organizations + RBAC matrix (38 checks)
 .\venv\Scripts\python.exe -m pytest               # same journeys, pytest runner
 ```
 
@@ -48,6 +49,22 @@ privacy checks → delete). A full log is written to `smoke_test_out.log` /
 versioned cleaning for each format.
 
 Result with the current code: **all checks pass**.
+
+## 3b. Database migrations (Alembic)
+
+The schema also lives as Alembic migrations (`backend/migrations/`). `create_all` in the
+app lifespan stays as a local-dev convenience; **use migrations for shared/production
+databases** (e.g. Render Postgres). Run from `backend/`:
+
+```powershell
+# point at the target database for the run, e.g.:
+$env:DATABASE_URL = "postgresql+psycopg2://user:pass@host:5432/data_analysis"
+.\venv\Scripts\python.exe -m alembic upgrade head          # apply all migrations
+.\venv\Scripts\python.exe -m alembic revision --autogenerate -m "describe change"  # new migration
+```
+
+`migrations/env.py` wires the app's engine + metadata, so model changes are captured
+automatically. The initial migration `5215fbda1c26` creates every table (MVP + Phase 1).
 
 ---
 
@@ -102,6 +119,13 @@ backend/
 - **Planning + assistant**: `POST /api/v1/planning/profile|recommend`
   detects variables and recommends a method; `POST /api/v1/assistant/ask`
   answers plain-language questions with a verified engine result.
+- **Organizations (Phase 1)**: `POST/GET /api/v1/organizations` create and list
+  organizations; `/api/v1/organizations/{id}/members` manages membership with an RBAC
+  role ladder **owner > admin > analyst > viewer** (the role rules live in
+  `app/rbac.py` and each route re-checks them server-side); `/api/v1/organizations/{id}/projects`
+  manages project folders. Datasets with a `project_id` are reachable by org members
+  according to their role (`deps.get_owned_dataset`), while personal datasets stay
+  private to their owner.
 - **Charts**: returns Plotly-ready `chart_data` (`series[]` with x/y plus axis labels),
   capping categories (50) and scatter points (5000) so big files stay responsive.
 - **Export**: `POST` returns `202` with `{report_id, status: "processing"}` and builds the
@@ -124,7 +148,8 @@ These were added because the UI screens need them (the documented endpoints are 
 
 1. **SQLite by default** so the MVP runs with zero infrastructure. The models mirror
    `schema.sql`, so production only needs `DATABASE_URL` pointing at PostgreSQL and
-   `Base.metadata.create_all()` (or Alembic) to apply the schema.
+   `Base.metadata.create_all()` (dev) or **Alembic migrations** (`alembic upgrade head`,
+   see §3b) to apply the schema.
 2. **FastAPI `BackgroundTasks` instead of Celery/RQ + Redis.** The API contract
    (`report_id` + status polling) is identical, so swapping in a real queue later is a
    backend-only change - the frontend keeps working.
@@ -141,18 +166,23 @@ These were added because the UI screens need them (the documented endpoints are 
 │   ├── database.py        # SQLAlchemy engine / session / Base
 │   ├── models.py          # tables (User, Dataset, DatasetColumn, Chart,
 │   │                      #  ExportedReport, DatasetVersion, DatasetOperation,
-│   │                      #  AnalysisRun)
+│   │                      #  AnalysisRun, Organization, OrganizationMember,
+│   │                      #  Project)
 │   ├── schemas.py         # Pydantic request/response models (drive /docs)
 │   ├── security.py        # bcrypt password hashing + JWT create/decode
 │   ├── deps.py            # get_current_user + dataset ownership checks
-│   ├── routers/           # auth, datasets, charts, reports
+│   ├── rbac.py            # org role ladder helpers (owner/admin/analyst/viewer)
+│   ├── routers/           # auth, datasets, charts, reports, organizations
 │   └── services/
 │       ├── data_service.py     # upload storage, reading, profiling
 │       ├── chart_service.py    # Plotly-ready chart data (bar/line/scatter/histogram)
 │       └── export_service.py   # XLSX workbook + PDF document writers
 │   └── statflow/          # unified engines: versioning, operations,
 │                          # statistics, planning, assistant (+ v1 routers)
+├── migrations/            # Alembic: env.py + versions/ (initial 5215fbda1c26)
+├── alembic.ini
 ├── tests/smoke_test.py
+├── tests/orgs_test.py
 ├── requirements.txt
 └── storage/               # uploads: storage/{user_id}/{dataset_id}/data.{csv,xlsx}
                            # reports: storage/reports/report_{id}_{name}.{pdf,xlsx}

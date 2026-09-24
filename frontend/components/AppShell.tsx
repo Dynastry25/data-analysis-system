@@ -14,6 +14,7 @@ import { PipelineStepper } from "./PipelineStepper";
 const PRIMARY_NAV: { href: string; label: string; icon: IconName }[] = [
   { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
   { href: "/datasets", label: "Datasets zangu", icon: "database" },
+  { href: "/organizations", label: "Mashirika", icon: "building" },
   { href: "/upload", label: "Pakia data", icon: "upload" },
 ];
 
@@ -25,8 +26,8 @@ interface AppShellProps {
 }
 
 function isActiveNav(pathname: string, href: string): boolean {
-  if (href === "/datasets") {
-    return pathname === "/datasets" || pathname.startsWith("/datasets/");
+  if (href === "/datasets" || href === "/organizations") {
+    return pathname === href || pathname.startsWith(`${href}/`);
   }
   return pathname === href;
 }

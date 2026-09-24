@@ -63,6 +63,8 @@ NEXT_PUBLIC_API_URL=http://localhost:8000/api
 | `/datasets/[id]/ask` | AI statistical assistant (natural-language questions, verified results) |
 | `/datasets/[id]/charts` | Chart builder (bar/line/scatter/histogram) with live Plotly preview and saved charts |
 | `/datasets/[id]/export` | Checklist of analyses + charts, PDF/XLSX choice, async status polling and download |
+| `/organizations` | Mashirika: list + create (creator becomes **owner**) |
+| `/organizations/[id]` | Org detail: RBAC member management (owner/admin/analyst/viewer roles), projects CRUD |
 
 ### The 6-stage pipeline (`lib/pipeline.ts`)
 

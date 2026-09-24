@@ -3,6 +3,11 @@
 Mirrors schema.sql (7 related tables). JSONB columns from the PostgreSQL schema are
 mapped with the portable ``JSON`` type so the same models work on SQLite (dev) and
 PostgreSQL (production).
+
+Phase 1 (organizations, projects, RBAC) adds the ``organizations``,
+``organization_members`` and ``projects`` tables. A dataset is optionally placed
+inside a project (``datasets.project_id``); datasets without a project stay
+personally owned by the uploading user, keeping the MVP behaviour intact.
 """
 
 from datetime import datetime, timezone
@@ -25,6 +30,128 @@ from app.database import Base
 def utcnow() -> datetime:
     """Timezone-aware UTC now (``datetime.utcnow`` is deprecated in Python 3.14)."""
     return datetime.now(timezone.utc)
+
+
+# ---------------------------------------------------------------- Org RBAC
+
+
+ORG_ROLE_OWNER = "owner"
+ORG_ROLE_ADMIN = "admin"
+ORG_ROLE_ANALYST = "analyst"
+ORG_ROLE_VIEWER = "viewer"
+
+# owner > admin > analyst > viewer. Higher wins; comparisons use ``>=``.
+ORG_ROLES = (ORG_ROLE_OWNER, ORG_ROLE_ADMIN, ORG_ROLE_ANALYST, ORG_ROLE_VIEWER)
+ORG_ROLE_LEVEL = {ORG_ROLE_OWNER: 4, ORG_ROLE_ADMIN: 3, ORG_ROLE_ANALYST: 2, ORG_ROLE_VIEWER: 1}
+
+
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(150), nullable=False)
+    slug = Column(String(120), unique=True, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at = Column(DateTime, default=utcnow)
+
+    members = relationship(
+        "OrganizationMember",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        order_by="OrganizationMember.id",
+    )
+    projects = relationship(
+        "Project",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        order_by="Project.id",
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "slug": self.slug,
+            "description": self.description,
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class OrganizationMember(Base):
+    """Membership of a user in an organization + their RBAC role."""
+
+    __tablename__ = "organization_members"
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(
+        Integer,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role = Column(String(20), nullable=False, default=ORG_ROLE_ANALYST)
+    created_at = Column(DateTime, default=utcnow)
+
+    organization = relationship("Organization", back_populates="members")
+    user = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "user_id", name="uq_org_member"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "organization_id": self.organization_id,
+            "user_id": self.user_id,
+            "full_name": self.user.full_name if self.user else None,
+            "email": self.user.email if self.user else None,
+            "role": self.role,
+            "joined_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class Project(Base):
+    """A work container inside an organization (Phase 1 / master prompt)."""
+
+    __tablename__ = "projects"
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(
+        Integer,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name = Column(String(150), nullable=False)
+    description = Column(Text, nullable=True)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at = Column(DateTime, default=utcnow)
+
+    organization = relationship("Organization", back_populates="projects")
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", name="uq_project_org_name"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "organization_id": self.organization_id,
+            "name": self.name,
+            "description": self.description,
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
 
 
 class User(Base):
@@ -58,6 +185,12 @@ class Dataset(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id = Column(
+        Integer,
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     original_filename = Column(String(255), nullable=False)
     storage_path = Column(String(500), nullable=False, default="")
@@ -101,11 +234,13 @@ class Dataset(Base):
         cascade="all, delete-orphan",
         order_by="AnalysisRun.id",
     )
+    project = relationship("Project")
 
     def to_summary_dict(self) -> dict:
         return {
             "id": self.id,
             "user_id": self.user_id,
+            "project_id": self.project_id,
             "original_filename": self.original_filename,
             "file_type": self.file_type,
             "status": self.status,
