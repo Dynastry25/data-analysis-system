@@ -11,12 +11,13 @@ import { Card, EmptyState } from "@/components/Card";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import {
-  AnalysisRecord,
+  AnalysisRunRecord,
   api,
   apiErrorMessage,
   ChartRecord,
   http,
   ReportRecord,
+  statflowApi,
 } from "@/lib/api";
 
 const POLL_DELAY_MS = 1200;
@@ -27,7 +28,7 @@ export default function ExportPage() {
   const datasetId = Number(params?.id);
   const { showToast } = useToast();
 
-  const [analyses, setAnalyses] = useState<AnalysisRecord[]>([]);
+  const [analyses, setAnalyses] = useState<AnalysisRunRecord[]>([]);
   const [charts, setCharts] = useState<ChartRecord[]>([]);
   const [reports, setReports] = useState<ReportRecord[]>([]);
   const [selectedAnalyses, setSelectedAnalyses] = useState<number[]>([]);
@@ -41,7 +42,7 @@ export default function ExportPage() {
     setLoading(true);
     try {
       const [analysisList, chartList, reportList] = await Promise.all([
-        api.analysis.listForDataset(datasetId),
+        statflowApi.analysisRuns(datasetId),
         api.charts.listForDataset(datasetId),
         api.reports.listForDataset(datasetId),
       ]);

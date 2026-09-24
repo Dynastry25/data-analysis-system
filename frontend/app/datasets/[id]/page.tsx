@@ -8,7 +8,6 @@ import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState, Stat } from "@/components/Card";
-import { CleaningPanel } from "@/components/CleaningPanel";
 import { DataTable } from "@/components/DataTable";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
@@ -66,13 +65,10 @@ export default function DatasetDetailPage() {
             <Button variant="secondary">Data studio</Button>
           </Link>
           <Link href={`/datasets/${datasetId}/statistics`}>
-            <Button variant="secondary">Takwimu (v1)</Button>
+            <Button>Chambua takwimu</Button>
           </Link>
           <Link href={`/datasets/${datasetId}/ask`}>
             <Button variant="secondary">Msaidizi</Button>
-          </Link>
-          <Link href={`/datasets/${datasetId}/analyze`}>
-            <Button>Chambua takwimu</Button>
           </Link>
         </>
       }
@@ -172,7 +168,20 @@ export default function DatasetDetailPage() {
             )}
           </Card>
 
-          <CleaningPanel datasetId={datasetId} columns={columns} onApplied={load} />
+          <Card
+            title="Safisha na badilisha data"
+            description="Data studio huunda version mpya kwa kila hatua — hakuna data inayopotea."
+            actions={
+              <Link href={`/datasets/${datasetId}/studio`}>
+                <Button>Fungua data studio</Button>
+              </Link>
+            }
+          >
+            <p className="text-body text-neutral-600">
+              Safisha missing values, duplicates na aina za columns, kisha
+              badilisha (filter, group, calculate) kabla ya kuchambua.
+            </p>
+          </Card>
         </>
       )}
     </AppShell>

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.config import API_PREFIX
 from app.database import SessionLocal, get_db
 from app.deps import get_current_user, get_owned_dataset
-from app.models import AnalysisResult, Chart, Dataset, ExportedReport, User
+from app.models import AnalysisRun, Chart, Dataset, ExportedReport, User
 from app.schemas import ExportRequest, ExportResponse, ReportStatusResponse
 from app.services.chart_service import build_chart_data
 from app.services.data_service import read_dataframe
@@ -48,12 +48,12 @@ def generate_report_task(
         analyses: List[Dict[str, Any]] = []
         if analysis_ids:
             records = (
-                db.query(AnalysisResult)
+                db.query(AnalysisRun)
                 .filter(
-                    AnalysisResult.dataset_id == dataset.id,
-                    AnalysisResult.id.in_(analysis_ids),
+                    AnalysisRun.dataset_id == dataset.id,
+                    AnalysisRun.id.in_(analysis_ids),
                 )
-                .order_by(AnalysisResult.id)
+                .order_by(AnalysisRun.id)
                 .all()
             )
             analyses = [record.to_dict() for record in records]
@@ -140,7 +140,7 @@ def create_export(
     """Queue a PDF/XLSX report with the selected analysis results and charts."""
     dataset = get_owned_dataset(dataset_id, db, user, require_file=False)
     _assert_ids_belong(
-        db, dataset, AnalysisResult, payload.include_analysis_ids, "analysis"
+        db, dataset, AnalysisRun, payload.include_analysis_ids, "analysis"
     )
     _assert_ids_belong(db, dataset, Chart, payload.include_chart_ids, "chart")
 

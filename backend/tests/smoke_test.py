@@ -1,10 +1,10 @@
 """End-to-end smoke test for the Data Analysis Platform API.
 
-Runs the whole MVP journey against a *temporary* database and storage folder
+Runs the whole journey against a *temporary* database and storage folder
 (so it never touches your real data):
 
-    register -> login -> upload CSV -> profile -> clean -> analyse
-    -> charts -> export (xlsx + pdf) -> download -> delete
+    register -> login -> upload CSV -> profile -> clean (versions)
+    -> unified statistics -> charts -> export (xlsx + pdf) -> download -> delete
 
 Run it with:  python tests/smoke_test.py
 """
@@ -141,74 +141,100 @@ def main() -> int:
         check(profile_columns["region"]["data_type"] == "text", "region detected text")
         check(profile_columns["order_date"]["data_type"] == "date", "order_date detected date")
 
-        print("\n3) Cleaning (with audit trail)")
+        print("\n3) Cleaning + transforms (versioned operations, audit trail)")
         clean_duplicates = client.post(
-            f"/api/datasets/{dataset_id}/clean",
-            json={"action_type": "drop_duplicates", "parameters": {}},
+            f"/api/v1/datasets/{dataset_id}/clean",
+            json={"operation_type": "drop_duplicates", "configuration": {}},
             headers=headers,
         )
         check(clean_duplicates.status_code == 200, "drop_duplicates returns 200")
         check(
-            clean_duplicates.json()["applied_action"]["duplicate_rows_removed"] == 5,
+            clean_duplicates.json()["summary"]["duplicate_rows_removed"] == 5,
             "5 duplicate rows removed",
         )
         check(clean_duplicates.json()["row_count"] == 180, "row count updated to 180")
+        check(
+            clean_duplicates.json()["version"] == 2,
+            "cleaning created dataset version 2",
+        )
 
         fill_missing = client.post(
-            f"/api/datasets/{dataset_id}/clean",
+            f"/api/v1/datasets/{dataset_id}/clean",
             json={
-                "action_type": "fill_missing",
-                "parameters": {"column": "unit_price", "method": "mean"},
+                "operation_type": "fill_missing",
+                "configuration": {"column": "unit_price", "strategy": "mean"},
             },
             headers=headers,
         )
         check(fill_missing.status_code == 200, "fill_missing (mean) returns 200")
+        missing_summary = fill_missing.json()["summary"]
+        filled_unit_price = missing_summary.get("columns_filled", {}).get(
+            "unit_price", {}
+        )
         check(
-            fill_missing.json()["applied_action"]["missing_filled"] == 5,
+            filled_unit_price.get("missing_before", 0)
+            - filled_unit_price.get("missing_after", 0)
+            == 5,
             "5 missing unit_price values filled",
         )
 
         fill_category = client.post(
-            f"/api/datasets/{dataset_id}/clean",
+            f"/api/v1/datasets/{dataset_id}/clean",
             json={
-                "action_type": "fill_missing",
-                "parameters": {"column": "region", "method": "value", "value": "Unknown"},
+                "operation_type": "fill_missing",
+                "configuration": {
+                    "column": "region",
+                    "strategy": "constant",
+                    "value": "Unknown",
+                },
             },
             headers=headers,
         )
         check(fill_category.status_code == 200, "fill_missing (value) returns 200")
 
         convert = client.post(
-            f"/api/datasets/{dataset_id}/clean",
+            f"/api/v1/datasets/{dataset_id}/clean",
             json={
-                "action_type": "convert_type",
-                "parameters": {"column": "paid", "target_type": "boolean"},
+                "operation_type": "cast_types",
+                "configuration": {"column": "paid", "target_type": "boolean"},
             },
             headers=headers,
         )
-        check(convert.status_code == 200, "convert_type to boolean returns 200")
+        check(convert.status_code == 200, "cast_types to boolean returns 200")
+        check(convert.json()["version"] == 5, "each operation created a new version")
 
         bad_clean = client.post(
-            f"/api/datasets/{dataset_id}/clean",
-            json={"action_type": "drop_column", "parameters": {"column": "ghost"}},
+            f"/api/v1/datasets/{dataset_id}/clean",
+            json={
+                "operation_type": "select_columns",
+                "configuration": {"columns": ["ghost"]},
+            },
             headers=headers,
         )
         check(bad_clean.status_code == 400, "cleaning an unknown column is rejected")
 
         history = client.get(
-            f"/api/datasets/{dataset_id}/cleaning-history", headers=headers
+            f"/api/v1/datasets/{dataset_id}/operations", headers=headers
         )
-        check(len(history.json()) == 4, "cleaning history has 4 entries (audit trail)")
+        check(
+            len(history.json()["operations"]) == 4,
+            "operations history has 4 entries (audit trail)",
+        )
+        check(
+            history.json()["current_version"] == 5,
+            "dataset is on version 5 after the cleaning chain",
+        )
 
-        print("\n4) Statistics")
+        print("\n4) Statistics (unified engine)")
         descriptive = client.post(
-            f"/api/datasets/{dataset_id}/analyze",
-            json={"analysis_type": "descriptive_stats", "parameters": {}},
+            f"/api/v1/datasets/{dataset_id}/analysis",
+            json={"analysis_type": "descriptive", "parameters": {}},
             headers=headers,
         )
-        check(descriptive.status_code == 200, "descriptive_stats returns 200")
-        stats = descriptive.json()["result_data"]["numeric_stats"]
-        sales_stats = next(item for item in stats if item["column"] == "sales")
+        check(descriptive.status_code == 200, "descriptive returns 200")
+        descriptive_result = descriptive.json()["result"]
+        stats = descriptive_result["tables"]["descriptive"]
+        sales_stats = next(item for item in stats if item["variable"] == "sales")
         # Reproduce the cleaning chain the API applied: dedupe, then fill the
         # missing unit_price values with the mean of the remaining rows.
         cleaned_frame = pd.read_csv(csv_path).drop_duplicates().reset_index(drop=True)
@@ -222,36 +248,44 @@ def main() -> int:
         )
         check(sales_stats["median"] is not None, "median is returned")
         check(
-            descriptive.json()["result_data"]["row_count"] == 180,
+            descriptive_result["sample_size"] == 180,
             "stats used the cleaned row count (180)",
         )
 
-        correlation = client.post(
-            f"/api/datasets/{dataset_id}/analyze",
+        pearson = client.post(
+            f"/api/v1/datasets/{dataset_id}/analysis",
             json={
-                "analysis_type": "correlation",
-                "parameters": {
-                    "columns": ["units", "unit_price", "sales"],
-                    "method": "pearson",
-                },
+                "analysis_type": "pearson",
+                "parameters": {"x": "units", "y": "sales"},
             },
             headers=headers,
         )
-        check(correlation.status_code == 200, "correlation returns 200")
-        matrix = correlation.json()["result_data"]["matrix"]
-        check(len(matrix) == 3 and len(matrix[0]) == 3, "3x3 correlation matrix")
-        check(abs(matrix[0][0] - 1.0) < 1e-9, "diagonal of the matrix is 1.0")
+        check(pearson.status_code == 200, "pearson correlation returns 200")
+        pearson_result = pearson.json()["result"]
+        estimate = pearson_result["estimate"]
+        check(
+            abs(estimate["correlation"]) <= 1.0,
+            "correlation estimate is within [-1, 1]",
+        )
+        check(
+            pearson_result["effect_size"]["interpretation"] == estimate["strength"],
+            "effect size interpretation matches the strength",
+        )
+        check(
+            pearson_result["tables"]["scatter"]["x_label"] == "units",
+            "scatter table keeps the axis labels",
+        )
 
         regression = client.post(
-            f"/api/datasets/{dataset_id}/analyze",
+            f"/api/v1/datasets/{dataset_id}/analysis",
             json={
-                "analysis_type": "regression",
+                "analysis_type": "linear_regression",
                 "parameters": {"target": "sales", "features": ["units", "unit_price"]},
             },
             headers=headers,
         )
-        check(regression.status_code == 200, "regression returns 200")
-        regression_result = regression.json()["result_data"]
+        check(regression.status_code == 200, "linear_regression returns 200")
+        regression_result = regression.json()["result"]
         # Independently refit the same model with numpy to verify the numbers.
         feature_matrix = cleaned_frame[["units", "unit_price"]].to_numpy(dtype=float)
         target_values = cleaned_frame["sales"].to_numpy(dtype=float)
@@ -262,44 +296,45 @@ def main() -> int:
         ss_total = float(((target_values - target_values.mean()) ** 2).sum())
         expected_r_squared = 1.0 - ss_residual / ss_total
         check(
-            abs(regression_result["r_squared"] - expected_r_squared) < 1e-4,
-            f"R-squared matches numpy ({regression_result['r_squared']:.4f})",
+            abs(regression_result["estimate"]["r_squared"] - expected_r_squared) < 1e-4,
+            f"R-squared matches numpy ({regression_result['estimate']['r_squared']:.4f})",
         )
+        coefficients = {
+            row["variable"]: row["estimate"]
+            for row in regression_result["tables"]["coefficients"]
+        }
         check(
-            abs(regression_result["coefficients"]["units"] - expected_coefficients[1])
-            < 1e-4,
+            abs(coefficients["units"] - expected_coefficients[1]) < 1e-4,
             "units coefficient matches numpy",
         )
         check(
-            abs(
-                regression_result["coefficients"]["unit_price"]
-                - expected_coefficients[2]
-            )
-            < 1e-4,
+            abs(coefficients["unit_price"] - expected_coefficients[2]) < 1e-4,
             "unit_price coefficient matches numpy",
         )
 
         t_test = client.post(
-            f"/api/datasets/{dataset_id}/analyze",
+            f"/api/v1/datasets/{dataset_id}/analysis",
             json={
-                "analysis_type": "hypothesis_test",
+                "analysis_type": "welch_t_test",
                 "parameters": {"value_column": "sales", "group_column": "paid"},
             },
             headers=headers,
         )
-        check(t_test.status_code == 200, "hypothesis_test returns 200")
-        test_result = t_test.json()["result_data"]
-        check(0.0 <= test_result["p_value"] <= 1.0, "p-value is between 0 and 1")
+        check(t_test.status_code == 200, "welch_t_test returns 200")
+        test_result = t_test.json()["result"]
+        check(0.0 <= test_result["test"]["p_value"] <= 1.0, "p-value is between 0 and 1")
         check(
-            test_result["test"] == "welch_two_sample_t_test",
+            "Welch" in str(test_result["test"]["method"]),
             "Welch two-sample t-test used for a two-group column",
         )
 
-        analysis_list = client.get(f"/api/datasets/{dataset_id}/analysis", headers=headers)
-        check(len(analysis_list.json()) == 4, "4 analysis results stored")
+        analysis_list = client.get(
+            f"/api/v1/datasets/{dataset_id}/analysis", headers=headers
+        )
+        check(len(analysis_list.json()) == 4, "4 analysis runs stored")
         analysis_ids = [item["analysis_id"] for item in analysis_list.json()]
-        single = client.get(f"/api/analysis/{analysis_ids[0]}", headers=headers)
-        check(single.status_code == 200, "GET /analysis/{id} returns 200")
+        single = client.get(f"/api/v1/analysis/{analysis_ids[0]}", headers=headers)
+        check(single.status_code == 200, "GET /v1/analysis/{id} returns 200")
 
         print("\n5) Charts")
         bar = client.post(

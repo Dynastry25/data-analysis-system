@@ -128,45 +128,14 @@ export interface ProfileResponse {
   columns: ColumnProfile[];
 }
 
-export interface CleanActionPayload {
-  action_type: "drop_duplicates" | "fill_missing" | "drop_column" | "convert_type";
-  parameters: Record<string, unknown>;
-}
-
-export interface CleanResponse {
-  dataset_id: number;
-  status: string;
-  row_count: number;
-  column_count: number;
-  applied_action: Record<string, unknown>;
-}
-
-export interface CleaningHistoryItem {
-  id: number;
-  action_type: string;
-  parameters: Record<string, unknown>;
-  created_at: string | null;
-}
-
-export type AnalysisType =
-  | "descriptive_stats"
-  | "correlation"
-  | "regression"
-  | "hypothesis_test";
+export type AnalysisType = string;
 
 export interface AnalyzePayload {
-  analysis_type: AnalysisType;
+  analysis_type: string;
   parameters: Record<string, unknown>;
 }
 
-export interface AnalysisRecord {
-  analysis_id: number;
-  dataset_id: number;
-  analysis_type: AnalysisType;
-  parameters: Record<string, unknown>;
-  result_data: Record<string, any>;
-  created_at: string | null;
-}
+export interface AnalysisRecord extends AnalysisRunRecord {}
 
 export type ChartType = "bar" | "line" | "scatter" | "histogram";
 
@@ -243,6 +212,8 @@ export interface ReportStatus {
 
 // ------------------------------------------------------------ API methods
 
+// Analysis + reports always flow through the unified engine (MVP-19+) —
+// the legacy /analyze + /clean endpoints were removed in MVP-23.
 export const api = {
   auth: {
     register: (payload: RegisterPayload) =>
@@ -272,22 +243,6 @@ export const api = {
       http.get<ProfileResponse>(`/datasets/${id}/profile`).then((r) => r.data),
     remove: (id: number) => http.delete(`/datasets/${id}`).then((r) => r.data),
   },
-  cleaning: {
-    apply: (id: number, payload: CleanActionPayload) =>
-      http.post<CleanResponse>(`/datasets/${id}/clean`, payload).then((r) => r.data),
-    history: (id: number) =>
-      http
-        .get<CleaningHistoryItem[]>(`/datasets/${id}/cleaning-history`)
-        .then((r) => r.data),
-  },
-  analysis: {
-    run: (id: number, payload: AnalyzePayload) =>
-      http.post<AnalysisRecord>(`/datasets/${id}/analyze`, payload).then((r) => r.data),
-    listForDataset: (id: number) =>
-      http.get<AnalysisRecord[]>(`/datasets/${id}/analysis`).then((r) => r.data),
-    get: (analysisId: number) =>
-      http.get<AnalysisRecord>(`/analysis/${analysisId}`).then((r) => r.data),
-  },
   charts: {
     create: (id: number, payload: ChartPayload) =>
       http.post<ChartRecord>(`/datasets/${id}/charts`, payload).then((r) => r.data),
@@ -309,7 +264,7 @@ export const api = {
 };
 
 
-// ------------------------------------------- StatFlow v1 (MVP-18 hadi 21)
+// ------------------------------------------- StatFlow unified API (MVP-18+)
 
 export interface OperationCatalogEntry {
   type: string;
@@ -426,6 +381,9 @@ export interface AnalysisRunRecord {
   result: StandardResult;
   created_at: string | null;
 }
+
+// Backward-compatible alias (the legacy /analyze screen used this name).
+export interface AnalysisRecord extends AnalysisRunRecord {}
 
 export interface AnalysisRunResponse {
   dataset_id: number;

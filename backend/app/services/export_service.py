@@ -1,6 +1,6 @@
 """Report export: real XLSX workbooks and PDF documents.
 
-Both writers consume the *saved* JSON results (analysis_results / charts) so an
+Both writers consume the *saved* JSON results (analysis_runs / charts) so an
 exported report is a reproducible snapshot of the chosen analyses and charts.
 """
 
@@ -27,83 +27,85 @@ def _records_to_frame(records: Sequence[Dict[str, Any]]) -> pd.DataFrame:
     return frame
 
 
+def _kv_frame(rows: Sequence[Tuple[str, Any]]) -> pd.DataFrame:
+    """Key/value table; nested values are rendered as text."""
+    return pd.DataFrame(
+        [
+            {
+                "metric": metric,
+                "value": value if not isinstance(value, (dict, list)) else str(value),
+            }
+            for metric, value in rows
+            if value is not None and value != ""
+        ]
+    )
+
+
+def _table_payload_to_frame(payload: Any) -> pd.DataFrame:
+    """Normalise one ``tables`` entry of a standard result into a DataFrame."""
+    if isinstance(payload, list):
+        return _records_to_frame(payload)
+    if isinstance(payload, dict):
+        list_columns = {
+            key: value for key, value in payload.items() if isinstance(value, list)
+        }
+        if list_columns:
+            return pd.DataFrame(list_columns).fillna("")
+    return pd.DataFrame()
+
+
 def flatten_analysis(
     analysis_type: str, result: Dict[str, Any]
 ) -> List[Tuple[str, pd.DataFrame]]:
-    """Turn one stored analysis result into named tables ``(title, frame)``."""
-    if analysis_type == "descriptive_stats":
-        tables: List[Tuple[str, pd.DataFrame]] = [
-            ("Numeric variables", _records_to_frame(result.get("numeric_stats", []))),
+    """Turn one stored standard result into named tables ``(title, frame)``.
+
+    The unified statistics engine (MVP-19) returns the same structure for
+    every analysis — status / estimate / test / confidence_interval /
+    effect_size / diagnostics / tables — so the export is engine-agnostic
+    and automatically supports every analysis type the engine adds.
+    """
+    tables: List[Tuple[str, pd.DataFrame]] = []
+
+    summary_rows: List[Tuple[str, Any]] = [
+        ("Status", result.get("status")),
+        ("Sample size", result.get("sample_size")),
+    ]
+    summary_rows.extend(
+        (f"Estimate: {key}", value)
+        for key, value in (result.get("estimate") or {}).items()
+    )
+    summary_rows.extend(
+        (f"Test: {key}", value) for key, value in (result.get("test") or {}).items()
+    )
+    summary_rows.extend(
+        (f"Confidence interval: {key}", value)
+        for key, value in (result.get("confidence_interval") or {}).items()
+    )
+    effect = result.get("effect_size") or {}
+    if effect:
+        summary_rows.append(
             (
-                "Categorical variables",
-                _records_to_frame(result.get("categorical_stats", [])),
-            ),
-        ]
-    elif analysis_type == "correlation":
-        columns = result.get("columns", [])
-        matrix_frame = pd.DataFrame(result.get("matrix", []), index=columns, columns=columns)
-        if not matrix_frame.empty:
-            matrix_frame.insert(0, "variable", columns)
-        tables = [
-            (f"Correlation matrix ({result.get('method', 'pearson')})", matrix_frame),
-            ("Strongest pairs", _records_to_frame(result.get("pairs", []))),
-        ]
-    elif analysis_type == "regression":
-        coefficient_frame = pd.DataFrame(
-            [
-                {"variable": name, "coefficient": value}
-                for name, value in (result.get("coefficients") or {}).items()
-            ]
+                "Effect size",
+                f"{effect.get('name')}: {effect.get('value')} "
+                f"({effect.get('interpretation')})",
+            )
         )
-        summary = pd.DataFrame(
-            [
-                {"metric": "Target", "value": result.get("target")},
-                {"metric": "Features", "value": ", ".join(result.get("features", []))},
-                {"metric": "Observations", "value": result.get("n_observations")},
-                {"metric": "Intercept", "value": result.get("intercept")},
-                {"metric": "R-squared", "value": result.get("r_squared")},
-                {
-                    "metric": "Adjusted R-squared",
-                    "value": result.get("adjusted_r_squared"),
-                },
-                {"metric": "Std. error", "value": result.get("std_error")},
-                {"metric": "Equation", "value": result.get("equation")},
-            ]
+    warnings = [str(warning) for warning in (result.get("warnings") or [])]
+    if warnings:
+        summary_rows.append(("Warnings", "; ".join(warnings)))
+    tables.append(("Summary", _kv_frame(summary_rows)))
+
+    for table_name, payload in (result.get("tables") or {}).items():
+        tables.append(
+            (str(table_name).replace("_", " ").title(), _table_payload_to_frame(payload))
         )
-        tables = [
-            ("Model summary", summary),
-            ("Coefficients", coefficient_frame),
-            (
-                "Predictions (first rows)",
-                _records_to_frame(result.get("predictions_preview", [])),
-            ),
-        ]
-    elif analysis_type == "hypothesis_test":
-        summary = pd.DataFrame(
-            [
-                {"metric": "Test", "value": result.get("test")},
-                {"metric": "Hypothesis", "value": result.get("hypothesis")},
-                {"metric": "Alternative", "value": result.get("alternative")},
-                {"metric": "t-statistic", "value": result.get("t_statistic")},
-                {
-                    "metric": "Degrees of freedom",
-                    "value": result.get("degrees_of_freedom"),
-                },
-                {"metric": "p-value", "value": result.get("p_value")},
-                {"metric": "alpha", "value": result.get("alpha")},
-                {"metric": "Significant", "value": result.get("significant")},
-                {"metric": "Interpretation", "value": result.get("interpretation")},
-            ]
-        )
-        groups = pd.DataFrame(
-            [
-                {"group": name, "value": str(values)}
-                for name, values in (result.get("groups") or {}).items()
-            ]
-        )
-        tables = [("Test summary", summary), ("Groups", groups)]
-    else:
-        tables = [(analysis_type, pd.DataFrame([result]))]
+
+    diagnostics = result.get("diagnostics") or {}
+    if diagnostics:
+        tables.append(("Diagnostics", _kv_frame(list(diagnostics.items()))))
+
+    if not tables:
+        tables = [(analysis_type, _records_to_frame([result]))]
     return [(title, frame) for title, frame in tables if not frame.empty]
 
 
@@ -168,7 +170,7 @@ def build_xlsx(
                 }
             )
             tables = flatten_analysis(
-                analysis["analysis_type"], analysis["result_data"] or {}
+                analysis["analysis_type"], analysis["result"] or {}
             )
             if not tables:
                 pd.DataFrame({"info": ["No table content"]}).to_excel(
@@ -291,7 +293,7 @@ def build_pdf(
                 )
             )
             for table_title, frame in flatten_analysis(
-                analysis["analysis_type"], analysis["result_data"] or {}
+                analysis["analysis_type"], analysis["result"] or {}
             ):
                 story.append(Paragraph(table_title, body_style))
                 if frame.shape[0] > PDF_TABLE_ROWS:

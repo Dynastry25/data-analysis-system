@@ -69,18 +69,6 @@ class Dataset(Base):
         cascade="all, delete-orphan",
         order_by="DatasetColumn.id",
     )
-    cleaning_actions = relationship(
-        "CleaningAction",
-        back_populates="dataset",
-        cascade="all, delete-orphan",
-        order_by="CleaningAction.id",
-    )
-    analysis_results = relationship(
-        "AnalysisResult",
-        back_populates="dataset",
-        cascade="all, delete-orphan",
-        order_by="AnalysisResult.id",
-    )
     charts = relationship(
         "Chart",
         back_populates="dataset",
@@ -147,58 +135,6 @@ class DatasetColumn(Base):
             "data_type": self.data_type,
             "missing_count": self.missing_count or 0,
             "unique_count": self.unique_count,
-        }
-
-
-class CleaningAction(Base):
-    __tablename__ = "cleaning_actions"
-
-    id = Column(Integer, primary_key=True)
-    dataset_id = Column(
-        Integer,
-        ForeignKey("datasets.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    action_type = Column(String(50), nullable=False)
-    parameters = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    dataset = relationship("Dataset", back_populates="cleaning_actions")
-
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "dataset_id": self.dataset_id,
-            "action_type": self.action_type,
-            "parameters": self.parameters or {},
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
-
-
-class AnalysisResult(Base):
-    __tablename__ = "analysis_results"
-
-    id = Column(Integer, primary_key=True)
-    dataset_id = Column(
-        Integer,
-        ForeignKey("datasets.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    analysis_type = Column(String(50), nullable=False)
-    result_data = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    dataset = relationship("Dataset", back_populates="analysis_results")
-
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "dataset_id": self.dataset_id,
-            "analysis_type": self.analysis_type,
-            "result_data": self.result_data,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
 

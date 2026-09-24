@@ -69,15 +69,23 @@ backend/
   (type, missing count, unique count, min/max) and stores it in `dataset_columns`.
 - **Profile**: recomputes the profile from the file on disk and refreshes the stored
   metadata, so it always matches the current (cleaned) data.
-- **Clean**: every action mutates the stored file, refreshes the column metadata, updates
-  `row_count`/`column_count`/`status` and appends a row to `cleaning_actions` (audit
-  trail). Actions: `drop_duplicates`, `fill_missing` (mean/median/mode/value),
-  `drop_column`, `convert_type` (numeric/integer/text/date/boolean).
-- **Analyse**: results are stored in `analysis_results.result_data` (JSON) and returned
-  immediately. Types: `descriptive_stats`, `correlation` (pearson/spearman), `regression`
-  (OLS with coefficients, R squared, adjusted R squared, std. error and the fitted
-  equation) and `hypothesis_test` (one-sample or Welch two-sample t-test; the p-value
-  comes from the regularized incomplete beta function, so scipy is not required).
+- **Clean / transform (versioned)**: every operation on
+  `POST /api/v1/datasets/{id}/clean|transform` writes a new immutable
+  `dataset_versions` row (parquet) plus a `dataset_operations` audit entry.
+  Cleaning: `drop_duplicates`, `drop_missing`, `fill_missing`
+  (drop/mean/median/mode/zero/constant), `rename_columns`, `cast_types`
+  (numeric/integer/text/date/boolean). Transforms: `select_columns`,
+  `filter`, `sort`, `calculate_column`, `group_by`, … (see
+  `GET /api/v1/datasets/operations/catalog`).
+- **Analyse (unified engine)**: `POST /api/v1/datasets/{id}/analysis` runs
+  `descriptive`, `frequency`, `pearson`/`spearman`, `welch_t_test`,
+  `mann_whitney`, `chi_square`, `one_way_anova`, `kruskal_wallis` or
+  `linear_regression` and always returns the same standard-result structure
+  (status / estimate / test / confidence interval / effect size / diagnostics
+  / tables). Saved runs live in `analysis_runs` and feed the export.
+- **Planning + assistant**: `POST /api/v1/planning/profile|recommend`
+  detects variables and recommends a method; `POST /api/v1/assistant/ask`
+  answers plain-language questions with a verified engine result.
 - **Charts**: returns Plotly-ready `chart_data` (`series[]` with x/y plus axis labels),
   capping categories (50) and scatter points (5000) so big files stay responsive.
 - **Export**: `POST` returns `202` with `{report_id, status: "processing"}` and builds the
@@ -115,17 +123,19 @@ These were added because the UI screens need them (the documented endpoints are 
 
 │   ├── config.py          # env-driven settings, storage paths, upload limits
 │   ├── database.py        # SQLAlchemy engine / session / Base
-│   ├── models.py          # 7 tables from schema.sql (User, Dataset, DatasetColumn,
-│   │                      #  CleaningAction, AnalysisResult, Chart, ExportedReport)
+│   ├── models.py          # tables (User, Dataset, DatasetColumn, Chart,
+│   │                      #  ExportedReport, DatasetVersion, DatasetOperation,
+│   │                      #  AnalysisRun)
 │   ├── schemas.py         # Pydantic request/response models (drive /docs)
 │   ├── security.py        # bcrypt password hashing + JWT create/decode
 │   ├── deps.py            # get_current_user + dataset ownership checks
-│   ├── routers/           # auth, datasets, cleaning, analysis, charts, reports
+│   ├── routers/           # auth, datasets, charts, reports
 │   └── services/
-│       ├── data_service.py     # upload storage, read/write, profiling, cleaning actions
-│       ├── analysis_service.py # descriptive stats, correlation, regression, t-test
+│       ├── data_service.py     # upload storage, reading, profiling
 │       ├── chart_service.py    # Plotly-ready chart data (bar/line/scatter/histogram)
 │       └── export_service.py   # XLSX workbook + PDF document writers
+│   └── statflow/          # unified engines: versioning, operations,
+│                          # statistics, planning, assistant (+ v1 routers)
 ├── tests/smoke_test.py
 ├── requirements.txt
 └── storage/               # uploads: storage/{user_id}/{dataset_id}/data.{csv,xlsx}

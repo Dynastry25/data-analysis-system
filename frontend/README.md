@@ -54,8 +54,11 @@ NEXT_PUBLIC_API_URL=http://localhost:8000/api
 | `/register` | Sajili (register, then auto-login) |
 | `/datasets` | Dataset list with status badges, delete, links to every step |
 | `/upload` | Drag & drop upload with a real progress bar |
-| `/datasets/[id]` | Preview table, column profile, missing-value badges, cleaning actions + audit history |
-| `/datasets/[id]/analyze` | Analysis type picker (descriptive stats / correlation / regression / hypothesis test), results + past analyses |
+| `/datasets/[id]` | Preview table, column profile, missing-value badges, link card to Data Studio |
+| `/datasets/[id]/studio` | Versioned cleaning + transforms, operation history, version preview/download |
+| `/datasets/[id]/statistics` | Unified statistics studio (all engine analyses + versioned run history) |
+| `/datasets/[id]/analyze` | Redirects to `/statistics` (kept so old links keep working) |
+| `/datasets/[id]/ask` | AI statistical assistant (natural-language questions, verified results) |
 | `/datasets/[id]/charts` | Chart builder (bar/line/scatter/histogram) with live Plotly preview and saved charts |
 | `/datasets/[id]/export` | Checklist of analyses + charts, PDF/XLSX choice, async status polling and download |
 
@@ -72,16 +75,18 @@ frontend/
 │   └── datasets/
 │       ├── page.tsx
 │       └── [id]/
-│           ├── page.tsx        # preview + profile + cleaning
-│           ├── analyze/page.tsx
+│           ├── page.tsx        # preview + profile + Data Studio link
+│           ├── analyze/page.tsx  # redirect -> statistics (legacy route kept alive)
+│           ├── statistics/page.tsx  # unified statistics studio
+│           ├── studio/page.tsx   # versioned cleaning + transforms
+│           ├── ask/page.tsx      # AI assistant chat
 │           ├── charts/page.tsx
 │           └── export/page.tsx
 ├── components/
 │   ├── AppShell.tsx            # sidebar nav + auth guard (desktop/mobile)
 │   ├── Button.tsx Badge.tsx Card.tsx Skeleton.tsx DataTable.tsx Toast.tsx
 │   ├── ChartView.tsx           # client-only Plotly wrapper (ssr: false)
-│   ├── CleaningPanel.tsx       # cleaning actions + audit trail
-│   └── ResultsView.tsx         # renders each analysis type
+│   └── StandardResultView.tsx  # renders every unified standard result
 ├── lib/
 │   ├── api.ts                  # typed client for every endpoint (JWT from localStorage)
 │   ├── constants.ts            # Okabe-Ito chart palette, semantic colours, spacing

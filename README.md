@@ -23,8 +23,9 @@ Hii ni implementesheni ya MVP kwa mujibu wa nyaraka za mradi:
 | Upload CSV/XLSX (validation + progress) | ✅ | `backend/app/routers/datasets.py`, `app/upload` |
 | Data preview (rows, columns, types) | ✅ | `app/datasets/[id]` |
 | Data profiling (missing/unique/min/max) | ✅ | `GET /datasets/{id}/profile` |
-| Cleaning (duplicates, missing, drop column, convert type) + audit trail | ✅ | `CleaningPanel.tsx`, `cleaning_actions` table |
-| Statistics (mean, median, mode, std dev, min/max, correlation, regression) | ✅ | `analysis_service.py` (+ t-test) |
+| Cleaning + transforms with immutable versions + audit trail | ✅ | Data Studio (`app/datasets/[id]/studio`), `POST /api/v1/datasets/{id}/clean|transform`, `dataset_versions` + `dataset_operations` tables |
+| Unified statistics (descriptive, correlation, regression, t-test, ANOVA, chi-square…) | ✅ | Statistics page (`app/datasets/[id]/statistics`), `stats_engine.py`, `analysis_runs` table |
+| AI statistical assistant (natural-language questions, verified results) | ✅ | Assistant page (`app/datasets/[id]/ask`), `POST /api/v1/assistant/ask` |
 | Charts (bar, line, scatter, histogram — interactive) | ✅ | `chart_service.py`, `ChartView.tsx` (Plotly) |
 | Export (PDF + Excel) | ✅ | `export_service.py` (reportlab + openpyxl) |
 | Hifadhi ya metadata (users, datasets, columns, matokeo, chati, ripoti) | ✅ | `models.py` / `schema.sql` |
@@ -90,7 +91,7 @@ cd D:\Project\Data-Analysis-system\backend
 Browser (Next.js 14 + Tailwind + Plotly)
         │  JSON + JWT (Authorization: Bearer)
         ▼
-FastAPI  /api/auth  /api/datasets  /api/datasets/{id}/clean|analyze|charts|export
+FastAPI  /api/auth  /api/datasets  /api/datasets/{id}/charts|export  +  /api/v1/* (versions, analysis, planning, assistant)
         │
         ├── SQLAlchemy ORM  ──►  SQLite (dev) / PostgreSQL (production, schema.sql)
         ├── pandas          ──►  CSV/XLSX processing, profiling, cleaning, statistics

@@ -102,58 +102,6 @@ class MessageResponse(BaseModel):
     detail: str
 
 
-# ------------------------------------------------------------- Cleaning
-
-CleanActionType = Literal[
-    "drop_duplicates", "fill_missing", "drop_column", "convert_type"
-]
-
-
-class CleanRequest(BaseModel):
-    action_type: CleanActionType
-    parameters: Dict[str, Any] = Field(default_factory=dict)
-
-
-class CleanResponse(BaseModel):
-    dataset_id: int
-    status: str
-    row_count: int
-    column_count: int
-    applied_action: Dict[str, Any]
-
-
-class CleaningHistoryItem(BaseModel):
-    id: int
-    action_type: str
-    parameters: Dict[str, Any] = Field(default_factory=dict)
-    created_at: Optional[str] = None
-
-
-# ------------------------------------------------------------- Analysis
-
-AnalysisType = Literal[
-    "descriptive_stats", "correlation", "regression", "hypothesis_test"
-]
-
-
-class AnalyzeRequest(BaseModel):
-    analysis_type: AnalysisType
-    parameters: Dict[str, Any] = Field(default_factory=dict)
-
-
-class AnalyzeResponse(BaseModel):
-    analysis_id: int
-    dataset_id: int
-    analysis_type: str
-    parameters: Dict[str, Any] = Field(default_factory=dict)
-    result_data: Dict[str, Any]
-    created_at: Optional[str] = None
-
-
-class AnalysisListItem(AnalyzeResponse):
-    pass
-
-
 # --------------------------------------------------------------- Charts
 
 ChartType = Literal["bar", "line", "scatter", "histogram"]
