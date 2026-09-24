@@ -18,7 +18,7 @@ const VALUE_POINTS: { icon: IconName; title: string; description: string }[] = [
   {
     icon: "calculator",
     title: "Chambua moja kwa moja",
-    description: "Takwimu kamili bila kuandika code — au uliza msaidizi wa AI.",
+    description: "Takwimu kamili bila kuandika code au uliza msaidizi wa AI.",
   },
   {
     icon: "file-text",
@@ -42,7 +42,7 @@ function BrandPanel() {
           Chambua data bila kuandika code
         </h2>
         <p className="mt-3 text-body-lg text-primary-100">
-          Mtiririko wa hatua 6 — pakia, angalia, safisha, chambua, buni chati,
+          Mtiririko wa hatua 6 pakia, angalia, safisha, chambua, buni chati,
           tengeneza ripoti. Yote katika mfumo mmoja.
         </p>
         <ol className="mt-8 space-y-5">

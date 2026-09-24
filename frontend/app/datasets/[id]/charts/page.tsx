@@ -136,7 +136,7 @@ export default function ChartsPage() {
             >
               {CHART_TYPE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label} — {option.use}
+                  {option.label}  {option.use}
                 </option>
               ))}
             </select>
@@ -171,7 +171,7 @@ export default function ChartsPage() {
               onChange={(event) => setYColumn(event.target.value)}
               disabled={chartType === "histogram"}
             >
-              <option value="">— count ya rows —</option>
+              <option value=""> count ya rows </option>
               {numericColumns.map((column) => (
                 <option key={column} value={column}>
                   {column}
@@ -190,7 +190,7 @@ export default function ChartsPage() {
               value={groupBy}
               onChange={(event) => setGroupBy(event.target.value)}
             >
-              <option value="">— Hakuna —</option>
+              <option value=""> Hakuna </option>
               {allColumns.map((column) => (
                 <option key={column} value={column}>
                   {column}
@@ -254,7 +254,7 @@ export default function ChartsPage() {
 
       <Card
         title="Chati zilizohifadhiwa"
-        description="Chati zote ulizotengeneza kwa dataset hii — unaweza kuzijumuisha kwenye ripoti."
+        description="Chati zote ulizotengeneza kwa dataset hii  unaweza kuzijumuisha kwenye ripoti."
       >
         {saved.length === 0 ? (
           <EmptyState title="Hakuna chati iliyohifadhiwa" />

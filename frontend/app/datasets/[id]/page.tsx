@@ -102,7 +102,7 @@ export default function DatasetDetailPage() {
             <Stat
               label="Columns za namba"
               value={numericColumns.length}
-              hint={numericColumns.slice(0, 3).join(", ") || "—"}
+              hint={numericColumns.slice(0, 3).join(", ") || ""}
             />
           </div>
 
@@ -170,7 +170,7 @@ export default function DatasetDetailPage() {
 
           <Card
             title="Safisha na badilisha data"
-            description="Data studio huunda version mpya kwa kila hatua — hakuna data inayopotea."
+            description="Data studio huunda version mpya kwa kila hatua hakuna data inayopotea."
             actions={
               <Link href={`/datasets/${datasetId}/studio`}>
                 <Button>Fungua data studio</Button>

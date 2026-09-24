@@ -22,7 +22,7 @@ import {
 import { completedStageCount, PIPELINE_STAGES } from "@/lib/pipeline";
 
 function formatDate(value: string | null): string {
-  if (!value) return "—";
+  if (!value) return "";
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime())
     ? value
@@ -242,7 +242,7 @@ export default function DashboardPage() {
         ) : datasets.length === 0 ? (
           <EmptyState
             title="Hakuna dataset bado"
-            description="Anza kwa kupakia faili lako la kwanza — mtiririko utakuongoza hatua kwa hatua."
+            description="Anza kwa kupakia faili lako la kwanza mtiririko utakuongoza hatua kwa hatua."
             action={
               <Link href="/upload">
                 <Button size="large">
@@ -315,7 +315,7 @@ export default function DashboardPage() {
       {/* Pipeline guide */}
       <Card
         title="Mtiririko wa kazi"
-        description="Hatua 6 kutoka kwenye faili hadi ripoti — kila hatua inafungua ukurasa wake."
+        description="Hatua 6 kutoka kwenye faili hadi ripoti  kila hatua inafungua ukurasa wake."
       >
         <ol className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {PIPELINE_STAGES.map((stage) => {

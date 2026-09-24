@@ -49,7 +49,7 @@ export default function ExportPage() {
       setAnalyses(analysisList);
       setCharts(chartList);
       setReports(reportList);
-      // Everything is selected by default — the common case is "give me it all".
+      // Everything is selected by default the common case is "give me it all".
       setSelectedAnalyses(analysisList.map((item) => item.analysis_id));
       setSelectedCharts(chartList.map((item) => item.chart_id));
     } catch (caught) {
@@ -200,7 +200,7 @@ export default function ExportPage() {
                           }
                         />
                         <span>
-                          {chart.chart_type} — {chart.config.x}
+                          {chart.chart_type} {chart.config.x}
                           {chart.config.y ? ` vs ${chart.config.y}` : ""}
                         </span>
                       </label>
@@ -248,7 +248,7 @@ export default function ExportPage() {
 
       <Card
         title="Ripoti zilizotengenezwa"
-        description="Ripoti zote za dataset hii — unaweza kuzipakua tena."
+        description="Ripoti zote za dataset hii unaweza kuzipakua tena."
       >
         {reports.length === 0 ? (
           <EmptyState title="Hakuna ripoti bado" />

@@ -158,7 +158,7 @@ export default function UploadPage() {
           <li>Columns za namba zisiwe na alama kama &quot;TSh&quot; au &quot;%&quot;.</li>
           <li>Tarehe ziwe katika muundo mmoja (YYYY-MM-DD inapendekezwa).</li>
           <li>
-            Faili kubwa (safu 100,000+) zinasindika nyuma ya pazia — unaweza kuendelea
+            Faili kubwa (safu 100,000+) zinasindika nyuma ya pazia unaweza kuendelea
             kutumia mfumo.
           </li>
         </ul>

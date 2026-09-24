@@ -20,7 +20,7 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Data Analysis Platform",
   description:
-    "Upload CSV/Excel data, clean it, run statistics, build charts and export reports — no code required.",
+    "Upload CSV/Excel data, clean it, run statistics, build charts and export reports no code required.",
 };
 
 export default function RootLayout({

@@ -186,7 +186,7 @@ export default function StatisticsPage() {
             setParamValues((previous) => ({ ...previous, [name]: event.target.value }))
           }
         >
-          <option value="">— chagua column —</option>
+          <option value=""> chagua column </option>
           {columnOptions(name).map((column) => (
             <option key={column} value={column}>
               {column}
@@ -209,7 +209,7 @@ export default function StatisticsPage() {
   return (
     <AppShell
       title="Chumba cha takwimu"
-      description="Endesha uchambuzi wowote wa engine moja ya takwimu (MVP-19) — matokeo yote yana muundo mmoja."
+      description="Endesha uchambuzi wowote wa engine moja ya takwimu matokeo yote yana muundo mmoja."
       actions={
         <Link href={`/datasets/${datasetId}`}>
           <Button variant="secondary">Rudi kwenye dataset</Button>
