@@ -13,6 +13,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from typing import Dict
 
 import pandas as pd
 import numpy as np
@@ -125,10 +126,24 @@ def main() -> int:
 
         bad_upload = client.post(
             "/api/datasets/upload",
-            files={"file": ("notes.txt", b"not,a,dataset", "text/plain")},
+            files={"file": ("notes.docx", b"MZ fake document", "application/pdf")},
             headers=headers,
         )
         check(bad_upload.status_code == 400, "unsupported file type is rejected")
+
+        corrupted = client.post(
+            "/api/datasets/upload",
+            files={"file": ("broken.xlsx", b"this is not a real spreadsheet", "application/octet-stream")},
+            headers=headers,
+        )
+        check(corrupted.status_code == 400, "corrupted spreadsheet is rejected")
+        user_storage = TEST_ROOT / "storage" / "1"
+        leaked = [
+            path
+            for path in user_storage.rglob("*")
+            if path.is_file() and path.parent.name != str(dataset_id)
+        ]
+        check(leaked == [], "failed upload leaves no storage leak")
 
         detail = client.get(f"/api/datasets/{dataset_id}", headers=headers)
         check(detail.status_code == 200, "dataset detail returns 200")
@@ -482,7 +497,60 @@ def main() -> int:
             "another user cannot download the report",
         )
 
-        print("\n8) Delete dataset")
+        print("\n8) Additional file formats (JSON / TSV / TXT / Parquet)")
+        formats_frame = pd.DataFrame(
+            {
+                "name": ["Aina", "Baraka", "Chausiku", "Doto", "Emili"],
+                "score": [12.5, 9.0, None, 15.5, 11.0],
+                "active": ["true", "false", "true", "false", "true"],
+            }
+        )
+        extra_files: Dict[str, Path] = {
+            ".json": TEST_ROOT / "extra.json",
+            ".tsv": TEST_ROOT / "extra.tsv",
+            ".txt": TEST_ROOT / "extra.txt",
+            ".parquet": TEST_ROOT / "extra.parquet",
+        }
+        formats_frame.to_json(extra_files[".json"], orient="records")
+        formats_frame.to_csv(extra_files[".tsv"], index=False, sep="\t")
+        formats_frame.to_csv(extra_files[".txt"], index=False)
+        formats_frame.to_parquet(extra_files[".parquet"], index=False)
+
+        for extension, path in extra_files.items():
+            with path.open("rb") as handle:
+                loaded = client.post(
+                    "/api/datasets/upload",
+                    files={"file": (path.name, handle, "application/octet-stream")},
+                    headers=headers,
+                )
+            check(
+                loaded.status_code == 201,
+                f"upload .{extension.lstrip('.')} returns 201 ({loaded.status_code})",
+            )
+            extra_id = loaded.json()["dataset_id"]
+            check(
+                loaded.json()["row_count"] == 5,
+                f".{extension.lstrip('.')} uploaded with 5 rows",
+            )
+            detail = client.get(f"/api/datasets/{extra_id}", headers=headers)
+            check(
+                detail.status_code == 200 and len(detail.json()["preview_rows"]) == 5,
+                f".{extension.lstrip('.')} preview reads back correctly",
+            )
+            # Exercises the version store reading the new format through
+            # ``ensure_base_version`` -> ``read_dataframe``.
+            versioned = client.post(
+                f"/api/v1/datasets/{extra_id}/clean",
+                json={"operation_type": "drop_duplicates", "configuration": {}},
+                headers=headers,
+            )
+            check(
+                versioned.status_code == 200 and versioned.json()["version"] == 2,
+                f".{extension.lstrip('.')} supports versioned cleaning",
+            )
+            client.delete(f"/api/datasets/{extra_id}", headers=headers)
+
+        print("\n9) Delete dataset")
         delete = client.delete(f"/api/datasets/{dataset_id}", headers=headers)
         check(delete.status_code == 200, "delete returns 200")
         check(
@@ -491,6 +559,11 @@ def main() -> int:
         )
     print(f"\nALL SMOKE TESTS PASSED ({PASSED} checks)")
     return 0
+
+
+def test_full_journey() -> None:
+    """pytest entry point: same whole-journey run as ``python tests/smoke_test.py``."""
+    main()
 
 
 if __name__ == "__main__":

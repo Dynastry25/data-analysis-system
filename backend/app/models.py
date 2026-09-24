@@ -5,7 +5,7 @@ mapped with the portable ``JSON`` type so the same models work on SQLite (dev) a
 PostgreSQL (production).
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
@@ -22,6 +22,11 @@ from sqlalchemy.orm import relationship
 from app.database import Base
 
 
+def utcnow() -> datetime:
+    """Timezone-aware UTC now (``datetime.utcnow`` is deprecated in Python 3.14)."""
+    return datetime.now(timezone.utc)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -29,7 +34,7 @@ class User(Base):
     full_name = Column(String(150), nullable=False)
     email = Column(String(150), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     datasets = relationship(
         "Dataset", back_populates="user", cascade="all, delete-orphan"
@@ -60,7 +65,7 @@ class Dataset(Base):
     row_count = Column(Integer, default=0)
     column_count = Column(Integer, default=0)
     status = Column(String(20), default="uploaded")  # uploaded, cleaned, analyzed
-    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    uploaded_at = Column(DateTime, default=utcnow)
 
     user = relationship("User", back_populates="datasets")
     columns = relationship(
@@ -150,7 +155,7 @@ class Chart(Base):
     )
     chart_type = Column(String(30), nullable=False)
     config = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     dataset = relationship("Dataset", back_populates="charts")
 
@@ -189,7 +194,7 @@ class DatasetVersion(Base):
     column_count = Column(Integer, default=0)
     is_current = Column(Integer, default=1)  # 1 for the newest version
     label = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     dataset = relationship("Dataset", back_populates="versions")
     operations = relationship(
@@ -243,7 +248,7 @@ class DatasetOperation(Base):
     result_version = Column(Integer, nullable=False)
     summary = Column(JSON, nullable=True)
     warnings = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     dataset = relationship("Dataset", back_populates="operations")
     resulting_version = relationship("DatasetVersion", back_populates="operations")
@@ -280,7 +285,7 @@ class AnalysisRun(Base):
     status = Column(String(30), nullable=False, default="success")
     parameters = Column(JSON, nullable=True)
     result = Column(JSON, nullable=False)  # the standard result structure
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     dataset = relationship("Dataset", back_populates="analysis_runs")
 
@@ -315,7 +320,7 @@ class ExportedReport(Base):
     # Additions to schema.sql: an async export needs a status + error trail.
     status = Column(String(20), default="processing")  # processing|completed|failed
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     dataset = relationship("Dataset", back_populates="reports")
     user = relationship("User", back_populates="reports")

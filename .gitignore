@@ -4,6 +4,8 @@ backend/app.db
 backend/storage/
 backend/import_error.log
 backend/uvicorn*.log
+backend/*_out.log
+backend/.pytest_cache/
 __pycache__/
 *.py[cod]
 
@@ -13,6 +15,10 @@ frontend/.next/
 frontend/out/
 frontend/.env.local
 frontend/*.log
+
+# ---- Environment ----
+.env
+.env.local
 
 # ---- Logs / editor ----
 *.log

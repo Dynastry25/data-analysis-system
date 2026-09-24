@@ -1,0 +1,58 @@
+# StatFlow — development / small-production Docker environment
+#
+#   docker compose up --build
+#
+# Services:
+#   db       PostgreSQL 16 (metadata for users, datasets, analyses, versions)
+#   backend  FastAPI (http://localhost:8000, docs at /docs)
+#   frontend Next.js 14 (http://localhost:3000)
+#
+# Override anything via a local `.env` file (see `.env.example`).
+
+name: statflow
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-statflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-statflow}
+      POSTGRES_DB: ${POSTGRES_DB:-statflow}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-statflow} -d ${POSTGRES_DB:-statflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-statflow}:${POSTGRES_PASSWORD:-statflow}@db:5432/${POSTGRES_DB:-statflow}
+      STORAGE_DIR: /data/storage
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+    ports:
+      - "8000:8000"
+    volumes:
+      - statflow-data:/data
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
+  statflow-data:

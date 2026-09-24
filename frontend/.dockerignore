@@ -1,0 +1,9 @@
+node_modules/
+.next/
+build.log
+start.log
+start_err.log
+*.tsbuildinfo
+.git/
+Dockerfile
+.dockerignore

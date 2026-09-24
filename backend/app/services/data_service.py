@@ -4,6 +4,7 @@ Everything that touches the dataset files lives here so the routers stay thin.
 """
 
 import math
+import shutil
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -76,13 +77,24 @@ def store_upload_file(
 
 
 def delete_dataset_files(dataset_path: str) -> None:
-    """Remove a dataset file and its now-empty dataset folder (best effort)."""
+    """Remove a dataset file and its whole dataset folder (best effort).
+
+    The dataset folder also contains the immutable ``versions/`` directory
+    (parquet/csv snapshots), so the entire tree is removed. Never touches
+    anything outside ``STORAGE_DIR``.
+    """
     path = Path(dataset_path)
     try:
-        path.unlink(missing_ok=True)
-        folder = path.parent
-        if folder.is_dir() and not any(folder.iterdir()):
-            folder.rmdir()
+        folder = path.parent if path.name else None
+        if (
+            folder
+            and folder.is_dir()
+            and folder != STORAGE_DIR
+            and STORAGE_DIR in folder.resolve().parents
+        ):
+            shutil.rmtree(folder, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
     except OSError:
         pass
 
@@ -90,41 +102,89 @@ def delete_dataset_files(dataset_path: str) -> None:
 # --------------------------------------------------------------- read / write
 
 
+def read_delimited(path: Path, sep: str | None) -> pd.DataFrame:
+    """Read a delimited file (csv/tsv/txt) with an encoding fallback cascade.
+
+    ``sep=None`` (txt) makes pandas fall back to the python sniffing engine,
+    which does not accept ``low_memory``.
+    """
+    kwargs: Dict[str, Any] = {"encoding": None, "sep": sep}
+    if sep is not None:
+        kwargs["low_memory"] = False
+    else:
+        kwargs["engine"] = "python"
+    last_error: Optional[Exception] = None
+    for encoding in ("utf-8", "utf-8-sig", "latin-1"):
+        kwargs["encoding"] = encoding
+        try:
+            return pd.read_csv(path, **kwargs)
+        except UnicodeDecodeError as exc:  # try the next encoding
+            last_error = exc
+        except pd.errors.EmptyDataError as exc:
+            raise ValueError("The file has no columns to analyse") from exc
+    raise ValueError(f"Could not decode the file: {last_error}") from last_error
+
+
 def read_dataframe(path: str | Path) -> pd.DataFrame:
-    """Read a stored CSV/XLSX dataset into a DataFrame."""
+    """Read a stored dataset file into a DataFrame.
+
+    Supported formats: CSV, TSV, TXT (delimiter auto-sniffed), JSON (array of
+    records or dict of columns), XLSX and Parquet.
+    """
     path = Path(path)
     if not path.exists():
         raise ValueError("Dataset file is missing from storage")
 
-    if path.suffix.lower() == ".csv":
-        last_error: Optional[Exception] = None
-        for encoding in ("utf-8", "utf-8-sig", "latin-1"):
-            try:
-                df = pd.read_csv(path, encoding=encoding, low_memory=False)
-                break
-            except UnicodeDecodeError as exc:  # try the next encoding
-                last_error = exc
-            except pd.errors.EmptyDataError as exc:
-                raise ValueError("The CSV file has no columns to analyse") from exc
-        else:  # pragma: no cover - defensive
-            raise ValueError(f"Could not decode the CSV file: {last_error}")
+    suffix = path.suffix.lower()
+    last_error: Optional[Exception] = None
+    if suffix in {".csv", ".tsv", ".txt"}:
+        separator = None if suffix == ".txt" else ("\t" if suffix == ".tsv" else ",")
+        try:
+            frame = read_delimited(path, separator)
+        except ValueError as exc:
+            raise
+        except Exception as exc:  # the delimiter sniffing engine can fail broadly
+            last_error = exc
+            frame = None
+    elif suffix == ".json":
+        try:
+            frame = pd.read_json(path)
+        except Exception as exc:
+            raise ValueError(f"Could not read the JSON file: {exc}") from exc
+    elif suffix == ".parquet":
+        try:
+            frame = pd.read_parquet(path)
+        except Exception as exc:
+            raise ValueError(f"Could not read the Parquet file: {exc}") from exc
     else:
         try:
-            df = pd.read_excel(path, engine="openpyxl")
+            frame = pd.read_excel(path, engine="openpyxl")
         except Exception as exc:  # openpyxl raises a wide range of errors
             raise ValueError(f"Could not read the Excel file: {exc}") from exc
 
-    df.columns = [str(col).strip() for col in df.columns]
-    if df.shape[1] == 0:
+    if frame is None:
+        raise ValueError(f"Could not read the file: {last_error}") from last_error
+
+    frame.columns = [str(col).strip() for col in frame.columns]
+    if frame.shape[1] == 0:
         raise ValueError("The file has no columns to analyse")
-    return df
+    return frame
 
 
 def write_dataframe(df: pd.DataFrame, path: str | Path) -> None:
-    """Persist a DataFrame back to its original CSV/XLSX format."""
+    """Persist a DataFrame back to its original file format."""
     path = Path(path)
-    if path.suffix.lower() == ".csv":
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
         df.to_csv(path, index=False)
+    elif suffix == ".tsv":
+        df.to_csv(path, index=False, sep="\t")
+    elif suffix == ".txt":
+        df.to_csv(path, index=False)
+    elif suffix == ".json":
+        df.to_json(path, orient="records", index=False, date_format="iso")
+    elif suffix == ".parquet":
+        df.to_parquet(path, index=False)
     else:
         df.to_excel(path, index=False, engine="openpyxl")
 

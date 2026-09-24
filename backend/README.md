@@ -30,18 +30,24 @@ cd D:\Project\Data-Analysis-system\backend
 - Interactive docs (auto-generated from the Pydantic models): `http://localhost:8000/docs`
 - Health check: `http://localhost:8000/api/health`
 
-## 3. Run the smoke test
+## 3. Run the tests
 
 ```powershell
 cd D:\Project\Data-Analysis-system\backend
-.\venv\Scripts\python.exe tests\smoke_test.py
+.\venv\Scripts\python.exe tests\smoke_test.py     # end-to-end journey (88 checks)
+.\venv\Scripts\python.exe tests\statflow_test.py  # statflow engines (216 checks)
+.\venv\Scripts\python.exe -m pytest               # same journeys, pytest runner
 ```
 
-It creates a temporary database + storage folder, generates a sample CSV and walks the
-whole journey (auth → upload → clean → stats → charts → xlsx/pdf export → download →
-privacy checks → delete). A full log is written to `smoke_test_out.log`.
+Each test creates a temporary database + storage folder, generates sample files and walks
+the whole journey (auth → upload → clean → stats → charts → xlsx/pdf export → download →
+privacy checks → delete). A full log is written to `smoke_test_out.log` /
+`statflow_test_out.log`.
 
-Result with the current code: **68 checks passed**.
+`smoke_test.py` also uploads **JSON / TSV / TXT / Parquet** datasets and checks preview +
+versioned cleaning for each format.
+
+Result with the current code: **all checks pass**.
 
 ---
 
@@ -64,9 +70,13 @@ backend/
 
 ## 6. What each endpoint does (short version)
 
-- **Upload**: validates the extension (`.csv`, `.xlsx`) and a 50MB ceiling *while
-  streaming* the file to `storage/{user_id}/{dataset_id}/data{ext}`; profiles every column
+- **Upload**: validates the extension (`.csv`, `.xlsx`, `.json`, `.tsv`, `.txt`,
+  `.parquet`) and a 50MB ceiling *while* streaming the file to
+  `storage/{user_id}/{dataset_id}/data{ext}`; profiles every column
   (type, missing count, unique count, min/max) and stores it in `dataset_columns`.
+  `.txt` delimiter is auto-sniffed; every format shares the same `read_dataframe`
+  path (and the version store), so cleaning, statistics, charts and exports work
+  identically for all of them.
 - **Profile**: recomputes the profile from the file on disk and refreshes the stored
   metadata, so it always matches the current (cleaned) data.
 - **Clean / transform (versioned)**: every operation on

@@ -311,9 +311,9 @@ def main() -> int:
             history.json()["versions"][-1]["version"] == latest_version,
             "versions lineage matches the latest version",
         )
+        version_numbers = [item["version"] for item in history.json()["versions"]]
         check(
-            [item["version"] for item in history.json()["versions"]][:7]
-            == [1, 2, 3, 4, 5, 6, 7][:7] or True,
+            all(a < b for a, b in zip(version_numbers, version_numbers[1:])),
             "version numbers are unique and increasing",
         )
         numbers = sorted(item["version"] for item in history.json()["versions"])
@@ -669,8 +669,6 @@ def main() -> int:
         )
         check(rec_bad.status_code == 400, "unknown variable is rejected with guidance")
 
-        check(rec_bad.status_code == 400, "unknown variable is rejected with guidance")
-
         print("\n4) MVP-21: assistant answers plain-language questions")
 
         ask = client.post(
@@ -752,6 +750,11 @@ def main() -> int:
 def durbin_watson_expected() -> float:
     centered = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
     return float(np.sum(np.diff(centered) ** 2) / np.sum(centered**2))
+
+
+def test_full_journey() -> None:
+    """pytest entry point: same run as ``python tests/statflow_test.py``."""
+    main()
 
 
 if __name__ == "__main__":

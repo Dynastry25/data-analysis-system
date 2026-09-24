@@ -63,8 +63,28 @@ npm run dev
 
 ```powershell
 cd D:\Project\Data-Analysis-system\backend
-.\venv\Scripts\python.exe tests\smoke_test.py     # end-to-end: 68 checks
+.\venv\Scripts\python.exe tests\smoke_test.py     # end-to-end: 88 checks
+.\venv\Scripts\python.exe tests\statflow_test.py  # statflow: 216 checks
+.\venv\Scripts\python.exe -m pytest               # zote mbili (fast variant)
 ```
+
+Nywila ya kuthibitisha format mpya (JSON/TSV/TXT/Parquet) iko ndani ya `smoke_test.py`.
+
+---
+
+## 2b. Docker (production-mfumo wa kwanza)
+
+Kama una Docker, unaweza kuendesha stack nzima (PostgreSQL + backend + frontend)
+kwa amri moja:
+
+```powershell
+cd D:\Project\Data-Analysis-system
+Copy-Item .env.example .env    # kisha badili SECRET_KEY
+docker compose up --build
+```
+
+- App: `http://localhost:3000` · API: `http://localhost:8000/api` · Docs: `http://localhost:8000/docs`
+- Data yote inakaa kwenye volumes `pgdata` na `statflow-data`.
 
 ---
 
@@ -72,8 +92,8 @@ cd D:\Project\Data-Analysis-system\backend
 
 1. **Sajili / ingia** — JWT token huhifadhiwa kwenye browser, kila request ina
    `Authorization: Bearer …`.
-2. **Pakia data** — drag & drop CSV/XLSX (hadi 50MB). Mfumo unathibitisha aina na ukubwa wa
-   faili, kisha unachambua columns zote.
+2. **Pakia data** — drag & drop CSV, XLSX, JSON, TSV, TXT au Parquet (hadi 50MB).
+   Mfumo unathibitisha aina na ukubwa wa faili, kisha unachambua columns zote.
 3. **Angalia & safisha** — preview ya rows 20 za kwanza, jedwali la columns (aina, missing,
    unique, min/max), badge za tahadhari kwa missing values, na vitufe 4 vya usafishaji.
    Kila kitendo kinarekodiwa kwenye audit trail.

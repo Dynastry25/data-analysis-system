@@ -9,7 +9,7 @@ import { Card } from "@/components/Card";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage } from "@/lib/api";
 
-const ALLOWED = [".csv", ".xlsx"];
+const ALLOWED = [".csv", ".xlsx", ".json", ".tsv", ".txt", ".parquet"];
 const MAX_MB = 50;
 
 export default function UploadPage() {
@@ -25,7 +25,7 @@ export default function UploadPage() {
   function validate(candidate: File): string | null {
     const lower = candidate.name.toLowerCase();
     if (!ALLOWED.some((extension) => lower.endsWith(extension))) {
-      return "File type not supported. Pakia faili la .csv au .xlsx pekee.";
+      return "File type not supported. Pakia faili la .csv, .xlsx, .json, .tsv, .txt au .parquet pekee.";
     }
     if (candidate.size > MAX_MB * 1024 * 1024) {
       return `File too large. Maximum allowed size is ${MAX_MB}MB.`;
@@ -75,7 +75,7 @@ export default function UploadPage() {
   return (
     <AppShell
       title="Pakia data"
-      description="CSV au Excel (.xlsx), hadi 50MB. Mfumo unasafisha na kuchambua moja kwa moja."
+      description="CSV, Excel (.xlsx), JSON, TSV, TXT au Parquet, hadi 50MB. Mfumo unasafisha na kuchambua moja kwa moja."
     >
       <Card>
         <div
@@ -96,7 +96,7 @@ export default function UploadPage() {
           <input
             ref={inputRef}
             type="file"
-            accept=".csv,.xlsx"
+            accept=".csv,.xlsx,.json,.tsv,.txt,.parquet"
             className="hidden"
             onChange={(event) => pick(event.target.files?.[0])}
           />

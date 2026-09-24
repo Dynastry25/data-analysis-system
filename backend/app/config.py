@@ -14,7 +14,7 @@ API_PREFIX = "/api"
 STORAGE_DIR = Path(os.getenv("STORAGE_DIR", str(BASE_DIR / "storage")))
 REPORTS_DIR = STORAGE_DIR / "reports"
 
-ALLOWED_EXTENSIONS = {".csv", ".xlsx"}
+ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".json", ".tsv", ".txt", ".parquet"}
 MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50MB
 
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)

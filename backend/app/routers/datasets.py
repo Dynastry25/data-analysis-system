@@ -76,11 +76,16 @@ def upload_dataset(
     db.commit()
     db.refresh(dataset)
 
+    stored_path = None
     try:
         stored_path, original_name = store_upload_file(file, user.id, dataset.id)
         frame = read_dataframe(stored_path)
     except ValueError as exc:
-        delete_dataset_files(dataset.storage_path)
+        # ``store_upload_file`` cleans up its own partial file on error, but if
+        # the file was written and then failed to *read*, we must remove it here
+        # (``storage_path`` is still "" on the model at this point).
+        if stored_path is not None:
+            delete_dataset_files(stored_path)
         db.delete(dataset)
         db.commit()
         raise _upload_error(str(exc))

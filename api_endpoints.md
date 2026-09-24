@@ -22,7 +22,8 @@ Ingia na kupata token.
 ## 2. Datasets
 
 ### POST /datasets/upload
-Pakia faili (CSV/XLSX). Inaunda record katika `datasets` na `dataset_columns`.
+Pakia faili (CSV, XLSX, JSON, TSV, TXT, Parquet). Inaunda record katika `datasets` na
+`dataset_columns`. Ukubwa wa juu: MB 50.
 **Body:** `multipart/form-data` — file
 **Response:** `{ dataset_id, row_count, column_count, columns: [...] }`
 
