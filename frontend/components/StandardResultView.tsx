@@ -6,7 +6,7 @@ import { StandardResult } from "@/lib/api";
 import { colorForIndex } from "@/lib/constants";
 
 /** Format a scalar value for display. */
-function fmt(value: unknown): string {
+export function fmt(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "number") {
     if (Math.abs(value) > 0 && Math.abs(value) < 0.0001) return value.toExponential(2);
@@ -17,7 +17,7 @@ function fmt(value: unknown): string {
 }
 
 /** Format a p-value the way statisticians expect. */
-function pFmt(p: number | null | undefined): string {
+export function pFmt(p: number | null | undefined): string {
   if (p === null || p === undefined) return "—";
   if (p < 0.0001) return "< 0.0001";
   return p.toFixed(4);
@@ -165,6 +165,61 @@ function TablesBlock({ tables }: { tables: Record<string, unknown> }) {
   return <div className="space-y-3">{rendered}</div>;
 }
 
+/** Single key-number card (mono font per design system §3) — reused by result views. */
+export function MetricCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded border border-neutral-200 bg-neutral-50 p-4">
+      <p className="truncate text-caption uppercase tracking-wide text-neutral-600">
+        {label}
+      </p>
+      <p className="mt-1 truncate font-mono text-h2 text-neutral-900">{value}</p>
+      {hint && (
+        <p className="mt-1 truncate text-caption text-neutral-600">{hint}</p>
+      )}
+    </div>
+  );
+}
+
+/** Layer 4 wrapper — full statistical details behind a collapsible (design system §10). */
+export function CollapsibleDetails({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="rounded border border-neutral-200">
+      <summary className="cursor-pointer px-4 py-3 text-body font-medium text-neutral-600 transition-colors duration-150 ease-out hover:bg-neutral-50">
+        {label}
+      </summary>
+      <div className="details-content space-y-4 border-t border-neutral-200 p-4">
+        {children}
+      </div>
+    </details>
+  );
+}
+
+/** Layer 5 — practical meaning in plain language, in an info box. */
+export function InterpretationBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded border border-info bg-info-bg p-4">
+      <p className="text-caption font-semibold text-info">
+        Tafsiri kwa lugha rahisi
+      </p>
+      <p className="mt-1 text-body text-neutral-900">{children}</p>
+    </div>
+  );
+}
+
 /** Layer 2 — key numbers as short metric cards (mono font per design system §3). */
 function MetricCards({ result }: { result: StandardResult }) {
   const metrics: { label: string; value: string; hint?: string }[] = [];
@@ -196,20 +251,7 @@ function MetricCards({ result }: { result: StandardResult }) {
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {metrics.map((metric) => (
-        <div
-          key={metric.label}
-          className="rounded border border-neutral-200 bg-neutral-50 p-4"
-        >
-          <p className="truncate text-caption uppercase tracking-wide text-neutral-600">
-            {metric.label}
-          </p>
-          <p className="mt-1 truncate font-mono text-h2 text-neutral-900">
-            {metric.value}
-          </p>
-          {metric.hint && (
-            <p className="mt-1 truncate text-caption text-neutral-600">{metric.hint}</p>
-          )}
-        </div>
+        <MetricCard key={metric.label} {...metric} />
       ))}
     </div>
   );
@@ -271,8 +313,14 @@ function CiChart({ result }: { result: StandardResult }) {
   );
 }
 
-/** Layer 3b — horizontal bars comparing groups (Okabe-Ito colors). */
-function GroupBars({ values }: { values: { label: string; value: number }[] }) {
+/** Layer 3b — horizontal bars comparing values (Okabe-Ito colors). */
+export function GroupBars({
+  values,
+  title = "Kulinganisha makundi",
+}: {
+  values: { label: string; value: number }[];
+  title?: string;
+}) {
   const maxAbs = Math.max(...values.map((v) => Math.abs(v.value)), 1e-9);
   const ariaLabel = `Chati ya makundi: ${values
     .map((v) => `${v.label} = ${fmt(v.value)}`)
@@ -280,7 +328,7 @@ function GroupBars({ values }: { values: { label: string; value: number }[] }) {
   return (
     <div role="img" aria-label={ariaLabel}>
       <p className="mb-2 text-caption font-semibold text-neutral-600">
-        Kulinganisha makundi
+        {title}
       </p>
       <div className="space-y-2" aria-hidden="true">
         {values.map((entry, index) => (
@@ -381,11 +429,7 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
       )}
 
       {/* Layer 4 — Angalia zaidi (undani wa kitakwimu) */}
-      <details className="rounded border border-neutral-200">
-        <summary className="cursor-pointer px-4 py-3 text-body font-medium text-neutral-600 transition-colors duration-150 ease-out hover:bg-neutral-50">
-          Angalia zaidi — undani wa kitakwimu (estimate, CI, df, diagnostics)
-        </summary>
-        <div className="details-content space-y-4 border-t border-neutral-200 p-4">
+      <CollapsibleDetails label="Angalia zaidi — undani wa kitakwimu (estimate, CI, df, diagnostics)">
           <div className="grid gap-4 lg:grid-cols-2">
         <div>
           <p className="mb-1 text-caption font-semibold text-neutral-600">
@@ -462,18 +506,10 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
           {Object.keys(result.tables).length > 0 && (
             <TablesBlock tables={result.tables} />
           )}
-        </div>
-      </details>
+      </CollapsibleDetails>
 
       {/* Layer 5 — Tafsiri kwa lugha rahisi */}
-      <div className="rounded border border-info bg-info-bg p-4">
-        <p className="text-caption font-semibold text-info">
-          Tafsiri kwa lugha rahisi
-        </p>
-        <p className="mt-1 text-body text-neutral-900">
-          {buildInterpretation(result)}
-        </p>
-      </div>
+      <InterpretationBox>{buildInterpretation(result)}</InterpretationBox>
 
       {/* Layer 6 — Hatua zinazofuata */}
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}

@@ -146,6 +146,19 @@ export default function AnalyzePage() {
     }
   }
 
+  function downloadResultJson() {
+    if (!result) return;
+    const blob = new Blob([JSON.stringify(result.result_data, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${result.analysis_type}_matokeo.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   const columnPicker = (
     list: string[],
     setter: (next: string[]) => void,
@@ -344,7 +357,23 @@ export default function AnalyzePage() {
             <Skeleton className="h-40 w-full" />
           </div>
         ) : result ? (
-          <ResultsView analysisType={result.analysis_type} result={result.result_data} />
+          <div className="space-y-4">
+            <ResultsView
+              analysisType={result.analysis_type}
+              result={result.result_data}
+            />
+            {/* Layer 6 — Hatua zinazofuata (design system §10) */}
+            <div className="flex flex-wrap gap-2">
+              <Link href={`/datasets/${datasetId}/charts`}>
+                <Button variant="secondary" size="small">
+                  Chora chati ya matokeo
+                </Button>
+              </Link>
+              <Button variant="ghost" size="small" onClick={downloadResultJson}>
+                Pakua matokeo (JSON)
+              </Button>
+            </div>
+          </div>
         ) : (
           <EmptyState
             title="Hakuna matokeo bado"
