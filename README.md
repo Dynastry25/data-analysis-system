@@ -94,6 +94,55 @@ docker compose up --build
 
 ---
 
+## 2c. Kupeleka (Deployment) — Vercel (frontend) + Render (backend)
+
+Mfumo una sehemu mbili, kila moja inapelekwa kwenye mfumo wake:
+
+| Sehemu | Mfumo | Kwa nini |
+|---|---|---|
+| Frontend (Next.js) | **Vercel** (GitHub integration) | Vercel ni bora kwa Next.js |
+| Backend (FastAPI) | **Render** (blueprint `render.yaml`) | Python + Postgres + diski ya kudumu kwa faili za upload |
+
+> **Kumbuka:** Vercel haendeshi FastAPI katika production — backend hii inahitaji Postgres,
+> storage ya kudumu na processing za muda mrefu. Kwa hiyo backend inapelekwa kwenye Render.
+
+### Hatua 1 — Backend kwenye Render (fanya kwanza, ili upate URL)
+
+1. Weka repo kwenye GitHub (ikiwa bado haijawekwa).
+2. Render → **New → Blueprint** → chagua repo hiyo. Render inasoma `render.yaml`
+   (repo root) na inaunda: web service `statflow-api` + Postgres `statflow-db` +
+   persistent disk kwa uploads.
+3. Baada ya deploy, fungua service → **Environment** na uweke:
+   - `FRONTEND_ORIGIN` = URL ya Vercel app (baada ya hatua ya 2) — au `*` kwa muda.
+4. Thibitisha: `https://<service-host>/api/health` inarudisha `{"status":"ok"}` inajulikana.
+   Docs: `https://<service-host>/docs`.
+
+> **Mipango:** free Postgres inaisha baada ya ~siku 30 (upgrade kwa paid plan kwa DB ya
+> kudumu). Diski ya kudumu inahitaji plan **starter** (au zaidi) kwenye web service.
+
+### Hatua 2 — Frontend kwenye Vercel (GitHub integration)
+
+1. Vercel → **Add New → Project** → import GitHub repo hii.
+2. Weka **Root Directory** = `frontend` (repo ni monorepo: `backend/` + `frontend/`).
+3. Framework itatambulika (Next.js) moja kwa moja; build command default `npm run build`.
+4. Weka environment variable:
+   - `NEXT_PUBLIC_API_URL` = `https://<render-service-host>/api`
+5. Bonyeza **Deploy**. Kila `git push` inadeploy upya moja kwa moja.
+
+> `NEXT_PUBLIC_API_URL` inachomeka wakati wa build — weka kabla ya first deploy.
+
+### Hatua 3 — Kuunganisha (CORS)
+
+`backend/app/config.py` inakubali origins nyingi kwa comma, kwa hiyo unaweza kuweka:
+
+```
+FRONTEND_ORIGIN=https://statflow.vercel.app,http://localhost:3000
+```
+
+hivyo dev ya ndani na production zote zinafanya kazi kwa API moja.
+
+---
+
 ## 3. Mtiririko wa mtumiaji (user journey)
 
 1. **Sajili / ingia** — JWT token huhifadhiwa kwenye browser, kila request ina

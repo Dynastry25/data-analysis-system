@@ -1,0 +1,47 @@
+# Render Blueprint — deploys the FastAPI backend to a persistent web service.
+#
+# How to use:
+#   1) Push this repository to GitHub.
+#   2) Render → New → Blueprint → import the same GitHub repo.
+#      Render provisions the Postgres database + web service below automatically.
+#   3) After deploy, open the service → Environment and set:
+#        FRONTEND_ORIGIN = https://<your-vite-or-nextjs-app>.vercel.app
+#   4) Health check: https://<service-host>/api/health
+#
+# Plan notes:
+#   - The web service needs the "starter" plan (or higher) for the persistent
+#     disk, which is where uploaded files + generated reports live.
+#   - The free Postgres instance is fine to start but auto-expires after ~30
+#     days; upgrade it to a paid plan for a production database.
+services:
+  - type: web
+    name: statflow-api
+    runtime: python
+    plan: starter
+    region: ohio
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      name: statflow-storage
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: statflow-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: STORAGE_DIR
+        value: /var/data/storage
+      - key: PYTHON_VERSION
+        value: 3.12.3
+
+databases:
+  - name: statflow-db
+    plan: free

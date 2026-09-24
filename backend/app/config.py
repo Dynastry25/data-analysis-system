@@ -20,4 +20,10 @@ MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50MB
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
-CORS_ORIGINS = [os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")]
+# Comma-separated allow-list so local dev and the deployed frontend can both
+# call the same API, e.g. FRONTEND_ORIGIN="http://localhost:3000,https://statflow.vercel.app"
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("FRONTEND_ORIGIN", "http://localhost:3000").split(",")
+    if origin.strip()
+]
