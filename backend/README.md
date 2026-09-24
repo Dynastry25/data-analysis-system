@@ -53,13 +53,19 @@ Result with the current code: **all checks pass**.
 
 ## 4. Configuration (environment variables)
 
+Vile `backend/.env` inasoma na **python-dotenv** (tazama `backend/.env.example`).
+Haiitiisha variable zilizowekwa tayari kwenye environment (dokezo la dotenv), kwa hiyo
+Render / Docker zinauwetanga juu ya `.env` kila wakati. **Bila `.env` na bila env vars,
+local inabaki sqlite default** — hivyo huna haja ya kufanya lolote kwa dev.
+
 | Variable | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///backend/app.db` | SQLAlchemy URL. Point it at PostgreSQL for production, e.g. `postgresql+psycopg2://user:pass@localhost:5432/data_analysis` |
+| `DATABASE_URL` | `sqlite:///backend/app.db` | SQLAlchemy URL. Point it at PostgreSQL for production, e.g. `postgresql+psycopg2://user:pass@localhost:5432/data_analysis` — au Render Postgres URL (
+`render.yaml` inauwekea kwa `fromDatabase`) |
 | `SECRET_KEY` | dev placeholder | JWT signing key — **change in production** |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `60` | JWT lifetime |
 | `STORAGE_DIR` | `backend/storage` | Where dataset files and reports are stored |
-| `FRONTEND_ORIGIN` | `http://localhost:3000` | Allowed CORS origin |
+| `FRONTEND_ORIGIN` | `http://localhost:3000` | Allowed CORS origin(s), comma-separated |
 
 ## 5. Project layout
 

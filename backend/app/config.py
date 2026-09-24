@@ -1,7 +1,15 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load `backend/.env` if present. It does NOT override variables already set in
+# the environment (dotenv default), so Render/Docker-injected values win. Use it
+# to point a production/local run at the Render Postgres database without
+# touching the sqlite default used for plain local development.
+load_dotenv(BASE_DIR / ".env")
 
 DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{(BASE_DIR / 'app.db').as_posix()}")
 
