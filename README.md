@@ -20,6 +20,7 @@ Hii ni implementesheni ya MVP kwa mujibu wa nyaraka za mradi:
 | Kipengele cha MVP | Hali | Wapi |
 |---|---|---|
 | Auth (register/login, JWT) | ✅ | `backend/app/routers/auth.py`, `app/login`, `app/register` |
+| **Dashboard home** (metrics, quick actions, recent datasets, 6-stage workflow guide) | ✅ | `app/dashboard`, AppShell sidebar + `PipelineStepper` |
 | Upload CSV/XLSX (validation + progress) | ✅ | `backend/app/routers/datasets.py`, `app/upload` |
 | Data preview (rows, columns, types) | ✅ | `app/datasets/[id]` |
 | Data profiling (missing/unique/min/max) | ✅ | `GET /datasets/{id}/profile` |
@@ -29,6 +30,11 @@ Hii ni implementesheni ya MVP kwa mujibu wa nyaraka za mradi:
 | Charts (bar, line, scatter, histogram — interactive) | ✅ | `chart_service.py`, `ChartView.tsx` (Plotly) |
 | Export (PDF + Excel) | ✅ | `export_service.py` (reportlab + openpyxl) |
 | Hifadhi ya metadata (users, datasets, columns, matokeo, chati, ripoti) | ✅ | `models.py` / `schema.sql` |
+
+**Mtiririko wa uendeshaji (UI):** kila dataset inafuata hatua 6 — Pakia → Angalia →
+Safisha → Chambua → Chati → Ripoti — ikionyeshwa mara moja kwenye sidebar, stepper
+juu ya ukurasa, na kiashirio cha maendeleo kwenye orodha/dashboard. Definisi yote iko
+`frontend/lib/pipeline.ts` (chanzo kimoja cha kweli).
 
 Awamu zote tatu za roadmap (§10 ya spec) zimefikiwa: **Awamu 1** (auth, upload, preview,
 profiling, cleaning), **Awamu 2** (stats, correlation, regression, charts), **Awamu 3**

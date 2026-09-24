@@ -5,12 +5,12 @@ import { useEffect } from "react";
 
 import { getToken } from "@/lib/api";
 
-/** Entry point: send the user to their datasets or to the login screen. */
+/** Entry point: send the user to the dashboard or to the login screen. */
 export default function HomePage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace(getToken() ? "/datasets" : "/login");
+    router.replace(getToken() ? "/dashboard" : "/login");
   }, [router]);
 
   return (
