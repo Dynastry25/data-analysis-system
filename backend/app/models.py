@@ -69,6 +69,12 @@ class Organization(Base):
         cascade="all, delete-orphan",
         order_by="Project.id",
     )
+    teams = relationship(
+        "Team",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        order_by="Team.id",
+    )
 
     def to_dict(self) -> dict:
         return {
@@ -151,6 +157,84 @@ class Project(Base):
             "description": self.description,
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class Team(Base):
+    """A work unit inside an organization (Phase 1 / master prompt).
+
+    Teams group org members for shared delivery; org roles continue to rule
+    overall access, so a team has no separate permission level.
+    """
+
+    __tablename__ = "teams"
+
+    id = Column(Integer, primary_key=True)
+    organization_id = Column(
+        Integer,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name = Column(String(150), nullable=False)
+    description = Column(Text, nullable=True)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at = Column(DateTime, default=utcnow)
+
+    organization = relationship("Organization", back_populates="teams")
+    members = relationship(
+        "TeamMember",
+        back_populates="team",
+        cascade="all, delete-orphan",
+        order_by="TeamMember.id",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("organization_id", "name", name="uq_team_org_name"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "organization_id": self.organization_id,
+            "name": self.name,
+            "description": self.description,
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class TeamMember(Base):
+    """Membership of an org member in a team."""
+
+    __tablename__ = "team_members"
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(
+        Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at = Column(DateTime, default=utcnow)
+
+    team = relationship("Team", back_populates="members")
+    user = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("team_id", "user_id", name="uq_team_member"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "team_id": self.team_id,
+            "user_id": self.user_id,
+            "full_name": self.user.full_name if self.user else None,
+            "email": self.user.email if self.user else None,
+            "joined_at": self.created_at.isoformat() if self.created_at else None,
         }
 
 

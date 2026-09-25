@@ -22,6 +22,8 @@ from app.models import (
     Organization,
     OrganizationMember,
     Project,
+    Team,
+    TeamMember,
     User,
 )
 from app.rbac import (
@@ -43,6 +45,11 @@ from app.schemas import (
     ProjectCreateRequest,
     ProjectResponse,
     ProjectUpdateRequest,
+    TeamCreateRequest,
+    TeamMemberAddRequest,
+    TeamMemberResponse,
+    TeamResponse,
+    TeamUpdateRequest,
 )
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
@@ -104,6 +111,21 @@ def _project_response(db: Session, project: Project) -> dict:
         .filter(Dataset.project_id == project.id)
         .scalar()
         or 0
+    )
+    return data
+
+
+def _get_team(db: Session, organization_id: int, team_id: int) -> Team:
+    team = db.get(Team, team_id)
+    if team is None or team.organization_id != organization_id:
+        raise HTTPException(status_code=404, detail="Team not found")
+    return team
+
+
+def _team_response(db: Session, team: Team) -> dict:
+    data = team.to_dict()
+    data["member_count"] = (
+        db.query(func.count(TeamMember.id)).filter(TeamMember.team_id == team.id).scalar() or 0
     )
     return data
 
@@ -393,5 +415,184 @@ def delete_project(
     require_org_role(db, organization_id, user, ORG_ROLE_ADMIN)
     project = _get_project(db, organization_id, project_id)
     db.delete(project)
+    db.commit()
+    return None
+
+
+# -------------------------------------------------------------------- teams
+
+
+@router.post(
+    "/{organization_id}/teams", response_model=TeamResponse, status_code=status.HTTP_201_CREATED
+)
+def create_team(
+    organization_id: int,
+    payload: TeamCreateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    require_org_role(db, organization_id, user, ORG_ROLE_ANALYST)
+    duplicate = (
+        db.query(Team)
+        .filter(
+            Team.organization_id == organization_id,
+            func.lower(Team.name) == payload.name.strip().lower(),
+        )
+        .first()
+    )
+    if duplicate:
+        raise HTTPException(status_code=409, detail="A team with this name already exists")
+    team = Team(
+        organization_id=organization_id,
+        name=payload.name.strip(),
+        description=payload.description,
+        created_by=user.id,
+    )
+    db.add(team)
+    db.commit()
+    db.refresh(team)
+    return _team_response(db, team)
+
+
+@router.get("/{organization_id}/teams", response_model=list[TeamResponse])
+def list_teams(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    require_membership(db, organization_id, user)
+    teams = (
+        db.query(Team)
+        .filter(Team.organization_id == organization_id)
+        .order_by(Team.id.desc())
+        .all()
+    )
+    return [_team_response(db, t) for t in teams]
+
+
+@router.patch("/{organization_id}/teams/{team_id}", response_model=TeamResponse)
+def update_team(
+    organization_id: int,
+    team_id: int,
+    payload: TeamUpdateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    require_org_role(db, organization_id, user, ORG_ROLE_ADMIN)
+    team = _get_team(db, organization_id, team_id)
+    if payload.name is not None:
+        duplicate = (
+            db.query(Team)
+            .filter(
+                Team.organization_id == organization_id,
+                Team.id != team_id,
+                func.lower(Team.name) == payload.name.strip().lower(),
+            )
+            .first()
+        )
+        if duplicate:
+            raise HTTPException(status_code=409, detail="A team with this name already exists")
+        team.name = payload.name.strip()
+    if payload.description is not None:
+        team.description = payload.description
+    db.commit()
+    db.refresh(team)
+    return _team_response(db, team)
+
+
+@router.delete(
+    "/{organization_id}/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+def delete_team(
+    organization_id: int,
+    team_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> None:
+    require_org_role(db, organization_id, user, ORG_ROLE_ADMIN)
+    team = _get_team(db, organization_id, team_id)
+    db.delete(team)
+    db.commit()
+    return None
+
+
+@router.post(
+    "/{organization_id}/teams/{team_id}/members",
+    response_model=TeamMemberResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_team_member(
+    organization_id: int,
+    team_id: int,
+    payload: TeamMemberAddRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    require_org_role(db, organization_id, user, ORG_ROLE_ADMIN)
+    team = _get_team(db, organization_id, team_id)
+    if db.get(User, payload.user_id) is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if get_organization_membership(db, organization_id, payload.user_id) is None:
+        raise HTTPException(
+            status_code=403, detail="Only organization members can join a team"
+        )
+    existing = (
+        db.query(TeamMember)
+        .filter(
+            TeamMember.team_id == team.id,
+            TeamMember.user_id == payload.user_id,
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="This user is already in the team")
+    member = TeamMember(team_id=team.id, user_id=payload.user_id)
+    db.add(member)
+    db.commit()
+    db.refresh(member)
+    return member.to_dict()
+
+
+@router.get(
+    "/{organization_id}/teams/{team_id}/members", response_model=list[TeamMemberResponse]
+)
+def list_team_members(
+    organization_id: int,
+    team_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    require_membership(db, organization_id, user)
+    _get_team(db, organization_id, team_id)
+    members = (
+        db.query(TeamMember)
+        .filter(TeamMember.team_id == team_id)
+        .order_by(TeamMember.id)
+        .all()
+    )
+    return [m.to_dict() for m in members]
+
+
+@router.delete(
+    "/{organization_id}/teams/{team_id}/members/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def remove_team_member(
+    organization_id: int,
+    team_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> None:
+    require_org_role(db, organization_id, user, ORG_ROLE_ADMIN)
+    team = _get_team(db, organization_id, team_id)
+    member = (
+        db.query(TeamMember)
+        .filter(TeamMember.team_id == team.id, TeamMember.user_id == user_id)
+        .first()
+    )
+    if member is None:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    db.delete(member)
     db.commit()
     return None

@@ -233,7 +233,6 @@ export interface OrgMember {
   role: string;
   joined_at: string | null;
 }
-
 export interface OrgProject {
   id: number;
   organization_id: number;
@@ -242,6 +241,25 @@ export interface OrgProject {
   created_by: number | null;
   created_at: string | null;
   dataset_count: number;
+}
+
+export interface OrgTeam {
+  id: number;
+  organization_id: number;
+  name: string;
+  description: string | null;
+  created_by: number | null;
+  created_at: string | null;
+  member_count: number;
+}
+
+export interface TeamMember {
+  id: number;
+  team_id: number;
+  user_id: number;
+  full_name: string | null;
+  email: string | null;
+  joined_at: string | null;
 }
 
 // ------------------------------------------------------------ API methods
@@ -361,6 +379,53 @@ export const api = {
       http
         .delete(`/v1/organizations/${organizationId}/projects/${projectId}`)
         .then((r) => r.data),
+    teams: {
+      list: (organizationId: number) =>
+        http
+          .get<OrgTeam[]>(`/v1/organizations/${organizationId}/teams`)
+          .then((r) => r.data),
+      create: (
+        organizationId: number,
+        payload: { name: string; description?: string }
+      ) =>
+        http
+          .post<OrgTeam>(`/v1/organizations/${organizationId}/teams`, payload)
+          .then((r) => r.data),
+      update: (
+        organizationId: number,
+        teamId: number,
+        payload: { name?: string; description?: string }
+      ) =>
+        http
+          .patch<OrgTeam>(
+            `/v1/organizations/${organizationId}/teams/${teamId}`,
+            payload
+          )
+          .then((r) => r.data),
+      remove: (organizationId: number, teamId: number) =>
+        http
+          .delete(`/v1/organizations/${organizationId}/teams/${teamId}`)
+          .then((r) => r.data),
+      members: (organizationId: number, teamId: number) =>
+        http
+          .get<TeamMember[]>(
+            `/v1/organizations/${organizationId}/teams/${teamId}/members`
+          )
+          .then((r) => r.data),
+      addMember: (organizationId: number, teamId: number, userId: number) =>
+        http
+          .post<TeamMember>(
+            `/v1/organizations/${organizationId}/teams/${teamId}/members`,
+            { user_id: userId }
+          )
+          .then((r) => r.data),
+      removeMember: (organizationId: number, teamId: number, userId: number) =>
+        http
+          .delete(
+            `/v1/organizations/${organizationId}/teams/${teamId}/members/${userId}`
+          )
+          .then((r) => r.data),
+    },
   },
 };
 

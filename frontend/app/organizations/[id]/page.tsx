@@ -11,7 +11,16 @@ import { Card, EmptyState } from "@/components/Card";
 import { Icon } from "@/components/Icon";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
-import { api, apiErrorMessage, OrgMember, OrgProject, Organization, OrgRole } from "@/lib/api";
+import {
+  api,
+  apiErrorMessage,
+  OrgMember,
+  OrgProject,
+  OrgRole,
+  OrgTeam,
+  Organization,
+  TeamMember,
+} from "@/lib/api";
 
 const ROLE_LABEL: Record<OrgRole, string> = {
   owner: "Mwenyekiti",
@@ -62,6 +71,8 @@ export default function OrganizationDetailPage() {
   const [org, setOrg] = useState<Organization | null>(null);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [projects, setProjects] = useState<OrgProject[]>([]);
+  const [teams, setTeams] = useState<OrgTeam[]>([]);
+  const [teamMembers, setTeamMembers] = useState<Record<number, TeamMember[]>>({});
   const [loading, setLoading] = useState(true);
 
   // create-org / add-member / create-project forms
@@ -69,19 +80,24 @@ export default function OrganizationDetailPage() {
   const [memberRole, setMemberRole] = useState<OrgRole>("analyst");
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
+  const [teamName, setTeamName] = useState("");
+  const [teamDescription, setTeamDescription] = useState("");
+  const [memberPicks, setMemberPicks] = useState<Record<number, number | "">>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [organization, memberList, projectList] = await Promise.all([
+      const [organization, memberList, projectList, teamList] = await Promise.all([
         api.organizations.get(organizationId),
         api.organizations.members(organizationId),
         api.organizations.projects(organizationId),
+        api.organizations.teams.list(organizationId),
       ]);
       setOrg(organization);
       setMembers(memberList);
       setProjects(projectList);
+      setTeams(teamList);
     } catch (caught) {
       showToast(apiErrorMessage(caught), "danger");
     } finally {
@@ -89,9 +105,29 @@ export default function OrganizationDetailPage() {
     }
   }, [organizationId, showToast]);
 
+  const loadTeamMembers = useCallback(
+    async (teamId: number) => {
+      try {
+        const list = await api.organizations.teams.members(organizationId, teamId);
+        setTeamMembers((current) => ({ ...current, [teamId]: list }));
+      } catch (caught) {
+        showToast(apiErrorMessage(caught), "danger");
+      }
+    },
+    [organizationId, showToast]
+  );
+
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    teams.forEach((team) => {
+      if (!teamMembers[team.id]) {
+        loadTeamMembers(team.id);
+      }
+    });
+  }, [teams, teamMembers, loadTeamMembers]);
 
   const myRole = org?.my_role ?? null;
 
@@ -195,6 +231,90 @@ export default function OrganizationDetailPage() {
     }
   }
 
+  // ----------------------------------------------------------- team actions
+
+  async function handleCreateTeam(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.organizations.teams.create(organizationId, {
+        name: teamName,
+        description: teamDescription,
+      });
+      showToast("Timu imetengenezwa", "success");
+      setTeamName("");
+      setTeamDescription("");
+      load();
+    } catch (caught) {
+      const message = apiErrorMessage(caught);
+      setError(message);
+      showToast(message, "danger");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRenameTeam(team: OrgTeam) {
+    const name = window.prompt("Jina jipya la timu:", team.name);
+    if (name === null) return;
+    if (name.trim() === "") {
+      showToast("Jina la timu haliachiwi tupu", "danger");
+      return;
+    }
+    try {
+      await api.organizations.teams.update(organizationId, team.id, {
+        name: name.trim(),
+      });
+      showToast("Timu imesasishwa", "success");
+      load();
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    }
+  }
+
+  async function handleDeleteTeam(team: OrgTeam) {
+    if (!window.confirm(`Futa timu "${team.name}"? Wanachama wake itabaki.`)) return;
+    try {
+      await api.organizations.teams.remove(organizationId, team.id);
+      showToast("Timu imefutwa", "success");
+      load();
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    }
+  }
+
+  async function handleAddTeamMember(team: OrgTeam) {
+    const pick = memberPicks[team.id];
+    if (!pick) {
+      showToast("Chagua mwanachama kwanza", "danger");
+      return;
+    }
+    try {
+      await api.organizations.teams.addMember(organizationId, team.id, pick);
+      showToast("Mwanachama ameongezwa kwenye timu", "success");
+      setMemberPicks((current) => ({ ...current, [team.id]: "" }));
+      loadTeamMembers(team.id);
+      load();
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    }
+  }
+
+  async function handleRemoveTeamMember(team: OrgTeam, member: TeamMember) {
+    if (!window.confirm(`Mtoe "${member.full_name ?? member.email}" kwenye timu?`)) {
+      return;
+    }
+    try {
+      await api.organizations.teams.removeMember(organizationId, team.id, member.user_id);
+      showToast("Mwanachama ameondolewa kwenye timu", "success");
+      loadTeamMembers(team.id);
+      load();
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    }
+  }
+
   async function handleDeleteOrganization() {
     if (!org || org.my_role !== "owner") return;
     if (
@@ -254,6 +374,13 @@ export default function OrganizationDetailPage() {
           <div>
             <p className="text-h2">{projects.length}</p>
             <p className="text-caption text-neutral-600">Miradi</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 rounded border border-neutral-200 bg-white px-4 py-3">
+          <Icon name="users" size={20} className="text-primary-600" />
+          <div>
+            <p className="text-h2">{teams.length}</p>
+            <p className="text-caption text-neutral-600">Timu</p>
           </div>
         </div>
         {myRole && (
@@ -467,6 +594,178 @@ export default function OrganizationDetailPage() {
                 )}
               </li>
             ))}
+          </ul>
+        )}
+      </Card>
+
+      <Card
+        title="Timu"
+        description="Timu zinakusanya wanachama ili kushiriki kazi. Kiwango cha mwanachama kwenye shirika ndio kinachodhibiti ruhusa yake."
+      >
+        {!canCreateProject(myRole) ? (
+          <p className="text-body text-neutral-600">
+            Kiwango cha{" "}
+            <Badge tone={ROLE_TONE["viewer"]}>Mtazamaji</Badge> hakiruhusu kutengeneza
+            timu. Muulize msimamizi au mwenyekiti akupe kiwango cha mchambuzi.
+          </p>
+        ) : (
+          <form
+            onSubmit={handleCreateTeam}
+            className="mb-4 flex flex-wrap items-end gap-3 rounded border border-neutral-200 bg-neutral-50 p-4"
+          >
+            <div className="min-w-[220px] flex-1">
+              <label htmlFor="team_name" className="block text-body text-neutral-900">
+                Jina la timu
+              </label>
+              <input
+                id="team_name"
+                required
+                minLength={2}
+                value={teamName}
+                onChange={(event) => setTeamName(event.target.value)}
+                className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
+                placeholder="Mfano: Timu ya Uchambuzi"
+              />
+            </div>
+            <div className="min-w-[220px] flex-1">
+              <label htmlFor="team_desc" className="block text-body text-neutral-900">
+                Maelezo (hiari)
+              </label>
+              <input
+                id="team_desc"
+                value={teamDescription}
+                onChange={(event) => setTeamDescription(event.target.value)}
+                className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
+                placeholder="Timu hii inafanya nini?"
+              />
+            </div>
+            <Button type="submit" loading={busy}>
+              Unda timu
+            </Button>
+          </form>
+        )}
+
+        {teams.length === 0 ? (
+          <EmptyState
+            title="Hakuna timu bado"
+            description="Tengeneza timu ya kwanza kwa kupanua wanachama kwenye kazi moja."
+          />
+        ) : (
+          <ul className="divide-y divide-neutral-200">
+            {teams.map((team) => {
+              const currentMembers = teamMembers[team.id] ?? [];
+              const taken = new Set(currentMembers.map((member) => member.user_id));
+              const available = members.filter((member) => !taken.has(member.user_id));
+              return (
+                <li key={team.id} className="py-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-neutral-100 text-neutral-600">
+                      <Icon name="users" size={18} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-body text-neutral-900">{team.name}</p>
+                      <p className="truncate text-caption text-neutral-600">
+                        {team.description ?? "Hakuna maelezo"}
+                      </p>
+                    </div>
+                    <Badge tone="info">
+                      {team.member_count}{" "}
+                      {team.member_count === 1 ? "mwanachama" : "wanachama"}
+                    </Badge>
+                    {canManageProject(myRole) && (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          onClick={() => handleRenameTeam(team)}
+                          aria-label={`Badilisha jina la ${team.name}`}
+                        >
+                          <Icon name="sliders" size={16} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          onClick={() => handleDeleteTeam(team)}
+                          aria-label={`Futa timu ${team.name}`}
+                        >
+                          <Icon name="trash" size={16} />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <ul className="mt-3 space-y-2 pl-12">
+                    {currentMembers.length === 0 && (
+                      <li className="text-caption text-neutral-600">
+                        Hakuna mwanachama kwenye timu hii bado.
+                      </li>
+                    )}
+                    {currentMembers.map((member) => (
+                      <li
+                        key={member.id}
+                        className="flex flex-wrap items-center gap-3 text-body"
+                      >
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700">
+                          <span className="text-caption font-medium">
+                            {initials(member.full_name)}
+                          </span>
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {member.full_name ?? member.email}
+                        </span>
+                        {canManageProject(myRole) && (
+                          <Button
+                            variant="ghost"
+                            size="small"
+                            onClick={() => handleRemoveTeamMember(team, member)}
+                            aria-label={`Mtoe ${member.full_name ?? member.email} kwenye ${team.name}`}
+                          >
+                            <Icon name="trash" size={16} />
+                          </Button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+
+                  {canManageProject(myRole) && available.length > 0 && (
+                    <div className="mt-3 flex flex-wrap items-end gap-3 pl-12">
+                      <div>
+                        <label
+                          htmlFor={`team-member-${team.id}`}
+                          className="block text-caption text-neutral-600"
+                        >
+                          Ongeza mwanachama
+                        </label>
+                        <select
+                          id={`team-member-${team.id}`}
+                          value={memberPicks[team.id] ?? ""}
+                          onChange={(event) =>
+                            setMemberPicks((current) => ({
+                              ...current,
+                              [team.id]: Number(event.target.value),
+                            }))
+                          }
+                          className="mt-1 h-9 rounded border border-neutral-200 bg-white px-2 text-body outline-none focus:border-primary-500"
+                        >
+                          <option value="">Chagua mwanachama</option>
+                          {available.map((member) => (
+                            <option key={member.user_id} value={member.user_id}>
+                              {member.full_name ?? member.email}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <Button
+                        size="small"
+                        onClick={() => handleAddTeamMember(team)}
+                      >
+                        Ongeza
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>

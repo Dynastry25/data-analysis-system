@@ -262,3 +262,44 @@ class ProjectResponse(BaseModel):
     created_at: Optional[str] = None
     dataset_count: int = 0
 
+
+class TeamCreateRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=150)
+    description: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("name")
+    @classmethod
+    def _name_stripped(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("name is required")
+        return value
+
+
+class TeamUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    description: Optional[str] = Field(default=None, max_length=2000)
+
+
+class TeamResponse(BaseModel):
+    id: int
+    organization_id: int
+    name: str
+    description: Optional[str] = None
+    created_by: Optional[int] = None
+    created_at: Optional[str] = None
+    member_count: int = 0
+
+
+class TeamMemberAddRequest(BaseModel):
+    user_id: int
+
+
+class TeamMemberResponse(BaseModel):
+    id: int
+    team_id: int
+    user_id: int
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    joined_at: Optional[str] = None
+

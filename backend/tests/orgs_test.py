@@ -1,4 +1,4 @@
-"""Organizations, projects and RBAC tests (Phase 1 / master prompt).
+"""Organizations, projects, teams and RBAC tests (Phase 1 / master prompt).
 
 Covers the full role ladder (owner > admin > analyst > viewer) and org-scoped
 dataset access. Runs against a temporary database + storage. Also discoverable
@@ -283,7 +283,106 @@ def main() -> int:
             check(True, "non-member blocked from org dataset")
         db.close()
 
-        print("5) Teardown")
+        print("5) Teams")
+        db = SessionLocal()
+        outsider = db.query(User).filter(User.email == "amina@example.com").first()
+        db.close()
+
+        r = client.post(
+            f"/api/v1/organizations/{org_id}/teams",
+            json={"name": "Uchambuzi", "description": "Timu ya uchambuzi"},
+            headers=h_owner,
+        )
+        check(r.status_code == 201 and r.json()["member_count"] == 0, "owner creates team")
+        team_id = r.json()["id"]
+
+        r = client.post(
+            f"/api/v1/organizations/{org_id}/teams",
+            json={"name": "Uchambuzi"},
+            headers=h_owner,
+        )
+        check(r.status_code == 409, "duplicate team name rejected (409)")
+
+        check(client.post(
+            f"/api/v1/organizations/{org_id}/teams",
+            json={"name": "Timu V"},
+            headers=h_b,
+        ).status_code == 403, "viewer cannot create a team (403)")
+
+        r = client.post(
+            f"/api/v1/organizations/{org_id}/teams",
+            json={"name": "Uendeshaji"},
+            headers=h_c,
+        )
+        check(r.status_code == 201, "admin can create a team")
+        team2 = r.json()["id"]
+
+        r = client.post(
+            f"/api/v1/organizations/{org_id}/teams/{team_id}/members",
+            json={"user_id": b_id},
+            headers=h_owner,
+        )
+        check(r.status_code == 201 and r.json()["email"] == "as@example.com",
+              "owner adds an org member to a team")
+
+        check(client.post(
+            f"/api/v1/organizations/{org_id}/teams/{team_id}/members",
+            json={"user_id": b_id},
+            headers=h_owner,
+        ).status_code == 409, "cannot add the same team member twice (409)")
+
+        r = client.post(
+            f"/api/v1/organizations/{org_id}/teams/{team_id}/members",
+            json={"user_id": outsider.id},
+            headers=h_owner,
+        )
+        check(r.status_code == 403, "non-member cannot join a team (403)")
+
+        r = client.get(
+            f"/api/v1/organizations/{org_id}/teams/{team_id}/members", headers=h_owner
+        )
+        check(r.status_code == 200 and len(r.json()) == 1, "team member list shows the member")
+
+        check(client.get(
+            f"/api/v1/organizations/{org_id}/teams/{team_id}/members", headers=h_x
+        ).status_code == 403, "non-member cannot read team members (403)")
+
+        r = client.get(f"/api/v1/organizations/{org_id}/teams", headers=h_b)
+        check(r.status_code == 200 and len(r.json()) == 2, "viewer can list teams (read-only)")
+
+        check(client.patch(
+            f"/api/v1/organizations/{org_id}/teams/{team_id}",
+            json={"name": "Uchambuzi Pro"},
+            headers=h_b,
+        ).status_code == 403, "viewer cannot edit a team (403)")
+
+        r = client.patch(
+            f"/api/v1/organizations/{org_id}/teams/{team_id}",
+            json={"name": "Uchambuzi Pro", "description": "Imesasishwa"},
+            headers=h_c,
+        )
+        check(r.status_code == 200 and r.json()["name"] == "Uchambuzi Pro",
+              "admin can rename a team")
+
+        check(client.delete(
+            f"/api/v1/organizations/{org_id}/teams/{team2}", headers=h_b
+        ).status_code == 403, "viewer cannot delete a team (403)")
+
+        check(client.delete(
+            f"/api/v1/organizations/{org_id}/teams/{team2}", headers=h_c
+        ).status_code == 204, "admin deletes a team")
+
+        r = client.delete(
+            f"/api/v1/organizations/{org_id}/teams/{team_id}/members/{b_id}",
+            headers=h_c,
+        )
+        check(r.status_code == 204, "admin removes a member from a team")
+        r = client.get(
+            f"/api/v1/organizations/{org_id}/teams/{team_id}/members", headers=h_owner
+        )
+        check(r.status_code == 200 and len(r.json()) == 0, "team is empty after removal")
+
+        print("6) Teardown")
         r = client.delete(f"/api/v1/organizations/{org_id}", headers=h_owner)
         check(r.status_code == 204, "owner deletes organization")
         check(client.get(f"/api/v1/organizations/{org_id}", headers=h_owner).status_code == 404,
