@@ -4,12 +4,13 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
-from app.models import Dataset, DatasetColumn, Project, User
-from app.rbac import ORG_ROLE_ANALYST, require_org_role
+from app.models import Dataset, DatasetColumn, OrganizationMember, Project, User
+from app.rbac import ORG_ROLE_ANALYST, ORG_ROLE_VIEWER, require_org_role
 from app.schemas import (
     DatasetDetailResponse,
     DatasetProjectRequest,
@@ -127,10 +128,28 @@ def upload_dataset(
 def list_datasets(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> List[Dict[str, Any]]:
-    """List the datasets belonging to the signed-in user."""
+    """List the datasets the signed-in user may reach.
+
+    That is their own uploads (personal and shared) plus the datasets inside
+    projects of every organization they belong to — a team member has to be
+    able to *find* the data their colleagues shared.
+    """
+    member_projects = (
+        select(Project.id)
+        .join(
+            OrganizationMember,
+            OrganizationMember.organization_id == Project.organization_id,
+        )
+        .where(OrganizationMember.user_id == user.id)
+    )
     datasets = (
         db.query(Dataset)
-        .filter(Dataset.user_id == user.id)
+        .filter(
+            or_(
+                Dataset.user_id == user.id,
+                Dataset.project_id.in_(member_projects),
+            )
+        )
         .order_by(Dataset.uploaded_at.desc(), Dataset.id.desc())
         .all()
     )
@@ -144,7 +163,7 @@ def get_dataset(
     user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Full dataset details plus the first rows as a preview."""
-    dataset = get_owned_dataset(dataset_id, db, user)
+    dataset = get_owned_dataset(dataset_id, db, user, min_role=ORG_ROLE_VIEWER)
     frame = read_dataframe(dataset.storage_path)
     profiles = profile_columns(frame)
     return {
@@ -191,7 +210,7 @@ def profile_dataset(
     user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Fresh per-column profile: type, missing count, unique count, min/max."""
-    dataset = get_owned_dataset(dataset_id, db, user)
+    dataset = get_owned_dataset(dataset_id, db, user, min_role=ORG_ROLE_VIEWER)
     frame = read_dataframe(dataset.storage_path)
     profiles = profile_columns(frame)
     dataset.row_count = int(frame.shape[0])
@@ -212,8 +231,20 @@ def delete_dataset(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Dict[str, str]:
-    """Delete a dataset, its stored file, reports and every related record."""
-    dataset = get_owned_dataset(dataset_id, db, user, require_file=False)
+    """Delete a dataset, its stored file, reports and every related record.
+
+    Deleting is destructive, so it stays with whoever uploaded the dataset —
+    sharing a dataset with a project must not hand colleagues the power to
+    remove it.
+    """
+    dataset = get_owned_dataset(
+        dataset_id, db, user, require_file=False, min_role=ORG_ROLE_VIEWER
+    )
+    if dataset.user_id != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the dataset owner can delete it",
+        )
     for report in list(dataset.reports):
         Path(report.storage_path).unlink(missing_ok=True)
     delete_dataset_files(dataset.storage_path)

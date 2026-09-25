@@ -98,9 +98,11 @@ export interface ColumnProfile {
 
 export interface DatasetSummary {
   id: number;
+  user_id: number;
   original_filename: string;
   file_type: string;
   project_id: number | null;
+  project_name: string | null;
   status: string;
   uploaded_at: string | null;
   row_count: number;

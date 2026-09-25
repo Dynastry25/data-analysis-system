@@ -78,9 +78,11 @@ class UploadResponse(BaseModel):
 
 class DatasetSummary(BaseModel):
     id: int
+    user_id: int
     original_filename: str
     file_type: Optional[str] = None
     project_id: Optional[int] = None
+    project_name: Optional[str] = None
     status: str
     uploaded_at: Optional[str] = None
     row_count: int = 0

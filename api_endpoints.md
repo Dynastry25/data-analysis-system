@@ -31,8 +31,9 @@ Ikiwa `project_id` imetolewa: lazima mradi huo upo (vinginevyo 404) na mtumiaji 
 **analyst+** katika shirika ya mradi (vinginevyo 403).
 
 ### GET /datasets
-Orodha ya datasets za user aliyeingia.
-**Response:** `[{ id, original_filename, status, uploaded_at, row_count }]`
+Orodha ya datasets unazofikia: zako ulizopakia (binafsi na zilizoshirikishwa) pamoja
+na datasets zilizo ndani ya miradi ya mashirika yako yote.
+**Response:** `[{ id, user_id, original_filename, file_type, project_id, project_name, status, uploaded_at, row_count, column_count }]`
 
 ### GET /datasets/{id}
 Taarifa kamili za dataset + preview (rows za kwanza, k.m. 20).
@@ -193,8 +194,16 @@ chao chenyewe**. Kiwango cha mwanachama kwenye shirika (`owner > admin > analyst
 viewer`) ndicho kinachodhibiti ruhusa yake kwenye data.
 
 **Dataset scoping:** dataset inapokuwa na `project_id`, wanachama wa shirika hilo
-wanapata ufikiaji kulingana na role (analyst+ kwa kuandika, viewer kwa kusoma tu);
-datasets bila `project_id` zinabaki za mmiliki pekee.
+wanapata ufikiaji kulingana na role:
+
+| Ukitendaji | Kiwango cha chini |
+| --- | --- |
+| Kusoma (detail, profile, charts, reports, analysis, versions, download) | **viewer** |
+| Kuandika (safisha, transform, chati, uchambuzi, export, kupakia) | **analyst** |
+| Kuhamishia kati ya miradi | **mmiliki wa dataset** |
+| Kufuta | **mmiliki wa dataset** |
+
+Datasets bila `project_id` zinabaki za mmiliki pekee.
 
 ---
 

@@ -325,6 +325,7 @@ class Dataset(Base):
             "id": self.id,
             "user_id": self.user_id,
             "project_id": self.project_id,
+            "project_name": self.project.name if self.project else None,
             "original_filename": self.original_filename,
             "file_type": self.file_type,
             "status": self.status,

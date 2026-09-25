@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
 from app.models import Chart, Dataset, User
+from app.rbac import ORG_ROLE_VIEWER
 from app.schemas import ChartListItem, ChartRequest, ChartResponse
 from app.services.chart_service import build_chart_data
 from app.services.data_service import read_dataframe
@@ -67,7 +68,9 @@ def list_charts(
     user: User = Depends(get_current_user),
 ) -> List[Dict[str, Any]]:
     """Every chart saved for one dataset."""
-    dataset = get_owned_dataset(dataset_id, db, user, require_file=False)
+    dataset = get_owned_dataset(
+        dataset_id, db, user, require_file=False, min_role=ORG_ROLE_VIEWER
+    )
     records = (
         db.query(Chart)
         .filter(Chart.dataset_id == dataset.id)

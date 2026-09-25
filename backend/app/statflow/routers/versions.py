@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
 from app.models import Dataset, User
+from app.rbac import ORG_ROLE_VIEWER
 from app.services.data_service import dataframe_records
 from app.statflow import version_store
 from app.statflow.operations import (
@@ -122,7 +123,9 @@ def operations_history(
     user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Operation history (audit trail) — exactly the shape the spec documents."""
-    dataset = get_owned_dataset(dataset_id, db, user, require_file=False)
+    dataset = get_owned_dataset(
+        dataset_id, db, user, require_file=False, min_role=ORG_ROLE_VIEWER
+    )
     try:
         version_store.ensure_base_version(db, dataset)
         lineage = version_store.lineage(db, dataset)
@@ -146,7 +149,7 @@ def version_detail(
     user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Details + preview rows of one dataset version."""
-    dataset = get_owned_dataset(dataset_id, db, user)
+    dataset = get_owned_dataset(dataset_id, db, user, min_role=ORG_ROLE_VIEWER)
     try:
         record = version_store.get_version(db, dataset, version)
         frame = version_store.read_version_file(record)
@@ -167,7 +170,7 @@ def download_version(
     user: User = Depends(get_current_user),
 ) -> StreamingResponse:
     """Download one dataset version as parquet (or CSV)."""
-    dataset = get_owned_dataset(dataset_id, db, user)
+    dataset = get_owned_dataset(dataset_id, db, user, min_role=ORG_ROLE_VIEWER)
     try:
         record = version_store.get_version(db, dataset, version)
         frame = version_store.read_version_file(record)

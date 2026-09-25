@@ -44,6 +44,7 @@ function StageDots({ done, total = 6 }: { done: number; total?: number }) {
 export default function DatasetsPage() {
   const { showToast } = useToast();
   const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
+  const [meId, setMeId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -60,6 +61,13 @@ export default function DatasetsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    api.auth
+      .me()
+      .then((profile) => setMeId(profile.id))
+      .catch(() => setMeId(null));
+  }, []);
 
   async function handleDelete(dataset: DatasetSummary) {
     if (!window.confirm(`Futa dataset "${dataset.original_filename}"?`)) return;
@@ -78,8 +86,8 @@ export default function DatasetsPage() {
 
   return (
     <AppShell
-      title="Datasets zangu"
-      description="Faili ulizopakia, hali yao na hatua zinazofuata."
+      title="Datasets"
+      description="Faili ulizopakia na data iliyoshirikishwa na wanachama wa mashirika yako."
       actions={
         <>
           <Link href="/dashboard">
@@ -103,7 +111,7 @@ export default function DatasetsPage() {
           tone="primary"
           label="Datasets"
           value={datasets.length}
-          hint="Faili zilizopakiwa"
+          hint="Faili zilizopakiwa na zilizoshirikishwa"
         />
         <MetricCard
           icon="layers"
@@ -188,6 +196,13 @@ export default function DatasetsPage() {
                     >
                       {dataset.status}
                     </Badge>
+                    {dataset.project_id ? (
+                      <Badge tone="primary" withIcon>
+                        {dataset.project_name ?? "Mradi"}
+                      </Badge>
+                    ) : (
+                      <Badge tone="neutral">Binafsi</Badge>
+                    )}
                     <Link href={`/datasets/${dataset.id}`}>
                       <Button size="small">Angalia</Button>
                     </Link>
@@ -206,14 +221,16 @@ export default function DatasetsPage() {
                         Ripoti
                       </Button>
                     </Link>
-                    <Button
-                      variant="danger"
-                      size="small"
-                      onClick={() => handleDelete(dataset)}
-                    >
-                      <Icon name="trash" size={14} />
-                      Futa
-                    </Button>
+                    {meId === null || dataset.user_id === meId ? (
+                      <Button
+                        variant="danger"
+                        size="small"
+                        onClick={() => handleDelete(dataset)}
+                      >
+                        <Icon name="trash" size={14} />
+                        Futa
+                      </Button>
+                    ) : null}
                   </div>
                 </article>
               );

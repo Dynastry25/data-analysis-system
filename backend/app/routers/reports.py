@@ -16,6 +16,7 @@ from app.config import API_PREFIX
 from app.database import SessionLocal, get_db
 from app.deps import get_current_user, get_owned_dataset
 from app.models import AnalysisRun, Chart, Dataset, ExportedReport, User
+from app.rbac import ORG_ROLE_VIEWER
 from app.schemas import ExportRequest, ExportResponse, ReportStatusResponse
 from app.services.chart_service import build_chart_data
 from app.services.data_service import read_dataframe
@@ -224,7 +225,9 @@ def list_reports(
     user: User = Depends(get_current_user),
 ) -> List[Dict[str, Any]]:
     """Reports previously generated for a dataset (export screen history)."""
-    dataset = get_owned_dataset(dataset_id, db, user, require_file=False)
+    dataset = get_owned_dataset(
+        dataset_id, db, user, require_file=False, min_role=ORG_ROLE_VIEWER
+    )
     records = (
         db.query(ExportedReport)
         .filter(ExportedReport.dataset_id == dataset.id)

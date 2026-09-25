@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
 from app.models import AnalysisRun, Dataset, User
+from app.rbac import ORG_ROLE_VIEWER
 from app.statflow import stats_engine, version_store
 from app.statflow.schemas import AnalysisRequest
 from app.statflow.version_store import VersionError
@@ -83,7 +84,9 @@ def list_analysis(
     user: User = Depends(get_current_user),
 ) -> List[Dict[str, Any]]:
     """Every analysis run stored for a dataset."""
-    dataset = get_owned_dataset(dataset_id, db, user, require_file=False)
+    dataset = get_owned_dataset(
+        dataset_id, db, user, require_file=False, min_role=ORG_ROLE_VIEWER
+    )
     runs = (
         db.query(AnalysisRun)
         .filter(AnalysisRun.dataset_id == dataset.id)

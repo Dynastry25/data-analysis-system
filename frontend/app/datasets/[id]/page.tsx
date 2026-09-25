@@ -21,6 +21,14 @@ export default function DatasetDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<OrgProject[]>([]);
+  const [meId, setMeId] = useState<number | null>(null);
+
+  useEffect(() => {
+    api.auth
+      .me()
+      .then((profile) => setMeId(profile.id))
+      .catch(() => setMeId(null));
+  }, []);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(datasetId)) return;
@@ -137,31 +145,46 @@ export default function DatasetDetailPage() {
             title="Ufikiaji wa data"
             description="Data ya binafsi ni yawewe pekee. Ukiiweka kwenye mradi, wanachama wa shirika hilo wataweza kuiona kulingana na kiwango chao."
           >
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="min-w-[220px] flex-1">
-                <label htmlFor="dataset_project" className="block text-body text-neutral-900">
-                  Mradi
-                </label>
-                <select
-                  id="dataset_project"
-                  value={detail?.dataset.project_id ?? ""}
-                  onChange={(event) => handleProjectChange(event.target.value)}
-                  className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
-                >
-                  <option value="">Data ya binafsi</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
+            {meId !== null && detail?.dataset.user_id !== meId ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge tone="primary" withIcon>
+                  {detail?.dataset.project_name ?? "Mradi"}
+                </Badge>
+                <p className="text-body text-neutral-600">
+                  Dataset hii ni ya mwanachama mwingine. Unaweza kuiangalia na
+                  kuichambua kama kiwango chako kinaruhusu.
+                </p>
               </div>
-              {detail?.dataset.project_id ? (
-                <Badge tone="info">Inashirikishwa na shirika</Badge>
-              ) : (
-                <Badge tone="neutral">Binafsi</Badge>
-              )}
-            </div>
+            ) : (
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-[220px] flex-1">
+                  <label
+                    htmlFor="dataset_project"
+                    className="block text-body text-neutral-900"
+                  >
+                    Mradi
+                  </label>
+                  <select
+                    id="dataset_project"
+                    value={detail?.dataset.project_id ?? ""}
+                    onChange={(event) => handleProjectChange(event.target.value)}
+                    className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
+                  >
+                    <option value="">Data ya binafsi</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {detail?.dataset.project_id ? (
+                  <Badge tone="info">Inashirikishwa na shirika</Badge>
+                ) : (
+                  <Badge tone="neutral">Binafsi</Badge>
+                )}
+              </div>
+            )}
           </Card>
 
           {columnsWithMissing.length > 0 && (

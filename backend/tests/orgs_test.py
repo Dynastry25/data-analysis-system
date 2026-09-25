@@ -460,7 +460,9 @@ def main() -> int:
         r = client.get(f"/api/datasets/{movable_id}", headers=h_c)
         check(r.status_code == 200, "org admin (analyst+) can read the shared dataset")
         r = client.get(f"/api/datasets/{movable_id}", headers=h_b)
-        check(r.status_code == 403, "org viewer is below the analyst read floor (403)")
+        check(r.status_code == 200, "org viewer can read the shared dataset (read-only)")
+        r = client.delete(f"/api/datasets/{movable_id}", headers=h_b)
+        check(r.status_code == 403, "org viewer cannot delete a shared dataset (403)")
 
         r = client.patch(
             f"/api/datasets/{movable_id}/project",
@@ -471,6 +473,8 @@ def main() -> int:
               "owner moves dataset back to personal")
         r = client.get(f"/api/datasets/{movable_id}", headers=h_c)
         check(r.status_code == 403, "dataset is private again after the move")
+        r = client.delete(f"/api/datasets/{movable_id}", headers=h_c)
+        check(r.status_code == 403, "org admin cannot delete someone else's dataset (403)")
 
         r = client.patch(
             f"/api/datasets/{movable_id}/project",
@@ -492,6 +496,32 @@ def main() -> int:
             headers=h_b,
         )
         check(r.status_code == 403, "viewer cannot move a dataset into a project (403)")
+
+        r = client.get("/api/datasets", headers=h_owner)
+        check(r.status_code == 200 and any(
+            d["id"] == movable_id for d in r.json()
+        ), "own dataset appears in the list")
+
+        r = client.patch(
+            f"/api/datasets/{movable_id}/project",
+            json={"project_id": project_id},
+            headers=h_owner,
+        )
+        check(r.status_code == 200 and r.json()["project_id"] == project_id,
+              "owner moves dataset into a project")
+
+        r = client.get("/api/datasets", headers=h_c)
+        shared_ids = [d["id"] for d in r.json()]
+        check(r.status_code == 200 and movable_id in shared_ids,
+              "org member sees the shared dataset in their list")
+        check(any(
+            d["id"] == movable_id and d.get("project_name") is not None
+            for d in r.json()
+        ), "list exposes the project name for shared datasets")
+
+        r = client.get("/api/datasets", headers=h_x)
+        check(movable_id not in [d["id"] for d in r.json()],
+              "non-member never sees the shared dataset in their list")
 
         print("8) Teardown")
         r = client.delete(f"/api/v1/organizations/{org_id}", headers=h_owner)

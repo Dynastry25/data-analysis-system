@@ -15,6 +15,7 @@ from app.models import (
     ORG_ROLE_ANALYST,
     ORG_ROLE_LEVEL,
     ORG_ROLE_OWNER,
+    ORG_ROLE_VIEWER,
     Organization,
     OrganizationMember,
     User,
