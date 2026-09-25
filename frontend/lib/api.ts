@@ -100,6 +100,7 @@ export interface DatasetSummary {
   id: number;
   original_filename: string;
   file_type: string;
+  project_id: number | null;
   status: string;
   uploaded_at: string | null;
   row_count: number;
@@ -109,6 +110,7 @@ export interface DatasetSummary {
 export interface UploadResponse {
   dataset_id: number;
   original_filename: string;
+  project_id: number | null;
   row_count: number;
   column_count: number;
   columns: ColumnProfile[];
@@ -277,10 +279,14 @@ export const api = {
   datasets: {
     upload: (
       file: File,
-      onUploadProgress?: (event: AxiosProgressEvent) => void
+      onUploadProgress?: (event: AxiosProgressEvent) => void,
+      projectId?: number | null
     ) => {
       const formData = new FormData();
       formData.append("file", file);
+      if (projectId) {
+        formData.append("project_id", String(projectId));
+      }
       return http
         .post<UploadResponse>("/datasets/upload", formData, {
           headers: { "Content-Type": "multipart/form-data" },

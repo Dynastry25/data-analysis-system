@@ -382,7 +382,63 @@ def main() -> int:
         )
         check(r.status_code == 200 and len(r.json()) == 0, "team is empty after removal")
 
-        print("6) Teardown")
+        print("6) Upload into a project (dataset scoping)")
+        csv_path = TEST_ROOT / "scoped-upload.csv"
+        csv_path.write_text("name,value\nAlpha,1\nBeta,2\n", encoding="utf-8")
+
+        with csv_path.open("rb") as handle:
+            r = client.post(
+                "/api/datasets/upload",
+                files={"file": ("scoped-upload.csv", handle, "text/csv")},
+                data={"project_id": str(project_id)},
+                headers=h_owner,
+            )
+        check(r.status_code == 201, "analyst uploads a dataset into a project (201)")
+        check(r.json().get("project_id") == project_id,
+              "upload response echoes project_id")
+        scoped_id = r.json()["dataset_id"]
+
+        r = client.post(
+            "/api/datasets/upload",
+            files={"file": ("scoped-upload.csv", csv_path.read_bytes(), "text/csv")},
+            data={"project_id": "999999"},
+            headers=h_owner,
+        )
+        check(r.status_code == 404, "unknown project_id rejected (404)")
+
+        with csv_path.open("rb") as handle:
+            r = client.post(
+                "/api/datasets/upload",
+                files={"file": ("scoped-upload.csv", handle, "text/csv")},
+                data={"project_id": str(project_id)},
+                headers=h_b,
+            )
+        check(r.status_code == 403, "viewer cannot upload into a project (403)")
+
+        with csv_path.open("rb") as handle:
+            r = client.post(
+                "/api/datasets/upload",
+                files={"file": ("scoped-upload.csv", handle, "text/csv")},
+                data={"project_id": str(project_id)},
+                headers=h_x,
+            )
+        check(r.status_code == 403, "non-member cannot upload into a project (403)")
+
+        r = client.get(f"/api/datasets/{scoped_id}", headers=h_owner)
+        check(r.status_code == 200, "owner reads the project-scoped dataset")
+        r = client.get(f"/api/datasets/{scoped_id}", headers=h_x)
+        check(r.status_code in (403, 404), "non-member cannot read project dataset")
+
+        with csv_path.open("rb") as handle:
+            r = client.post(
+                "/api/datasets/upload",
+                files={"file": ("personal.csv", handle, "text/csv")},
+                headers=h_owner,
+            )
+        check(r.status_code == 201 and r.json().get("project_id") is None,
+              "upload without project_id stays personal")
+
+        print("7) Teardown")
         r = client.delete(f"/api/v1/organizations/{org_id}", headers=h_owner)
         check(r.status_code == 204, "owner deletes organization")
         check(client.get(f"/api/v1/organizations/{org_id}", headers=h_owner).status_code == 404,

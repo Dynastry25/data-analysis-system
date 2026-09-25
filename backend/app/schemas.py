@@ -69,6 +69,7 @@ class ColumnProfile(BaseModel):
 class UploadResponse(BaseModel):
     dataset_id: int
     original_filename: str
+    project_id: Optional[int] = None
     row_count: int
     column_count: int
     columns: List[ColumnProfile]
@@ -79,6 +80,7 @@ class DatasetSummary(BaseModel):
     id: int
     original_filename: str
     file_type: Optional[str] = None
+    project_id: Optional[int] = None
     status: str
     uploaded_at: Optional[str] = None
     row_count: int = 0

@@ -3,12 +3,13 @@
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
-from app.models import Dataset, DatasetColumn, User
+from app.models import Dataset, DatasetColumn, Project, User
+from app.rbac import ORG_ROLE_ANALYST, require_org_role
 from app.schemas import (
     DatasetDetailResponse,
     DatasetSummary,
@@ -55,6 +56,7 @@ def _upload_error(message: str) -> HTTPException:
 )
 def upload_dataset(
     file: UploadFile = File(...),
+    project_id: int | None = Form(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
@@ -65,8 +67,17 @@ def upload_dataset(
     except ValueError as exc:
         raise _upload_error(str(exc))
 
+    organization_id = None
+    if project_id is not None:
+        project = db.get(Project, project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        organization_id = project.organization_id
+        require_org_role(db, organization_id, user, ORG_ROLE_ANALYST)
+
     dataset = Dataset(
         user_id=user.id,
+        project_id=project_id,
         original_filename=original_name or "dataset",
         file_type=extension.lstrip("."),
         storage_path="",
@@ -103,6 +114,7 @@ def upload_dataset(
     return {
         "dataset_id": dataset.id,
         "original_filename": dataset.original_filename,
+        "project_id": dataset.project_id,
         "row_count": dataset.row_count,
         "column_count": dataset.column_count,
         "columns": profiles,

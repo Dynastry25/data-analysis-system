@@ -1,13 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { DragEvent, useRef, useState } from "react";
+import { DragEvent, useEffect, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { useToast } from "@/components/Toast";
-import { api, apiErrorMessage } from "@/lib/api";
+import { api, apiErrorMessage, OrgProject, Organization } from "@/lib/api";
 
 const ALLOWED = [".csv", ".xlsx", ".json", ".tsv", ".txt", ".parquet"];
 const MAX_MB = 50;
@@ -21,6 +21,41 @@ export default function UploadPage() {
   const [progress, setProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [orgs, setOrgs] = useState<Organization[]>([]);
+  const [selectedOrg, setSelectedOrg] = useState<number | "">("");
+  const [projects, setProjects] = useState<OrgProject[]>([]);
+  const [selectedProject, setSelectedProject] = useState<number | "">("");
+
+  useEffect(() => {
+    api.organizations
+      .list()
+      .then((list) => setOrgs(list))
+      .catch(() => setOrgs([]));
+  }, []);
+
+  useEffect(() => {
+    if (selectedOrg === "") {
+      setProjects([]);
+      return;
+    }
+    let active = true;
+    api.organizations
+      .projects(selectedOrg as number)
+      .then((list) => {
+        if (active) setProjects(list);
+      })
+      .catch(() => {
+        if (active) setProjects([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedOrg]);
+
+  function changeOrg(value: number | "") {
+    setSelectedOrg(value);
+    setSelectedProject("");
+  }
 
   function validate(candidate: File): string | null {
     const lower = candidate.name.toLowerCase();
@@ -53,11 +88,15 @@ export default function UploadPage() {
     setError(null);
     setProgress(0);
     try {
-      const result = await api.datasets.upload(file, (event) => {
-        if (event.total) {
-          setProgress(Math.round((event.loaded / event.total) * 100));
-        }
-      });
+      const result = await api.datasets.upload(
+        file,
+        (event) => {
+          if (event.total) {
+            setProgress(Math.round((event.loaded / event.total) * 100));
+          }
+        },
+        selectedProject === "" ? null : selectedProject
+      );
       showToast(
         `Data imepakiwa: safu ${result.row_count}, columns ${result.column_count}`,
         "success"
@@ -77,6 +116,60 @@ export default function UploadPage() {
       title="Pakia data"
       description="CSV, Excel (.xlsx), JSON, TSV, TXT au Parquet, hadi 50MB. Mfumo unasafisha na kuchambua moja kwa moja."
     >
+      {orgs.length > 0 && (
+        <Card
+          title="Weka data kwenye mradi (hiari)"
+          description="Ikiwa uchague mradi, wanachama wa shirika hilo wataweza kufikia data kulingana na kiwango chao. Ikiwa hutaki, data itabaki yawewe pekee."
+        >
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[220px] flex-1">
+              <label htmlFor="upload_org" className="block text-body text-neutral-900">
+                Shirika
+              </label>
+              <select
+                id="upload_org"
+                value={selectedOrg}
+                onChange={(event) =>
+                  changeOrg(event.target.value === "" ? "" : Number(event.target.value))
+                }
+                className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
+              >
+                <option value="">Data ya binafsi (Bila mradi)</option>
+                {orgs.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {org.name}
+                    {org.my_role === "viewer" ? " (mtazamaji)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="min-w-[220px] flex-1">
+              <label htmlFor="upload_project" className="block text-body text-neutral-900">
+                Mradi
+              </label>
+              <select
+                id="upload_project"
+                value={selectedProject}
+                onChange={(event) =>
+                  setSelectedProject(
+                    event.target.value === "" ? "" : Number(event.target.value)
+                  )
+                }
+                disabled={selectedOrg === ""}
+                className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500 disabled:bg-neutral-100"
+              >
+                <option value="">Bila mradi</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <Card>
         <div
           onDragOver={(event) => {

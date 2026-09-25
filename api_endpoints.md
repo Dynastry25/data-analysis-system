@@ -24,8 +24,11 @@ Ingia na kupata token.
 ### POST /datasets/upload
 Pakia faili (CSV, XLSX, JSON, TSV, TXT, Parquet). Inaunda record katika `datasets` na
 `dataset_columns`. Ukubwa wa juu: MB 50.
-**Body:** `multipart/form-data` — file
-**Response:** `{ dataset_id, row_count, column_count, columns: [...] }`
+**Body:** `multipart/form-data` — `file`, na `project_id?` (hiari, namba)
+**Response:** `{ dataset_id, original_filename, project_id, row_count, column_count, columns: [...] }`
+
+Ikiwa `project_id` imetolewa: lazima mradi huo upo (vinginevyo 404) na mtumiaji awe
+**analyst+** katika shirika ya mradi (vinginevyo 403).
 
 ### GET /datasets
 Orodha ya datasets za user aliyeingia.
@@ -151,6 +154,33 @@ Badilisha jina/maelezo ya mradi (**admin+**).
 
 ### DELETE /organizations/{id}/projects/{project_id}
 Futa mradi (**admin+**).
+
+### POST /organizations/{id}/teams
+Unda timu. **Body:** `{ name, description? }` (**analyst+**). Jina maradufu → 409.
+**Response:** `{ id, organization_id, name, description, created_by, created_at, member_count }`
+
+### GET /organizations/{id}/teams
+Orodha ya timu za shirika (na `member_count`).
+
+### PATCH /organizations/{id}/teams/{team_id}
+Badilisha jina/maelezo la timu (**admin+**). Jina maradufu → 409.
+
+### DELETE /organizations/{id}/teams/{team_id}
+Futa timu (**admin+**). Wanachama wa timu hubaki wakiwa wanachama wa shirika.
+
+### POST /organizations/{id}/teams/{team_id}/members
+Ongeza mwanachama wa shirika kwenye timu. **Body:** `{ user_id }` (**admin+**).
+Mtumiaji asiye mwanachama wa shirika → 404; tayari kwenye timu → 409.
+
+### GET /organizations/{id}/teams/{team_id}/members
+Orodha ya wanachama wa timu (jina, email, joined_at).
+
+### DELETE /organizations/{id}/teams/{team_id}/members/{user_id}
+Mtoe mwanachama kwenye timu (**admin+**).
+
+**Timu:** timu zinakusanya wanachama kwa ushiriki kazi tu — zina **hakuna kiwango
+chao chenyewe**. Kiwango cha mwanachama kwenye shirika (`owner > admin > analyst >
+viewer`) ndicho kinachodhibiti ruhusa yake kwenye data.
 
 **Dataset scoping:** dataset inapokuwa na `project_id`, wanachama wa shirika hilo
 wanapata ufikiaji kulingana na role (analyst+ kwa kuandika, viewer kwa kusoma tu);
