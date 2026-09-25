@@ -438,7 +438,62 @@ def main() -> int:
         check(r.status_code == 201 and r.json().get("project_id") is None,
               "upload without project_id stays personal")
 
-        print("7) Teardown")
+        print("7) Move a dataset between projects")
+        with csv_path.open("rb") as handle:
+            r = client.post(
+                "/api/datasets/upload",
+                files={"file": ("movable.csv", handle, "text/csv")},
+                headers=h_owner,
+            )
+        check(r.status_code == 201, "personal dataset uploaded for moving")
+        movable_id = r.json()["dataset_id"]
+        check(r.json().get("project_id") is None, "movable dataset starts personal")
+
+        r = client.patch(
+            f"/api/datasets/{movable_id}/project",
+            json={"project_id": project_id},
+            headers=h_owner,
+        )
+        check(r.status_code == 200 and r.json()["project_id"] == project_id,
+              "owner moves dataset into a project")
+
+        r = client.get(f"/api/datasets/{movable_id}", headers=h_c)
+        check(r.status_code == 200, "org admin (analyst+) can read the shared dataset")
+        r = client.get(f"/api/datasets/{movable_id}", headers=h_b)
+        check(r.status_code == 403, "org viewer is below the analyst read floor (403)")
+
+        r = client.patch(
+            f"/api/datasets/{movable_id}/project",
+            json={"project_id": None},
+            headers=h_owner,
+        )
+        check(r.status_code == 200 and r.json()["project_id"] is None,
+              "owner moves dataset back to personal")
+        r = client.get(f"/api/datasets/{movable_id}", headers=h_c)
+        check(r.status_code == 403, "dataset is private again after the move")
+
+        r = client.patch(
+            f"/api/datasets/{movable_id}/project",
+            json={"project_id": project_id},
+            headers=h_c,
+        )
+        check(r.status_code == 403, "org admin cannot move someone else's dataset (403)")
+
+        r = client.patch(
+            f"/api/datasets/{movable_id}/project",
+            json={"project_id": 999999},
+            headers=h_owner,
+        )
+        check(r.status_code == 404, "cannot move into an unknown project (404)")
+
+        r = client.patch(
+            f"/api/datasets/{movable_id}/project",
+            json={"project_id": project_id},
+            headers=h_b,
+        )
+        check(r.status_code == 403, "viewer cannot move a dataset into a project (403)")
+
+        print("8) Teardown")
         r = client.delete(f"/api/v1/organizations/{org_id}", headers=h_owner)
         check(r.status_code == 204, "owner deletes organization")
         check(client.get(f"/api/v1/organizations/{org_id}", headers=h_owner).status_code == 404,

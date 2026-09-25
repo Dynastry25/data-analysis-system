@@ -87,6 +87,12 @@ class DatasetSummary(BaseModel):
     column_count: int = 0
 
 
+class DatasetProjectRequest(BaseModel):
+    """Move a dataset into a project, or back to personal with ``null``."""
+
+    project_id: Optional[int]
+
+
 class DatasetDetailResponse(BaseModel):
     dataset: Dict[str, Any]
     columns: List[ColumnProfile]

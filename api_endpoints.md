@@ -44,6 +44,16 @@ Uchambuzi wa haraka wa kila column: aina ya data, missing_count, unique_count, m
 ### DELETE /datasets/{id}
 Futa dataset na faili lake.
 
+### PATCH /datasets/{id}/project
+Hamishia dataset ndani ya mradi au rudia kwenye binafsi.
+**Body:** `{ project_id }` — namba ya mradi, au `null` kurudi binafsi.
+**Response:** dataset summary.
+
+Mtu anayeweza kuhamishia ni **mmiliki wa dataset pekee** (kuweka dataset kwenye
+mradi kunashirikisha na wanachama wote wa shirika, kwa hiyo mtu mwingine hawezi
+kuamua hilo). Ikiwa `project_id` imetolewa: mradi upo (vinginevyo 404) na mmiliki
+ni **analyst+** katika shirika ya mradi (vinginevyo 403).
+
 ---
 
 ## 3. Cleaning

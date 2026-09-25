@@ -12,6 +12,7 @@ from app.models import Dataset, DatasetColumn, Project, User
 from app.rbac import ORG_ROLE_ANALYST, require_org_role
 from app.schemas import (
     DatasetDetailResponse,
+    DatasetProjectRequest,
     DatasetSummary,
     MessageResponse,
     ProfileResponse,
@@ -151,6 +152,36 @@ def get_dataset(
         "columns": profiles,
         "preview_rows": dataframe_records(frame, PREVIEW_ROWS),
     }
+
+
+@router.patch("/{dataset_id}/project", response_model=DatasetSummary)
+def set_dataset_project(
+    dataset_id: int,
+    payload: DatasetProjectRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Move a dataset into a project so the organization can reach it.
+
+    Only the person who uploaded the dataset may move it: handing it to a
+    project shares it with every org member, and taking it back makes it
+    private again. ``project_id=None`` returns the dataset to personal scope.
+    """
+    dataset = get_owned_dataset(dataset_id, db, user, min_role="viewer")
+    if dataset.user_id != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the dataset owner can move it between projects",
+        )
+    if payload.project_id is not None:
+        project = db.get(Project, payload.project_id)
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        require_org_role(db, project.organization_id, user, ORG_ROLE_ANALYST)
+    dataset.project_id = payload.project_id
+    db.commit()
+    db.refresh(dataset)
+    return dataset.to_summary_dict()
 
 
 @router.get("/{dataset_id}/profile", response_model=ProfileResponse)

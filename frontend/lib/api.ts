@@ -297,6 +297,10 @@ export const api = {
     list: () => http.get<DatasetSummary[]>("/datasets").then((r) => r.data),
     get: (id: number) =>
       http.get<DatasetDetailResponse>(`/datasets/${id}`).then((r) => r.data),
+    setProject: (id: number, projectId: number | null) =>
+      http
+        .patch<DatasetSummary>(`/datasets/${id}/project`, { project_id: projectId })
+        .then((r) => r.data),
     profile: (id: number) =>
       http.get<ProfileResponse>(`/datasets/${id}/profile`).then((r) => r.data),
     remove: (id: number) => http.delete(`/datasets/${id}`).then((r) => r.data),

@@ -11,7 +11,7 @@ import { Card, EmptyState, Stat } from "@/components/Card";
 import { DataTable } from "@/components/DataTable";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
-import { api, apiErrorMessage, DatasetDetailResponse } from "@/lib/api";
+import { api, apiErrorMessage, DatasetDetailResponse, OrgProject } from "@/lib/api";
 
 export default function DatasetDetailPage() {
   const params = useParams<{ id: string }>();
@@ -20,6 +20,7 @@ export default function DatasetDetailPage() {
   const [detail, setDetail] = useState<DatasetDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [projects, setProjects] = useState<OrgProject[]>([]);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(datasetId)) return;
@@ -39,6 +40,32 @@ export default function DatasetDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    api.organizations
+      .list()
+      .then((orgs) =>
+        Promise.all(orgs.map((org) => api.organizations.projects(org.id)))
+      )
+      .then((lists) => setProjects(lists.flat()))
+      .catch(() => setProjects([]));
+  }, []);
+
+  async function handleProjectChange(value: string) {
+    const projectId = value === "" ? null : Number(value);
+    try {
+      await api.datasets.setProject(datasetId, projectId);
+      showToast(
+        projectId === null
+          ? "Data imerudi kuwa ya binafsi"
+          : "Data imewekwa kwenye mradi",
+        "success"
+      );
+      load();
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    }
+  }
 
   const columns = detail?.columns ?? [];
   const previewRows = detail?.preview_rows ?? [];
@@ -105,6 +132,37 @@ export default function DatasetDetailPage() {
               hint={numericColumns.slice(0, 3).join(", ") || ""}
             />
           </div>
+
+          <Card
+            title="Ufikiaji wa data"
+            description="Data ya binafsi ni yawewe pekee. Ukiiweka kwenye mradi, wanachama wa shirika hilo wataweza kuiona kulingana na kiwango chao."
+          >
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[220px] flex-1">
+                <label htmlFor="dataset_project" className="block text-body text-neutral-900">
+                  Mradi
+                </label>
+                <select
+                  id="dataset_project"
+                  value={detail?.dataset.project_id ?? ""}
+                  onChange={(event) => handleProjectChange(event.target.value)}
+                  className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
+                >
+                  <option value="">Data ya binafsi</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {detail?.dataset.project_id ? (
+                <Badge tone="info">Inashirikishwa na shirika</Badge>
+              ) : (
+                <Badge tone="neutral">Binafsi</Badge>
+              )}
+            </div>
+          </Card>
 
           {columnsWithMissing.length > 0 && (
             <Card title="Tahadhari: missing values" className="border-warning">
