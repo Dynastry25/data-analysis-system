@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { ButtonHTMLAttributes, forwardRef } from "react";
 
@@ -11,9 +11,9 @@ const VARIANT_CLASSES: Record<Variant, string> = {
   primary:
     "bg-primary-600 text-white shadow-sm hover:bg-primary-700 active:bg-primary-800 disabled:hover:bg-primary-600",
   secondary:
-    "border border-surface-border bg-white text-ink-secondary hover:border-surface-border-strong hover:bg-surface-sunken active:bg-neutral-100 disabled:hover:bg-white",
+    "border border-surface-border bg-surface-panel text-ink-secondary hover:border-surface-border-strong hover:bg-surface-sunken active:bg-surface-sunken disabled:hover:bg-surface-panel",
   ghost:
-    "text-ink-secondary hover:bg-surface-sunken active:bg-neutral-100 disabled:hover:bg-transparent",
+    "text-ink-secondary hover:bg-surface-sunken active:bg-surface-sunken disabled:hover:bg-transparent",
   danger:
     "bg-danger text-white shadow-sm hover:bg-danger-700 active:bg-danger-700 disabled:hover:bg-danger",
 };
@@ -72,3 +72,5 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 });
 
 export default Button;
+
+

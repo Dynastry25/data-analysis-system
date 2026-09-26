@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   InputHTMLAttributes,
@@ -47,7 +47,7 @@ export function Field({
           )}
         </span>
         {optionalLabel && (
-          <span className="text-caption text-neutral-400">{optionalLabel}</span>
+          <span className="text-caption text-ink-muted">{optionalLabel}</span>
         )}
       </label>
       {children({ controlId, describedBy })}
@@ -226,7 +226,7 @@ export function CheckboxGroup({
       <legend className="mb-1.5 flex w-full items-baseline justify-between gap-2">
         <span className="text-body font-medium text-ink">{label}</span>
         {optionalLabel && (
-          <span className="text-caption text-neutral-400">{optionalLabel}</span>
+          <span className="text-caption text-ink-muted">{optionalLabel}</span>
         )}
       </legend>
       {hint && !error && <p className="mb-2 text-caption text-ink-muted">{hint}</p>}
@@ -248,7 +248,7 @@ export function CheckboxGroup({
           id={groupId}
           aria-invalid={error ? true : undefined}
           className={`flex flex-wrap gap-1.5 overflow-y-auto rounded border p-2 ${maxHeightClassName} ${
-            error ? "border-danger" : "border-surface-border bg-white"
+            error ? "border-danger" : "border-surface-border bg-surface-panel"
           }`}
         >
           {options.map((option) => {
@@ -259,12 +259,12 @@ export function CheckboxGroup({
                 className={`inline-flex min-h-[28px] cursor-pointer items-center gap-1.5 rounded-pill border px-2.5 py-0.5 text-caption transition-colors duration-150 ease-standard ${
                   active
                     ? "border-primary-200 bg-primary-50 font-medium text-primary-800"
-                    : "border-surface-border bg-white text-ink-secondary hover:border-surface-border-strong hover:bg-surface-sunken"
+                    : "border-surface-border bg-surface-panel text-ink-secondary hover:border-surface-border-strong hover:bg-surface-sunken"
                 }`}
               >
                 <input
                   type="checkbox"
-                  className="h-3.5 w-3.5 shrink-0 rounded border-neutral-300 text-primary-600 accent-primary-600 focus:ring-2 focus:ring-primary-500/40"
+                  className="h-3.5 w-3.5 shrink-0 rounded border-surface-border-strong text-primary-600 accent-primary-600 focus:ring-2 focus:ring-primary-500/40"
                   checked={active}
                   onChange={() => onToggle(option)}
                 />
@@ -310,3 +310,7 @@ export function FeatureCard({
     </section>
   );
 }
+
+
+
+

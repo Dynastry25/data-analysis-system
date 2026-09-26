@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import { ReactNode } from "react";
 
 export function formatCell(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "—";
+  if (value === null || value === undefined || value === "") return "â€”";
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) return "—";
+    if (!Number.isFinite(value)) return "â€”";
     return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(4);
   }
   if (typeof value === "boolean") return value ? "true" : "false";
@@ -37,7 +37,7 @@ export function DataTable({
   const numeric = new Set(numericColumns);
   return (
     <div
-      className="overflow-auto rounded-lg border border-surface-border bg-white"
+      className="overflow-auto rounded-lg border border-surface-border bg-surface-panel"
       style={{ maxHeight }}
     >
       <table className="min-w-full border-collapse text-body">
@@ -63,7 +63,7 @@ export function DataTable({
           {rows.map((row, rowIndex) => (
             <tr
               key={rowIndex}
-              className="odd:bg-white even:bg-surface-sunken hover:bg-primary-50/60"
+              className="odd:bg-surface-panel even:bg-surface-sunken hover:bg-primary-50/60"
             >
               {columns.map((column) => {
                 const value = row[column];
@@ -93,3 +93,5 @@ export function DataTable({
 }
 
 export default DataTable;
+
+

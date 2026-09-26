@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import { Icon, IconName } from "./Icon";
 
 type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger" | "primary";
 
 const TONES: Record<BadgeTone, string> = {
-  neutral: "bg-neutral-100 text-neutral-600 border-neutral-200",
+  neutral: "border-surface-border bg-surface-sunken text-ink-secondary",
   primary: "bg-primary-50 text-primary-800 border-primary-200",
   info: "bg-info-bg text-info-700 border-info/30",
   success: "bg-success-bg text-success-700 border-success/30",
@@ -49,3 +49,4 @@ export function Badge({
 }
 
 export default Badge;
+

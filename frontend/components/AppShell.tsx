@@ -97,6 +97,19 @@ export function AppShell({ title, description, actions, children }: AppShellProp
   }, [pathname]);
 
   useEffect(() => {
+    if (!drawerOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setDrawerOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = "";
+    };
+  }, [drawerOpen]);
+
+  useEffect(() => {
     api.auth
       .me()
       .then(setUser)
@@ -116,13 +129,21 @@ export function AppShell({ title, description, actions, children }: AppShellProp
 
   return (
     <div className="min-h-screen bg-surface-canvas lg:flex">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:inline-flex focus:h-10 focus:items-center focus:rounded focus:bg-primary-600 focus:px-4 focus:text-body focus:font-medium focus:text-white"
+      >
+        Nenda kwenye maudhui makuu
+      </a>
+
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-surface-border bg-neutral-900 px-4 py-3 lg:hidden">
         <Brand />
         <button
           type="button"
           aria-label="Fungua menyu"
+          aria-expanded={drawerOpen}
           onClick={() => setDrawerOpen(true)}
-          className="flex h-11 w-11 items-center justify-center rounded text-neutral-300 transition-colors hover:bg-neutral-800"
+          className="flex h-11 w-11 items-center justify-center rounded text-neutral-300 transition-colors hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400"
         >
           <Icon name="menu" size={22} />
         </button>
@@ -258,7 +279,7 @@ export function AppShell({ title, description, actions, children }: AppShellProp
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
+      <main id="main-content" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-content">
           <header className="mb-5">
             {pipeline.datasetId !== null && (

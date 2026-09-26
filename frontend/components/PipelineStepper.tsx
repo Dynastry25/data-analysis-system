@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 
@@ -15,7 +15,7 @@ export function PipelineStepper({ datasetId, currentStage }: PipelineStepperProp
 
   return (
     <nav aria-label="Mtiririko wa kazi" className="mb-6">
-      <ol className="flex min-w-max items-center gap-1 overflow-x-auto rounded-lg border border-surface-border bg-white p-1.5 shadow-card">
+      <ol className="flex min-w-max items-center gap-1 overflow-x-auto rounded-lg border border-surface-border bg-surface-panel p-1.5 shadow-card">
         {PIPELINE_STAGES.map((stage) => {
           const done = currentStage > stage.step;
           const current = currentStage === stage.step;
@@ -30,7 +30,7 @@ export function PipelineStepper({ datasetId, currentStage }: PipelineStepperProp
                     ? "bg-primary-50 font-medium text-primary-800"
                     : done
                       ? "text-ink-secondary hover:bg-surface-sunken"
-                      : "text-neutral-400 hover:bg-surface-sunken hover:text-ink-secondary"
+                      : "text-ink-muted hover:bg-surface-sunken hover:text-ink-secondary"
                 }`}
               >
                 <span
@@ -39,7 +39,7 @@ export function PipelineStepper({ datasetId, currentStage }: PipelineStepperProp
                       ? "bg-success-bg text-success"
                       : current
                         ? "bg-primary-600 text-white"
-                        : "bg-neutral-100 text-neutral-400"
+                        : "bg-surface-sunken text-ink-muted"
                   }`}
                 >
                   {done ? <Icon name="check" size={12} /> : stage.step}
@@ -50,7 +50,7 @@ export function PipelineStepper({ datasetId, currentStage }: PipelineStepperProp
                 <Icon
                   name="chevron-right"
                   size={14}
-                  className="shrink-0 text-neutral-300"
+                  className="shrink-0 text-surface-border-strong"
                 />
               )}
             </li>
@@ -62,3 +62,7 @@ export function PipelineStepper({ datasetId, currentStage }: PipelineStepperProp
 }
 
 export default PipelineStepper;
+
+
+
+

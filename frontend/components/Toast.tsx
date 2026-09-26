@@ -68,7 +68,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            role="status"
+            role={t.variant === "danger" ? "alert" : "status"}
             className={`toast-enter pointer-events-auto flex w-[min(22rem,calc(100vw-2rem))] items-start gap-2.5 rounded-lg border px-3.5 py-3 text-body shadow-overlay ${VARIANT_STYLES[t.variant]}`}
           >
             <Icon name={VARIANT_ICONS[t.variant]} size={16} className="mt-0.5 shrink-0" />
@@ -77,7 +77,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={() => dismiss(t.id)}
               aria-label="Funga ujumbe"
-              className="-mr-1 -mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors hover:bg-black/5"
+              className="-mr-1.5 -mt-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded transition-colors hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
             >
               <Icon name="close" size={14} />
             </button>

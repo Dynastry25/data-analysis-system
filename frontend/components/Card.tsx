@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Icon, IconName } from "./Icon";
 
@@ -125,7 +125,7 @@ export function EmptyState({
 }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center rounded-lg border border-dashed border-surface-border-strong bg-surface-sunken px-6 py-10 text-center">
-      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-neutral-400 shadow-card">
+      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-panel text-ink-muted shadow-card">
         <Icon name={icon} size={20} />
       </span>
       <p className="mt-3 text-body-lg font-medium text-ink">{title}</p>
@@ -138,3 +138,4 @@ export function EmptyState({
 }
 
 export default Card;
+

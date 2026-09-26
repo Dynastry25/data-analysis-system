@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -46,7 +46,7 @@ function StageDots({ done, total = 6 }: { done: number; total?: number }) {
         <span
           key={index}
           className={`h-1.5 w-3.5 rounded-full ${
-            index < done ? "bg-primary-600" : "bg-neutral-200"
+            index < done ? "bg-primary-600" : "bg-surface-sunken"
           }`}
         />
       ))}
@@ -187,28 +187,28 @@ export default function DashboardPage() {
           icon="database"
           tone="primary"
           label="Datasets"
-          value={loading ? "…" : datasets.length}
+          value={loading ? "â€¦" : datasets.length}
           hint="Faili zilizopakiwa"
         />
         <MetricCard
           icon="layers"
           tone="info"
           label="Jumla ya safu"
-          value={loading ? "…" : totalRows.toLocaleString()}
+          value={loading ? "â€¦" : totalRows.toLocaleString()}
           hint="Rows katika datasets zote"
         />
         <MetricCard
           icon="calculator"
           tone="success"
           label="Uchambuzi"
-          value={loading ? "…" : totalAnalyses + totalCharts}
-          hint={`${totalAnalyses} takwimu · ${totalCharts} chati`}
+          value={loading ? "â€¦" : totalAnalyses + totalCharts}
+          hint={`${totalAnalyses} takwimu Â· ${totalCharts} chati`}
         />
         <MetricCard
           icon="file-text"
           tone="warning"
           label="Ripoti"
-          value={loading ? "…" : totalReports}
+          value={loading ? "â€¦" : totalReports}
           hint="PDF / Excel zilizotengenezwa"
         />
       </div>
@@ -278,8 +278,8 @@ export default function DashboardPage() {
                         {dataset.original_filename}
                       </p>
                       <p className="text-caption text-ink-muted">
-                        Safu {dataset.row_count.toLocaleString()} · Columns{" "}
-                        {dataset.column_count} · {dataset.file_type.toUpperCase()} ·{" "}
+                        Safu {dataset.row_count.toLocaleString()} Â· Columns{" "}
+                        {dataset.column_count} Â· {dataset.file_type.toUpperCase()} Â·{" "}
                         {formatDate(dataset.uploaded_at)}
                       </p>
                     </div>
@@ -337,7 +337,7 @@ export default function DashboardPage() {
                       {stage.step}
                     </span>
                     <span className="text-body-lg font-medium text-ink">{stage.label}</span>
-                    <span className="ml-auto text-neutral-400 transition-transform duration-150 ease-standard group-hover:translate-x-0.5 group-hover:text-primary-600">
+                    <span className="ml-auto text-ink-muted transition-transform duration-150 ease-standard group-hover:translate-x-0.5 group-hover:text-primary-600">
                       <Icon name="arrow-right" size={16} />
                     </span>
                   </span>
@@ -353,3 +353,4 @@ export default function DashboardPage() {
     </AppShell>
   );
 }
+

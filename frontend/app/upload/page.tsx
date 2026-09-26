@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useRouter } from "next/navigation";
 import { DragEvent, useEffect, useRef, useState } from "react";
@@ -146,7 +146,7 @@ export default function UploadPage() {
               label="Mradi"
               value={selectedProject}
               disabled={selectedOrg === ""}
-              placeholder="— Bila mradi —"
+              placeholder="â€” Bila mradi â€”"
               hint={
                 selectedOrg === "" ? "Chagua shirika kwanza" : "Chagua mradi wa kuhifadhi data"
               }
@@ -180,7 +180,7 @@ export default function UploadPage() {
         >
           <span
             className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full transition-colors duration-200 ${
-              dragging ? "bg-primary-100 text-primary-700" : "bg-white text-neutral-400"
+              dragging ? "bg-primary-100 text-primary-700" : "bg-surface-panel text-ink-muted"
             }`}
           >
             <Icon name="upload" size={24} />
@@ -192,7 +192,7 @@ export default function UploadPage() {
             au chagua faili kutoka kompyuta
           </p>
           <p className="mt-1 text-caption text-ink-muted">
-            CSV, Excel (.xlsx), JSON, TSV, TXT au Parquet · hadi {MAX_MB}MB
+            CSV, Excel (.xlsx), JSON, TSV, TXT au Parquet Â· hadi {MAX_MB}MB
           </p>
           <input
             ref={inputRef}
@@ -214,7 +214,7 @@ export default function UploadPage() {
         {file && (
           <div className="mt-6 space-y-3">
             <div className="flex items-center gap-3 rounded-md border border-surface-border bg-surface-sunken px-3.5 py-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white text-primary-600 shadow-card">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-panel text-primary-600 shadow-card">
                 <Icon name="file-text" size={18} />
               </span>
               <div className="min-w-0 flex-1">
@@ -246,7 +246,7 @@ export default function UploadPage() {
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-label="Upload progress"
-                  className="h-2 w-full overflow-hidden rounded-pill bg-neutral-200"
+                  className="h-2 w-full overflow-hidden rounded-pill bg-surface-sunken"
                 >
                   <div
                     className="h-full rounded-pill bg-primary-600 transition-all duration-200 ease-standard"
@@ -254,7 +254,7 @@ export default function UploadPage() {
                   />
                 </div>
                 <p className="mt-1.5 text-caption text-ink-secondary">
-                  Inapakia… {progress}%
+                  Inapakiaâ€¦ {progress}%
                 </p>
               </div>
             )}
@@ -290,3 +290,6 @@ export default function UploadPage() {
     </AppShell>
   );
 }
+
+
+
