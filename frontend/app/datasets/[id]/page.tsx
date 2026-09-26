@@ -8,7 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState, Stat } from "@/components/Card";
-import { DataTable } from "@/components/DataTable";
+import { DataTable, formatCell } from "@/components/DataTable";
 import { SelectInput } from "@/components/Field";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
@@ -279,8 +279,16 @@ export default function DatasetDetailPage() {
             icon="table"
           >
             <DataTable
-              caption="Column profile"
+              caption="Muundo wa columns"
               columns={["name", "data_type", "missing_count", "unique_count", "min", "max"]}
+              columnLabels={{
+                name: "Jina",
+                data_type: "Aina ya data",
+                missing_count: "Zilizokosekana",
+                unique_count: "Thamani unique",
+                min: "Chini kabisa",
+                max: "Juu kabisa",
+              }}
               rows={columns as unknown as Record<string, unknown>[]}
               numericColumns={["missing_count", "unique_count", "min", "max"]}
               renderCell={(column, value) => {
@@ -294,8 +302,10 @@ export default function DatasetDetailPage() {
                 if (column === "missing_count" && Number(value) > 0) {
                   return <Badge tone="warning">{String(value)}</Badge>;
                 }
-                if (value === null || value === undefined) return "—";
-                return String(value);
+                if (column === "name") {
+                  return <span className="font-mono text-caption">{String(value)}</span>;
+                }
+                return formatCell(value);
               }}
             />
           </Card>

@@ -135,37 +135,118 @@ function EstimateTable({ record }: { record: Record<string, unknown> }) {
   );
 }
 
-/** Render the generic tables block (frequency tables, contingency tables, ...). */
+/** Swahili labels for the engine's table and column keys. */
+const TABLE_TITLES: Record<string, string> = {
+  descriptive: "Takwimu za maelezo",
+  frequency: "Madaraka",
+  groups: "Makundi",
+  coefficients: "Vibujadi",
+};
+
+const COLUMN_LABELS: Record<string, string> = {
+  group: "Kundi",
+  category: "Kategoria",
+  count: "Idadi",
+  percentage: "Asilimia",
+  mean: "Wastani",
+  median: "Mediani",
+  sd: "Mabadiliko ya kawaida",
+  variance: "Mabadiliko",
+  std_error: "Kosa la kawaida",
+  min: "Chini kabisa",
+  q1: "Quartile 1",
+  q3: "Quartile 3",
+  max: "Juu kabisa",
+  sum: "Jumla",
+  skewness: "Upruko",
+  kurtosis: "Kurtosisi",
+  variable: "Variable",
+  estimate: "Makadirio",
+  t_statistic: "Takwimu ya t",
+  p_value: "Thamani ya p",
+  ci_lower: "CI ya chini",
+  ci_upper: "CI ya juu",
+};
+
+/** Render the generic tables block (frequency tables, group descriptives, coefficients). */
 function TablesBlock({ tables }: { tables: Record<string, unknown> }) {
   const rendered: JSX.Element[] = [];
   for (const [key, value] of Object.entries(tables)) {
-    if (Array.isArray(value) && value.length > 0 && typeof value[0] === "object") {
-      const rows = value as Record<string, unknown>[];
-      rendered.push(
-        <div key={key}>
-          <p className="mb-1.5 text-overline uppercase tracking-wide text-ink-muted">{key}</p>
-          <DataTable
-            caption={key}
-            columns={Object.keys(rows[0])}
-            rows={rows}
-            numericColumns={Object.keys(rows[0]).filter(
-              (k) => typeof rows[0][k] === "number"
-            )}
+    if (key === "scatter") continue;
+
+    if (key === "frequency" && !Array.isArray(value) && isPlainObject(value)) {
+      for (const [column, columnRows] of Object.entries(value)) {
+        if (!Array.isArray(columnRows) || columnRows.length === 0) continue;
+        rendered.push(
+          <TableBlock
+            key={`${key}-${column}`}
+            title={column}
+            caption={`Madaraka za ${column}`}
+            rows={columnRows as Record<string, unknown>[]}
           />
-        </div>
+        );
+      }
+      continue;
+    }
+
+    if (Array.isArray(value) && value.length > 0 && isPlainObject(value[0])) {
+      rendered.push(
+        <TableBlock
+          key={key}
+          title={TABLE_TITLES[key] ?? key}
+          caption={key}
+          rows={value as Record<string, unknown>[]}
+        />
       );
     } else {
       rendered.push(
-        <div key={key}>
-          <p className="mb-1.5 text-overline uppercase tracking-wide text-ink-muted">{key}</p>
-          <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-surface-sunken p-2.5 font-mono text-caption text-ink-secondary">
+        <details key={key} className="rounded-md border border-surface-border bg-surface-sunken">
+          <summary className="cursor-pointer px-3 py-2 text-caption font-medium text-ink-secondary transition-colors duration-150 ease-standard hover:text-ink">
+            Maelezo ya ghafi ({TABLE_TITLES[key] ?? key})
+          </summary>
+          <pre className="overflow-x-auto whitespace-pre-wrap border-t border-surface-border p-3 font-mono text-caption text-ink-secondary">
             {JSON.stringify(value, null, 2)}
           </pre>
-        </div>
+        </details>
       );
     }
   }
   return <div className="space-y-3">{rendered}</div>;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function TableBlock({
+  title,
+  caption,
+  rows,
+}: {
+  title: string;
+  caption: string;
+  rows: Record<string, unknown>[];
+}) {
+  const columns = Object.keys(rows[0]);
+  const labels = Object.fromEntries(
+    columns.map((column) => [column, COLUMN_LABELS[column] ?? column]),
+  );
+  return (
+    <div>
+      <p className="mb-1.5 text-overline uppercase tracking-wide text-ink-muted">
+        {title}
+      </p>
+      <DataTable
+        caption={caption}
+        columns={columns}
+        columnLabels={labels}
+        rows={rows}
+        numericColumns={columns.filter((column) =>
+          rows.some((row) => typeof row[column] === "number"),
+        )}
+      />
+    </div>
+  );
 }
 
 /** Single key-number card (mono font per design system §3) — reused by result views. */

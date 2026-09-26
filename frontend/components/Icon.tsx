@@ -15,6 +15,8 @@ export type IconName =
   | "close"
   | "chevron-right"
   | "chevron-down"
+  | "chevron-up"
+  | "chevrons-up-down"
   | "check"
   | "arrow-right"
   | "plus"
@@ -140,6 +142,13 @@ const PATHS: Record<IconName, ReactNode> = {
   ),
   "chevron-right": <polyline points="9 18 15 12 9 6" />,
   "chevron-down": <polyline points="6 9 12 15 18 9" />,
+  "chevron-up": <polyline points="18 15 12 9 6 15" />,
+  "chevrons-up-down": (
+    <>
+      <polyline points="7 15 12 10 17 15" />
+      <polyline points="7 9 12 14 17 9" />
+    </>
+  ),
   check: <polyline points="20 6 9 17 4 12" />,
   "arrow-right": (
     <>
