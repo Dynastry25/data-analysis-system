@@ -31,6 +31,7 @@ export default function ExportPage() {
   const [analyses, setAnalyses] = useState<AnalysisRunRecord[]>([]);
   const [charts, setCharts] = useState<ChartRecord[]>([]);
   const [reports, setReports] = useState<ReportRecord[]>([]);
+  const [datasetVersion, setDatasetVersion] = useState<number | null>(null);
   const [selectedAnalyses, setSelectedAnalyses] = useState<number[]>([]);
   const [selectedCharts, setSelectedCharts] = useState<number[]>([]);
   const [format, setFormat] = useState<"pdf" | "xlsx">("pdf");
@@ -41,17 +42,25 @@ export default function ExportPage() {
     if (!Number.isFinite(datasetId)) return;
     setLoading(true);
     try {
-      const [analysisList, chartList, reportList] = await Promise.all([
+      const [datasetDetail, analysisList, chartList, reportList] = await Promise.all([
+        api.datasets.get(datasetId),
         statflowApi.analysisRuns(datasetId),
         api.charts.listForDataset(datasetId),
         api.reports.listForDataset(datasetId),
       ]);
-      setAnalyses(analysisList);
-      setCharts(chartList);
+      const currentVersion = datasetDetail.dataset_version;
+      const versionAnalyses = analysisList.filter(
+        (item) => item.dataset_version === currentVersion
+      );
+      const versionCharts = chartList.filter(
+        (item) => item.dataset_version === currentVersion
+      );
+      setDatasetVersion(currentVersion);
+      setAnalyses(versionAnalyses);
+      setCharts(versionCharts);
       setReports(reportList);
-      // Everything is selected by default the common case is "give me it all".
-      setSelectedAnalyses(analysisList.map((item) => item.analysis_id));
-      setSelectedCharts(chartList.map((item) => item.chart_id));
+      setSelectedAnalyses(versionAnalyses.map((item) => item.analysis_id));
+      setSelectedCharts(versionCharts.map((item) => item.chart_id));
     } catch (caught) {
       showToast(apiErrorMessage(caught), "danger");
     } finally {
@@ -80,6 +89,7 @@ export default function ExportPage() {
     try {
       const created = await api.reports.create(datasetId, {
         format,
+        dataset_version: datasetVersion ?? undefined,
         include_analysis_ids: selectedAnalyses,
         include_chart_ids: selectedCharts,
       });
@@ -137,7 +147,7 @@ export default function ExportPage() {
     >
       <Card
         title="Chagua maudhui ya ripoti"
-        description="Cheki takwimu na chati unazotaka ziwe ndani ya ripoti."
+        description={`Cheki takwimu na chati za toleo la data ${datasetVersion ?? "—"}.`}
       >
         {loading ? (
           <div className="space-y-2">

@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
 from app.models import AnalysisRun, User
-from app.statflow import planning, version_store
+from app.rbac import ORG_ROLE_ANALYST, ORG_ROLE_VIEWER
+from app.statflow import planning, stats_engine, version_store
 from app.statflow.schemas import ProfileRequest, RecommendRequest
 from app.statflow.version_store import VersionError
 
@@ -19,11 +20,16 @@ def _fail(exc: ValueError) -> HTTPException:
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
-def _frame_for(db: Session, user: User, dataset_id: int, version: int | None) -> Any:
-    dataset = get_owned_dataset(dataset_id, db, user)
-    version_store.ensure_base_version(db, dataset)
-    record = version_store.get_version(db, dataset, version)
-    return dataset, record, version_store.read_version_file(record)
+def _frame_for(
+    db: Session,
+    user: User,
+    dataset_id: int,
+    version: int | None,
+    min_role: str,
+) -> Any:
+    dataset = get_owned_dataset(dataset_id, db, user, min_role=min_role)
+    record, frame = version_store.load_version_frame(db, dataset, version)
+    return dataset, record, frame
 
 
 @router.post("/profile")
@@ -34,7 +40,13 @@ def profile_endpoint(
 ) -> Dict[str, Any]:
     """Detect variables, semantic types and dataset-level diagnostics."""
     try:
-        dataset, record, frame = _frame_for(db, user, payload.dataset_id, payload.dataset_version)
+        dataset, record, frame = _frame_for(
+            db,
+            user,
+            payload.dataset_id,
+            payload.dataset_version,
+            ORG_ROLE_VIEWER,
+        )
     except VersionError as exc:
         raise _fail(exc)
     result = planning.profile_dataset(frame)
@@ -55,7 +67,13 @@ def recommend_endpoint(
     (the result is the engine's verified standard result, stored as a run).
     """
     try:
-        dataset, record, frame = _frame_for(db, user, payload.dataset_id, payload.dataset_version)
+        dataset, record, frame = _frame_for(
+            db,
+            user,
+            payload.dataset_id,
+            payload.dataset_version,
+            ORG_ROLE_ANALYST if payload.run else ORG_ROLE_VIEWER,
+        )
         recommendation = planning.recommend(
             frame,
             {
@@ -67,7 +85,7 @@ def recommend_endpoint(
                 "run": payload.run,
             },
         )
-    except (planning.PlanningError, VersionError) as exc:
+    except (planning.PlanningError, stats_engine.AnalysisError, VersionError) as exc:
         raise _fail(exc)
 
     recommendation["meta"]["dataset_id"] = dataset.id
@@ -77,6 +95,7 @@ def recommend_endpoint(
         run = AnalysisRun(
             dataset_id=dataset.id,
             dataset_version=int(record.version),
+            dataset_version_id=record.id,
             analysis_type=recommendation["recommendation"]["analysis_type"],
             status=str(recommendation["result"].get("status")),
             parameters=recommendation["recommendation"]["parameters"],

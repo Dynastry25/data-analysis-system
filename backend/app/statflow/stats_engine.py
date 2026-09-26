@@ -157,10 +157,10 @@ def group_samples(
         raise AnalysisError(f"Column '{group_column}' does not exist")
     values = pd.DataFrame(
         {
-            "group": frame[group_column].astype("string").fillna("<missing>"),
+            "group": frame[group_column].astype("string"),
             "value": numeric_series(frame, value_column).to_numpy(dtype=float),
         }
-    ).dropna(subset=["value"])
+    ).dropna(subset=["group", "value"])
     samples: Dict[str, np.ndarray] = {}
     for label, chunk in values.groupby("group", dropna=False):
         samples[str(label)] = chunk["value"].to_numpy(dtype=float)
@@ -417,7 +417,7 @@ def mann_whitney_u(group_a: np.ndarray, group_b: np.ndarray) -> Dict[str, Any]:
         "U": float(u_statistic),
         "z": float(z),
         "p_value": float(2.0 * normal_sf(abs(z))),
-        "rank_biserial": float(1.0 - (2.0 * u_statistic) / (n_a * n_b)),
+        "rank_biserial": float(1.0 - (2.0 * u_a) / (n_a * n_b)),
         "n_a": n_a,
         "n_b": n_b,
     }
@@ -775,6 +775,7 @@ def correlation_analysis_v2(
             "df": result["df"],
             "p_value": _round(result["p_value"]),
             "alpha": 0.05,
+            "significant": bool(result["p_value"] < 0.05),
         },
         confidence_interval={
             "level": level,
@@ -806,6 +807,13 @@ def correlation_analysis_v2(
     )
 
 
+def _missing_group_rows(frame: pd.DataFrame, parameters: Dict[str, Any]) -> int:
+    group_column = parameters.get("group_column") or parameters.get("group")
+    if not group_column or group_column not in frame.columns:
+        return 0
+    return int(frame[group_column].isna().sum())
+
+
 def _two_group_samples(
     frame: pd.DataFrame, parameters: Dict[str, Any]
 ) -> Tuple[str, str, Dict[str, np.ndarray]]:
@@ -822,8 +830,10 @@ def _two_group_samples(
             f"'{group_column}' needs at least two groups with numeric values"
         )
     if len(samples) > 2:
-        ordered = sorted(samples.items(), key=lambda item: item[1].size, reverse=True)
-        samples = dict(ordered[:2])
+        raise AnalysisError(
+            f"'{group_column}' has {len(samples)} groups; choose a two-group method "
+            "or use a method designed for three or more groups"
+        )
     labels = list(samples.keys())
     return labels[0], labels[1], samples
 
@@ -872,6 +882,12 @@ def welch_t_test_analysis(
     normality_b = normality_diagnostics(b)
 
     warnings: List[str] = []
+    dropped_groups = _missing_group_rows(frame, parameters)
+    if dropped_groups:
+        warnings.append(
+            f"{dropped_groups} rows have a missing group label and were excluded from "
+            "the comparison"
+        )
     if min(n_a, n_b) < 30:
         warnings.append(
             f"Smallest group has only {min(n_a, n_b)} observations, results are approximate"
@@ -952,6 +968,12 @@ def mann_whitney_analysis(
     result = mann_whitney_u(a, b)
 
     warnings: List[str] = []
+    dropped_groups = _missing_group_rows(frame, parameters)
+    if dropped_groups:
+        warnings.append(
+            f"{dropped_groups} rows have a missing group label and were excluded from "
+            "the comparison"
+        )
     if min(a.size, b.size) < 8:
         warnings.append(
             "Small groups: the normal approximation for the U statistic is rough"
@@ -1043,13 +1065,15 @@ def chi_square_analysis(
         )
 
     fisher = None
+    primary_p_value = p_value
     if table.shape == (2, 2) and (
         small_expected > 0 or str(parameters.get("method") or "").lower() == "fisher"
     ):
         fisher = fisher_exact_2x2(observed)
+        primary_p_value = fisher["p_value"]
         warnings.append(
-            "2x2 table with small expected counts: Fisher's exact test is reported too "
-            f"(p = {fisher['p_value']:.4f})"
+            "2x2 table with small expected counts: Fisher's exact test is used as the "
+            f"primary p-value (p = {fisher['p_value']:.4f})"
         )
 
     return standard_result(
@@ -1078,12 +1102,16 @@ def chi_square_analysis(
             ],
         },
         test={
-            "method": "Pearson chi-square test of independence",
+            "method": "Fisher's exact test"
+            if fisher is not None
+            else "Pearson chi-square test of independence",
             "statistic": _round(chi_square),
+            "pearson_statistic": _round(chi_square),
             "df": int(df),
-            "p_value": _round(p_value),
+            "p_value": _round(primary_p_value),
+            "pearson_p_value": _round(p_value),
             "alpha": 0.05,
-            "significant": bool(p_value < 0.05),
+            "significant": bool(primary_p_value < 0.05),
             "fisher_exact_p_value": _round(fisher["p_value"]) if fisher else None,
         },
         effect_size={
@@ -1099,6 +1127,61 @@ def chi_square_analysis(
         },
         warnings=warnings,
         tables={"contingency": to_jsonable(observed.astype(int).tolist())},
+    )
+
+
+def fisher_exact_analysis(
+    frame: pd.DataFrame, parameters: Dict[str, Any]
+) -> Dict[str, Any]:
+    row_column = require_column(
+        frame,
+        parameters.get("row_column") or parameters.get("x") or parameters.get("row"),
+        "row_column",
+    )
+    column_column = require_column(
+        frame,
+        parameters.get("column_column")
+        or parameters.get("y")
+        or parameters.get("column"),
+        "column_column",
+    )
+    if row_column == column_column:
+        raise AnalysisError("Choose two different categorical columns")
+    working = frame[[row_column, column_column]].copy()
+    working[row_column] = working[row_column].astype("string")
+    working[column_column] = working[column_column].astype("string")
+    working = working.dropna()
+    table = pd.crosstab(working[row_column], working[column_column])
+    if table.shape != (2, 2):
+        raise AnalysisError("Fisher's exact test requires a 2x2 contingency table")
+    observed = table.to_numpy(dtype=int)
+    fisher = fisher_exact_2x2(observed)
+    odds_ratio = fisher["odds_ratio"]
+    return standard_result(
+        "fisher_exact",
+        sample_size=int(observed.sum()),
+        estimate={
+            "row_variable": row_column,
+            "column_variable": column_column,
+            "contingency_table": {
+                "index": [str(value) for value in table.index],
+                "columns": [str(value) for value in table.columns],
+                "observed": observed.tolist(),
+            },
+        },
+        test={
+            "method": "Fisher's exact test",
+            "p_value": _round(fisher["p_value"]),
+            "alpha": 0.05,
+            "significant": bool(fisher["p_value"] < 0.05),
+        },
+        effect_size={
+            "name": "odds_ratio",
+            "value": _round(odds_ratio) if odds_ratio is not None else None,
+            "interpretation": "odds ratio",
+        },
+        diagnostics={"rows": 2, "columns": 2},
+        tables={"contingency": observed.tolist()},
     )
 
 
@@ -1129,6 +1212,12 @@ def anova_analysis(frame: pd.DataFrame, parameters: Dict[str, Any]) -> Dict[str,
     normality = {label: normality_diagnostics(values) for label, values in samples.items()}
 
     warnings: List[str] = []
+    dropped_groups = _missing_group_rows(frame, parameters)
+    if dropped_groups:
+        warnings.append(
+            f"{dropped_groups} rows have a missing group label and were excluded from "
+            "the comparison"
+        )
     if min(values.size for values in samples.values()) < 5:
         warnings.append("Some groups have fewer than 5 observations")
     if levene and levene.get("flag") == "unequal_variances":
@@ -1204,6 +1293,12 @@ def kruskal_wallis_analysis(
 
     result = kruskal_wallis(list(samples.values()))
     warnings: List[str] = []
+    dropped_groups = _missing_group_rows(frame, parameters)
+    if dropped_groups:
+        warnings.append(
+            f"{dropped_groups} rows have a missing group label and were excluded from "
+            "the comparison"
+        )
     if min(values.size for values in samples.values()) < 5:
         warnings.append("Some groups have fewer than 5 observations")
     return standard_result(
@@ -1360,6 +1455,7 @@ ANALYSIS_HANDLERS: Dict[str, Any] = {
     "welch_t_test": welch_t_test_analysis,
     "mann_whitney": mann_whitney_analysis,
     "chi_square": chi_square_analysis,
+    "fisher_exact": fisher_exact_analysis,
     "one_way_anova": anova_analysis,
     "kruskal_wallis": kruskal_wallis_analysis,
     "linear_regression": linear_regression_analysis,
@@ -1373,6 +1469,7 @@ REQUIRED_PARAMETERS = {
     "welch_t_test": ["value_column", "group_column"],
     "mann_whitney": ["value_column", "group_column"],
     "chi_square": ["row_column", "column_column"],
+    "fisher_exact": ["row_column", "column_column"],
     "one_way_anova": ["value_column", "group_column"],
     "kruskal_wallis": ["value_column", "group_column"],
     "linear_regression": ["target", "features"],

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -28,6 +28,8 @@ from app.services.data_service import (
     store_upload_file,
     validate_extension,
 )
+from app.statflow import version_store
+from app.statflow.version_store import VersionError
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -51,6 +53,13 @@ def sync_dataset_columns(
 
 def _upload_error(message: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+
+
+def _load_current_frame(db: Session, dataset: Dataset) -> Any:
+    try:
+        return version_store.load_version_frame(db, dataset)
+    except VersionError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 @router.post(
@@ -130,9 +139,8 @@ def list_datasets(
 ) -> List[Dict[str, Any]]:
     """List the datasets the signed-in user may reach.
 
-    That is their own uploads (personal and shared) plus the datasets inside
-    projects of every organization they belong to — a team member has to be
-    able to *find* the data their colleagues shared.
+    That is their own personal uploads plus the datasets inside projects of
+    every organization they currently belong to.
     """
     member_projects = (
         select(Project.id)
@@ -146,7 +154,7 @@ def list_datasets(
         db.query(Dataset)
         .filter(
             or_(
-                Dataset.user_id == user.id,
+                and_(Dataset.user_id == user.id, Dataset.project_id.is_(None)),
                 Dataset.project_id.in_(member_projects),
             )
         )
@@ -164,10 +172,11 @@ def get_dataset(
 ) -> Dict[str, Any]:
     """Full dataset details plus the first rows as a preview."""
     dataset = get_owned_dataset(dataset_id, db, user, min_role=ORG_ROLE_VIEWER)
-    frame = read_dataframe(dataset.storage_path)
+    version_record, frame = _load_current_frame(db, dataset)
     profiles = profile_columns(frame)
     return {
         "dataset": dataset.to_summary_dict(),
+        "dataset_version": int(version_record.version),
         "columns": profiles,
         "preview_rows": dataframe_records(frame, PREVIEW_ROWS),
     }
@@ -211,16 +220,13 @@ def profile_dataset(
 ) -> Dict[str, Any]:
     """Fresh per-column profile: type, missing count, unique count, min/max."""
     dataset = get_owned_dataset(dataset_id, db, user, min_role=ORG_ROLE_VIEWER)
-    frame = read_dataframe(dataset.storage_path)
+    version_record, frame = _load_current_frame(db, dataset)
     profiles = profile_columns(frame)
-    dataset.row_count = int(frame.shape[0])
-    dataset.column_count = int(frame.shape[1])
-    sync_dataset_columns(db, dataset, profiles)
-    db.commit()
     return {
         "dataset_id": dataset.id,
-        "row_count": dataset.row_count,
-        "column_count": dataset.column_count,
+        "dataset_version": int(version_record.version),
+        "row_count": int(frame.shape[0]),
+        "column_count": int(frame.shape[1]),
         "columns": profiles,
     }
 

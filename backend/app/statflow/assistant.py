@@ -23,7 +23,7 @@ from app.statflow import planning
 INTENT_KEYWORDS: Dict[str, List[str]] = {
     "difference": [
         "differ", "different", "difference", "inatofautiana", "tofauti",
-        "zaidi ya", "compare", "compared", "between", "kati ya", "versus",
+        "zaidi ya", "compare", "compared", "versus",
         " vs ", "higher", "lower", "bigger", "smaller",
     ],
     "association": [
@@ -43,7 +43,7 @@ INTENT_KEYWORDS: Dict[str, List[str]] = {
 }
 
 VARIABLE_SYNONYMS: Dict[str, List[str]] = {
-    "income": ["income", "mapato", "salary", "mshahara", "earnings"],
+    "income": ["income", "mapato", "salary", "mshahara", "earnings", "malipo", "pesa"],
     "gender": ["gender", "jinsia", "sex", "wanaume", "wanawake", "male", "female"],
     "age": ["age", "umri"],
     "sales": ["sales", "mauzo", "revenue"],
@@ -61,13 +61,19 @@ STOPWORDS = {
 }
 
 
+def _find_phrase(text: str, phrase: str) -> Optional[re.Match[str]]:
+    term = " ".join(str(phrase).lower().split())
+    if not term:
+        return None
+    return re.search(rf"(?<!\w){re.escape(term)}(?:e?s)?(?!\w)", text)
+
+
 def parse_intent(question: str) -> Dict[str, Any]:
-    """Rule-based intent detection: difference/association/prediction/distribution."""
     text = question.lower()
     scores: Dict[str, int] = {}
     hits: Dict[str, List[str]] = {}
     for intent, keywords in INTENT_KEYWORDS.items():
-        matched = [keyword for keyword in keywords if keyword in text]
+        matched = [keyword for keyword in keywords if _find_phrase(text, keyword)]
         if matched:
             scores[intent] = sum(len(keyword.split()) for keyword in matched)
             hits[intent] = matched
@@ -83,98 +89,274 @@ def parse_intent(question: str) -> Dict[str, Any]:
     }
 
 
+def _column_terms(column: str) -> List[str]:
+    normalized = re.sub(r"[^a-z0-9]+", " ", column.lower()).strip()
+    return list(dict.fromkeys([column.lower(), normalized]))
+
+
 def extract_variable_mentions(
     question: str, frame: pd.DataFrame
 ) -> List[Dict[str, Any]]:
-    """Find which dataset variables are mentioned in the question."""
-    mentions: List[Dict[str, Any]] = []
-    lowered = question.lower()
+    text = question.lower()
+    candidates: List[Dict[str, Any]] = []
     for column in frame.columns:
         column_text = str(column)
-        tokens = {
-            column_text.lower(),
-            re.sub(r"[^a-z0-9]+", " ", column_text.lower()).strip(),
-        }
-        matched = next((token for token in tokens if token and token in lowered), None)
-        synonyms = VARIABLE_SYNONYMS.get(column_text.lower().strip(), [])
-        matched = matched or next(
-            (synonym for synonym in synonyms if synonym in lowered), None
-        )
-        if matched:
-            mentions.append(
-                {
-                    "column": column_text,
-                    "via": "name" if column_text.lower() in lowered else "synonym",
-                    "matched": matched,
-                }
+        matches: List[Dict[str, Any]] = []
+        for term in _column_terms(column_text):
+            match = _find_phrase(text, term)
+            if match:
+                matches.append(
+                    {
+                        "start": match.start(),
+                        "end": match.end(),
+                        "matched": term,
+                        "via": "name",
+                    }
+                )
+        if not matches:
+            for synonym in VARIABLE_SYNONYMS.get(column_text.lower().strip(), []):
+                match = _find_phrase(text, synonym)
+                if match:
+                    matches.append(
+                        {
+                            "start": match.start(),
+                            "end": match.end(),
+                            "matched": synonym,
+                            "via": "synonym",
+                        }
+                    )
+        if matches:
+            selected = sorted(matches, key=lambda item: (item["start"], -item["end"]))[
+                0
+            ]
+            candidates.append({"column": column_text, **selected})
+
+    filtered: List[Dict[str, Any]] = []
+    for candidate in candidates:
+        contained = any(
+            other["start"] <= candidate["start"]
+            and other["end"] >= candidate["end"]
+            and (
+                other["end"] - other["start"] > candidate["end"] - candidate["start"]
+                or other["column"] == candidate["column"]
             )
-    return mentions
+            for other in candidates
+            if other is not candidate
+        )
+        if not contained:
+            filtered.append(candidate)
+    return sorted(filtered, key=lambda item: (item["start"], item["column"]))
 
 
-def _assign_roles(
-    mentions: List[Dict[str, Any]], types: Dict[str, str]
+def _resolve_explicit(
+    frame: pd.DataFrame, reference: Optional[str], label: str
+) -> Optional[str]:
+    if not reference:
+        return None
+    resolved = planning.find_variable(frame, reference)
+    if resolved is None:
+        available = ", ".join(str(column) for column in frame.columns)
+        raise planning.PlanningError(
+            f"Could not resolve the {label} variable '{reference}'. "
+            f"Choose one of: {available}"
+        )
+    return resolved
+
+
+def _prediction_roles(
+    mentions: List[Dict[str, Any]], question: str
 ) -> Dict[str, Optional[str]]:
-    """Choose the outcome and predictor from the mentioned variables."""
-    outcome = predictor = None
-    for mention in mentions:
-        kind = types.get(mention["column"])
-        if kind == "numeric" and outcome is None:
-            outcome = mention["column"]
-        elif kind in {"categorical", "boolean"} and predictor is None:
-            predictor = mention["column"]
-        elif kind == "numeric" and predictor is None:
-            predictor = mention["column"]
-    return {"outcome": outcome, "predictor": predictor}
+    text = question.lower()
+    ordered = sorted(mentions, key=lambda item: item["start"])
+    prediction = _find_phrase(text, "predict") or _find_phrase(text, "prediction")
+    if prediction:
+        separator = re.search(
+            r"\b(?:from|using|based on|with)\b", text[prediction.end():]
+        )
+        if separator:
+            split = prediction.end() + separator.start()
+            outcome = next(
+                (item for item in ordered if prediction.end() <= item["start"] < split),
+                None,
+            )
+            predictor = next(
+                (item for item in ordered if item["start"] >= prediction.end() + separator.end()),
+                None,
+            )
+            if outcome and predictor and outcome["column"] != predictor["column"]:
+                return {
+                    "outcome": outcome["column"],
+                    "predictor": predictor["column"],
+                }
+        before = [item for item in ordered if item["start"] < prediction.start()]
+        after = [item for item in ordered if item["start"] > prediction.end()]
+        if before and after:
+            return {"outcome": after[0]["column"], "predictor": before[-1]["column"]}
+
+    effect = re.search(
+        r"\b(?:effect|impact|influence)\s+of\b|\b(?:affects|influences|predicts)\b",
+        text,
+    )
+    if effect:
+        if text[effect.start() : effect.start() + 1] and re.match(
+            r"\b(?:effect|impact|influence)", effect.group(0)
+        ):
+            on = re.search(r"\bon\b", text[effect.end() :])
+            if on:
+                split = effect.end() + on.start()
+                predictor = next(
+                    (item for item in ordered if effect.end() <= item["start"] < split),
+                    None,
+                )
+                outcome = next(
+                    (item for item in ordered if item["start"] > effect.end() + on.end()),
+                    None,
+                )
+                if predictor and outcome and predictor["column"] != outcome["column"]:
+                    return {
+                        "outcome": outcome["column"],
+                        "predictor": predictor["column"],
+                    }
+        else:
+            before = [item for item in ordered if item["start"] < effect.start()]
+            after = [item for item in ordered if item["start"] > effect.end()]
+            if before and after:
+                return {"outcome": after[0]["column"], "predictor": before[-1]["column"]}
+
+    raise planning.PlanningError(
+        "The prediction question must identify an outcome and a predictor, for example "
+        "'predict income from age'."
+    )
 
 
-def plan_question(frame: pd.DataFrame, question: str) -> Dict[str, Any]:
-    """Intent -> variable mapping -> statistical plan (no calculations here)."""
+def _roles_from_mentions(
+    frame: pd.DataFrame,
+    question: str,
+    mentions: List[Dict[str, Any]],
+    types: Dict[str, str],
+    intent: Optional[str],
+) -> Dict[str, Optional[str]]:
+    if len(mentions) > 2:
+        raise planning.PlanningError(
+            "Name at most two dataset variables in a question, or use the explicit "
+            "outcome and predictor selectors."
+        )
+    if not mentions:
+        raise planning.PlanningError(
+            "Name at least one dataset variable, or select an outcome in the form."
+        )
+
+    if intent == "distribution" or (intent is None and len(mentions) == 1):
+        if len(mentions) == 1:
+            return {"outcome": mentions[0]["column"], "predictor": None}
+    if len(mentions) != 2:
+        raise planning.PlanningError(
+            "This question needs two dataset variables. Name the outcome and the "
+            "predictor explicitly."
+        )
+
+    if intent == "prediction":
+        return _prediction_roles(mentions, question)
+
+    first, second = mentions
+    first_type = types[first["column"]]
+    second_type = types[second["column"]]
+    numeric = [
+        mention["column"]
+        for mention in (first, second)
+        if types[mention["column"]] == "numeric"
+    ]
+    categorical = [
+        mention["column"]
+        for mention in (first, second)
+        if types[mention["column"]] in {"categorical", "boolean"}
+    ]
+    if intent == "difference" and (len(numeric) != 1 or len(categorical) != 1):
+        raise planning.PlanningError(
+            "A difference question needs one numeric outcome and one categorical group."
+        )
+    if len(numeric) == 2:
+        return {"outcome": second["column"], "predictor": first["column"]}
+    if len(categorical) == 2:
+        return {"outcome": first["column"], "predictor": second["column"]}
+    if len(numeric) == 1 and len(categorical) == 1:
+        return {"outcome": numeric[0], "predictor": categorical[0]}
+    raise planning.PlanningError(
+        "The selected variable types do not support this statistical question."
+    )
+
+
+def plan_question(
+    frame: pd.DataFrame,
+    question: str,
+    outcome: Optional[str] = None,
+    predictor: Optional[str] = None,
+) -> Dict[str, Any]:
     parsed = parse_intent(question)
     mentions = extract_variable_mentions(question, frame)
     types = {str(column): planning.semantic_type(frame[column]) for column in frame.columns}
+    explicit_outcome = _resolve_explicit(frame, outcome, "outcome")
+    explicit_predictor = _resolve_explicit(frame, predictor, "predictor")
 
-    roles = _assign_roles(mentions, types)
-    outcome, predictor = roles["outcome"], roles["predictor"]
+    if not (explicit_outcome and explicit_predictor):
+        mention_groups: Dict[tuple[int, int, str], List[str]] = {}
+        for mention in mentions:
+            key = (mention["start"], mention["end"], mention["matched"].lower())
+            mention_groups.setdefault(key, []).append(mention["column"])
+        ambiguous = [columns for columns in mention_groups.values() if len(columns) > 1]
+        if ambiguous:
+            columns = ", ".join(
+                sorted({column for group in ambiguous for column in group})
+            )
+            raise planning.PlanningError(
+                f"The question matches more than one dataset variable ({columns}). "
+                "Select the intended variables explicitly."
+            )
 
-    # If the question only pinned one variable, pick the most informative counterpart.
-    if outcome is None and predictor is not None:
-        numeric_rest = [c for c, k in types.items() if k == "numeric" and c != predictor]
-        outcome = numeric_rest[0] if numeric_rest else None
-    if predictor is None and outcome is not None:
-        grouping = [c for c, k in types.items() if k in {"categorical", "boolean"} and c != outcome]
-        numeric_rest = [c for c, k in types.items() if k == "numeric" and c != outcome]
-        predictor = (grouping or numeric_rest or [None])[0]
-    if outcome is None and predictor is None:
-        # No variable mentioned: default to the first numeric variable that is not
-        # an identifier column (id-like + unique), then the first numeric column.
-        numeric = [c for c, k in types.items() if k == "numeric"]
-        non_identifiers = [
-            c
-            for c in numeric
-            if not ("id" in c.lower() and frame[c].nunique(dropna=True) == frame.shape[0])
-        ]
-        if non_identifiers:
-            outcome = non_identifiers[0]
-        elif numeric:
-            outcome = numeric[0]
-        elif frame.shape[1]:
-            outcome = str(frame.columns[0])
+    if explicit_predictor and not explicit_outcome:
+        raise planning.PlanningError(
+            "Select the outcome as well as the predictor, or leave both selectors on automatic."
+        )
+    if explicit_outcome and explicit_predictor and explicit_outcome == explicit_predictor:
+        raise planning.PlanningError("Outcome and predictor must be different variables.")
+    if explicit_predictor and parsed["intent"] == "distribution":
+        raise planning.PlanningError(
+            "A distribution question uses one outcome variable and no predictor."
+        )
+    if explicit_outcome and not explicit_predictor and parsed["intent"] in {
+        "difference",
+        "association",
+        "prediction",
+    }:
+        raise planning.PlanningError(
+            "This question needs a predictor; select one or name two variables."
+        )
+
+    if explicit_outcome or explicit_predictor:
+        roles = {
+            "outcome": explicit_outcome,
+            "predictor": explicit_predictor,
+        }
+    else:
+        roles = _roles_from_mentions(
+            frame, question, mentions, types, parsed["intent"]
+        )
 
     plan_parameters: Dict[str, Any] = {
         "intent": parsed["intent"],
         "question": question,
         "run": True,
     }
-    if outcome:
-        plan_parameters["outcome"] = outcome
-    if predictor:
-        plan_parameters["predictor"] = predictor
+    if roles["outcome"]:
+        plan_parameters["outcome"] = roles["outcome"]
+    if roles["predictor"]:
+        plan_parameters["predictor"] = roles["predictor"]
 
     return {
         "question": question,
         "parsed_intent": parsed,
         "mentions": mentions,
-        "variables": {"outcome": outcome, "predictor": predictor},
+        "variables": roles,
         "types": types,
         "plan_parameters": plan_parameters,
     }
@@ -193,9 +375,12 @@ def _fmt(value: Any) -> str:
     return str(value)
 
 
-def _p_phrase(result: Dict[str, Any]) -> str:
+def _p_phrase(
+    result: Dict[str, Any], p_value: Optional[float] = None
+) -> str:
     test = result.get("test") or {}
-    p_value = test.get("p_value")
+    if p_value is None:
+        p_value = test.get("p_value")
     if p_value is None:
         return ""
     if p_value < 0.001:
@@ -203,13 +388,60 @@ def _p_phrase(result: Dict[str, Any]) -> str:
     return f"p = {p_value:.4f}"
 
 
+def _alpha(test: Dict[str, Any]) -> float:
+    try:
+        return float(test.get("alpha", 0.05))
+    except (TypeError, ValueError):
+        return 0.05
+
+
+def _decision_sentence(p_value: Optional[float], alpha: float, subject: str) -> str:
+    if p_value is None:
+        return f"No p-value was available, so no significance decision is made for {subject}."
+    if p_value < alpha:
+        return (
+            f"At alpha = {alpha:g}, the test rejects the null hypothesis for {subject} "
+            "in this sample."
+        )
+    return (
+        f"At alpha = {alpha:g}, the test does not reject the null hypothesis for {subject}; "
+        "this is not proof that the groups or variables are equivalent."
+    )
+
+
+def _effect_sentence(effect: Dict[str, Any]) -> str:
+    if effect.get("value") is None:
+        return ""
+    name = effect.get("name") or "effect size"
+    interpretation = effect.get("interpretation")
+    suffix = f" ({interpretation})" if interpretation else ""
+    return f"{name} = {_fmt(effect.get('value'))}{suffix}."
+
+
+def _ci_sentence(result: Dict[str, Any], label: str) -> str:
+    interval = result.get("confidence_interval") or {}
+    if interval.get("lower") is None or interval.get("upper") is None:
+        return ""
+    level = int(float(interval.get("level", 0.95)) * 100)
+    return (
+        f"The {level}% confidence interval for {label} is "
+        f"[{_fmt(interval.get('lower'))}, {_fmt(interval.get('upper'))}]."
+    )
+
+
 # --- ASSISTANT_PART_3 ---
 def explain(plan: Dict[str, Any], result: Optional[Dict[str, Any]]) -> str:
-    """Write the final explanation. Uses only numbers from the engine result."""
     if result is None:
         return (
             "I could not compute a numeric result for this question yet — the "
             "recommendation belongs to the visualisation layer."
+        )
+    if result.get("status") != "success":
+        warnings = result.get("warnings") or []
+        detail = f" {warnings[0]}" if warnings else ""
+        return (
+            "The analysis was not completed for the selected data."
+            f"{detail} No significance decision is made."
         )
 
     analysis_type = result.get("analysis_type")
@@ -217,10 +449,12 @@ def explain(plan: Dict[str, Any], result: Optional[Dict[str, Any]]) -> str:
     test = result.get("test") or {}
     effect = result.get("effect_size") or {}
     warnings = result.get("warnings") or []
-    p_text = _p_phrase(result)
-    significant = bool(test.get("significant"))
+    alpha = _alpha(test)
+    p_value = test.get("p_value")
+    if analysis_type in {"chi_square", "fisher_exact"} and test.get("fisher_exact_p_value") is not None:
+        p_value = test.get("fisher_exact_p_value")
+    p_text = _p_phrase(result, p_value)
     method = test.get("method") or analysis_type
-
     sentences: List[str] = []
 
     if analysis_type in {"welch_t_test", "mann_whitney"}:
@@ -236,95 +470,83 @@ def explain(plan: Dict[str, Any], result: Optional[Dict[str, Any]]) -> str:
             )
         else:
             sentences.append(
-                f"Comparing the groups ({grouping}): the medians are "
+                f"Comparing the groups ({grouping}) by rank: the observed medians are "
                 f"{_fmt(estimate.get('median_group_a'))} and "
                 f"{_fmt(estimate.get('median_group_b'))} ({method}, {p_text})."
             )
-        if significant:
-            sentences.append(
-                f"The difference is statistically significant at alpha = 0.05, with a "
-                f"{effect.get('interpretation', '')} effect size "
-                f"({effect.get('name')} = {_fmt(effect.get('value'))})."
-            )
-        else:
-            sentences.append(
-                "The difference is NOT statistically significant at alpha = 0.05 — with "
-                "this sample we cannot conclude the groups differ."
-            )
-        ci = result.get("confidence_interval") or {}
-        if ci.get("lower") is not None:
-            sentences.append(
-                f"The {int(float(ci.get('level', 0.95)) * 100)}% confidence interval for "
-                f"the mean difference is [{_fmt(ci.get('lower'))}, "
-                f"{_fmt(ci.get('upper'))}]."
-            )
+        sentences.append(_decision_sentence(p_value, alpha, "the group difference"))
+        effect_text = _effect_sentence(effect)
+        if effect_text:
+            sentences.append(f"The reported effect size is {effect_text}")
+        ci_text = _ci_sentence(result, "the mean difference")
+        if ci_text:
+            sentences.append(ci_text)
     elif analysis_type in {"pearson", "spearman"}:
         sentences.append(
             f"Between {estimate.get('x')} and {estimate.get('y')}: "
             f"{effect.get('name')} = {_fmt(estimate.get('correlation'))} — a "
-            f"{effect.get('strength')} {estimate.get('direction')} association "
+            f"{estimate.get('strength')} {estimate.get('direction')} association "
             f"({p_text})."
         )
-        if not significant and test.get("p_value") is not None:
+        sentences.append(_decision_sentence(p_value, alpha, "the association"))
+        ci = result.get("confidence_interval") or {}
+        if ci.get("lower") is not None:
             sentences.append(
-                "Because p > 0.05, the observed association could be consistent with "
-                "chance; with this sample we cannot confirm a real relationship."
+                f"The {int(float(ci.get('level', 0.95)) * 100)}% confidence interval for "
+                f"the correlation is [{_fmt(ci.get('lower'))}, {_fmt(ci.get('upper'))}]."
             )
     elif analysis_type == "one_way_anova":
         sentences.append(
             f"Comparing the means across the {estimate.get('groups')} groups of "
             f"'{estimate.get('grouping_variable')}': F({test.get('df_between')}, "
-            f"{test.get('df_within')}) = {_fmt(test.get('statistic'))}, {p_text}. "
-            + (
-                "There IS a significant difference between the groups."
-                if significant
-                else "No significant difference between the groups."
-            )
+            f"{test.get('df_within')}) = {_fmt(test.get('statistic'))}, {p_text}."
         )
-        sentences.append(
-            f"Effect size eta² = {_fmt(effect.get('value'))} "
-            f"({effect.get('interpretation')})."
-        )
+        sentences.append(_decision_sentence(p_value, alpha, "a difference among group means"))
+        sentences.append(_effect_sentence(effect))
     elif analysis_type == "kruskal_wallis":
         sentences.append(
             f"Comparing the distributions across groups: H = "
-            f"{_fmt(test.get('statistic'))}, {p_text}. "
-            + (
-                "The groups differ significantly."
-                if significant
-                else "No significant difference between the groups."
-            )
+            f"{_fmt(test.get('statistic'))}, {p_text}."
         )
-
-    elif analysis_type == "chi_square":
+        sentences.append(_decision_sentence(p_value, alpha, "a difference among group distributions"))
+        sentences.append(_effect_sentence(effect))
+    elif analysis_type in {"chi_square", "fisher_exact"}:
+        prefix = "Fisher's exact test" if analysis_type == "fisher_exact" else "Chi-square test"
         sentences.append(
             f"Between {estimate.get('row_variable')} and "
-            f"{estimate.get('column_variable')}: chi² = "
-            f"{_fmt(test.get('statistic'))}, df = {test.get('df')}, {p_text}. "
-            + (
-                "The variables are significantly associated."
-                if significant
-                else "No significant association between the variables."
-            )
+            f"{estimate.get('column_variable')}: {prefix}, {p_text}."
         )
-        if effect.get("value") is not None:
+        if test.get("pearson_p_value") is not None:
             sentences.append(
-                f"Cramér's V = {_fmt(effect.get('value'))} "
-                f"({effect.get('interpretation')} effect)."
+                f"The Pearson chi-square p-value was {_fmt(test.get('pearson_p_value'))}; "
+                "the reported decision uses the exact p-value for this small table."
             )
-        if test.get("fisher_exact_p_value") is not None:
-            sentences.append(
-                f"Fisher's exact p = {_fmt(test.get('fisher_exact_p_value'))} "
-                "(reported because some expected counts were small)."
-            )
+        sentences.append(_decision_sentence(p_value, alpha, "the association"))
+        sentences.append(_effect_sentence(effect))
     elif analysis_type == "linear_regression":
         sentences.append(f"Model: {estimate.get('equation')}.")
         sentences.append(
-            f"The model explains {_fmt((estimate.get('r_squared') or 0) * 100)}% of the "
-            f"variance in {estimate.get('target')} (adjusted R² = "
-            f"{_fmt(estimate.get('adjusted_r_squared'))}). Overall F = "
-            f"{_fmt(test.get('statistic'))}, {p_text}."
+            f"In-sample R² = {_fmt((estimate.get('r_squared') or 0) * 100)}% "
+            f"(adjusted R² = {_fmt(estimate.get('adjusted_r_squared'))}); this describes "
+            "fit in the selected observations, not validated predictive performance. "
+            f"Overall F = {_fmt(test.get('statistic'))}, {p_text}."
         )
+        sentences.append(_decision_sentence(p_value, alpha, "the regression model"))
+        coefficients = (result.get("tables") or {}).get("coefficients") or []
+        coefficient_text = []
+        for row in coefficients:
+            if row.get("variable") == "(intercept)":
+                continue
+            interval = ""
+            if row.get("ci_lower") is not None and row.get("ci_upper") is not None:
+                interval = (
+                    f", 95% CI [{_fmt(row.get('ci_lower'))}, {_fmt(row.get('ci_upper'))}]"
+                )
+            coefficient_text.append(
+                f"{row.get('variable')} estimate = {_fmt(row.get('estimate'))}{interval}"
+            )
+        if coefficient_text:
+            sentences.append("Coefficients: " + "; ".join(coefficient_text) + ".")
         diagnostics = result.get("diagnostics") or {}
         if diagnostics.get("aic") is not None:
             sentences.append(
@@ -335,36 +557,66 @@ def explain(plan: Dict[str, Any], result: Optional[Dict[str, Any]]) -> str:
     elif analysis_type == "descriptive":
         variables = estimate.get("variables") or {}
         for name, stats in list(variables.items())[:4]:
+            interval = stats.get("confidence_interval_95")
+            interval_text = (
+                f", 95% mean CI [{_fmt(interval[0])}, {_fmt(interval[1])}]"
+                if isinstance(interval, (list, tuple)) and len(interval) == 2
+                else ""
+            )
             sentences.append(
                 f"{name}: mean {_fmt(stats.get('mean'))}, median "
                 f"{_fmt(stats.get('median'))}, SD {_fmt(stats.get('sd'))}, range "
                 f"[{_fmt(stats.get('min'))} — {_fmt(stats.get('max'))}] (n = "
-                f"{stats.get('count')})."
+                f"{stats.get('count')}{interval_text})."
             )
     elif analysis_type == "frequency":
-        sentences.append(
-            "Distribution of the selected categories is in the table below."
-        )
+        sentences.append("Distribution of the selected categories is in the table below.")
     else:
         sentences.append(
             f"Analysis '{analysis_type}' completed; see the result table below."
         )
 
+    if analysis_type not in {"descriptive", "frequency"}:
+        sentences.append(
+            "This conclusion is limited to the selected dataset version and does not "
+            "establish a population-wide effect without a suitable study design."
+        )
+        causal_patterns = (
+            r"\bcause\b",
+            r"\bcausal\b",
+            r"\beffect of\b",
+            r"\bimpact of\b",
+            r"\binfluence\b",
+            r"\bathiri\b",
+        )
+        question_text = str(plan.get("question", "")).lower()
+        if any(re.search(pattern, question_text) for pattern in causal_patterns):
+            sentences.append(
+                "This observational analysis estimates association; it does not identify "
+                "a causal effect."
+            )
+
     if warnings:
         sentences.append("Note: " + " ".join(warnings))
 
-    return " ".join(sentences)
+    return " ".join(sentence for sentence in sentences if sentence)
 
 
-def ask(frame: pd.DataFrame, question: str) -> Dict[str, Any]:
-    """Full assistant flow: plan -> verify (engine) -> explain.
-
-    The assistant never calculates anything: all numbers come from
-    ``stats_engine`` (verified result).
-    """
-    plan = plan_question(frame, question)
+def ask(
+    frame: pd.DataFrame,
+    question: str,
+    outcome: Optional[str] = None,
+    predictor: Optional[str] = None,
+) -> Dict[str, Any]:
+    plan = plan_question(frame, question, outcome, predictor)
     recommendation = planning.recommend(frame, plan["plan_parameters"])
     result = recommendation.get("result")
+    method = recommendation["recommendation"]["analysis_type"]
+    if result is None and method not in {"descriptive", "frequency"}:
+        raise planning.PlanningError(
+            f"'{recommendation['recommendation']['label']}' has no numeric engine "
+            "implementation yet. Choose a supported method or provide a clearer question."
+        )
     explanation = explain(plan, result)
 
     return {

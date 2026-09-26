@@ -321,6 +321,9 @@ class Dataset(Base):
     project = relationship("Project")
 
     def to_summary_dict(self) -> dict:
+        current_version = max(
+            (item.version for item in self.versions), default=None
+        )
         return {
             "id": self.id,
             "user_id": self.user_id,
@@ -331,6 +334,7 @@ class Dataset(Base):
             "status": self.status,
             "row_count": self.row_count,
             "column_count": self.column_count,
+            "current_version": current_version,
             "uploaded_at": self.uploaded_at.isoformat() if self.uploaded_at else None,
         }
 
@@ -373,16 +377,29 @@ class Chart(Base):
         nullable=False,
         index=True,
     )
+    dataset_version_id = Column(
+        Integer,
+        ForeignKey("dataset_versions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     chart_type = Column(String(30), nullable=False)
     config = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=utcnow)
 
     dataset = relationship("Dataset", back_populates="charts")
+    dataset_version_record = relationship("DatasetVersion")
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
             "dataset_id": self.dataset_id,
+            "dataset_version": (
+                self.dataset_version_record.version
+                if self.dataset_version_record is not None
+                else None
+            ),
+            "dataset_version_id": self.dataset_version_id,
             "chart_type": self.chart_type,
             "config": self.config,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -409,11 +426,14 @@ class DatasetVersion(Base):
     version = Column(Integer, nullable=False)  # 1, 2, 3 ...
     parent_version = Column(Integer, nullable=True)
     storage_path = Column(String(500), nullable=False)
-    file_format = Column(String(20), nullable=False, default="parquet")  # parquet|csv
+    file_format = Column(String(20), nullable=False, default="parquet")
     row_count = Column(Integer, default=0)
     column_count = Column(Integer, default=0)
     is_current = Column(Integer, default=1)  # 1 for the newest version
     label = Column(String(255), nullable=True)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at = Column(DateTime, default=utcnow)
 
     dataset = relationship("Dataset", back_populates="versions")
@@ -438,6 +458,7 @@ class DatasetVersion(Base):
             "column_count": self.column_count or 0,
             "is_current": bool(self.is_current),
             "label": self.label,
+            "created_by": self.created_by,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -501,6 +522,12 @@ class AnalysisRun(Base):
         index=True,
     )
     dataset_version = Column(Integer, nullable=False)
+    dataset_version_id = Column(
+        Integer,
+        ForeignKey("dataset_versions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     analysis_type = Column(String(50), nullable=False)
     status = Column(String(30), nullable=False, default="success")
     parameters = Column(JSON, nullable=True)
@@ -508,12 +535,14 @@ class AnalysisRun(Base):
     created_at = Column(DateTime, default=utcnow)
 
     dataset = relationship("Dataset", back_populates="analysis_runs")
+    dataset_version_record = relationship("DatasetVersion")
 
     def to_dict(self) -> dict:
         return {
             "analysis_id": self.id,
             "dataset_id": self.dataset_id,
             "dataset_version": self.dataset_version,
+            "dataset_version_id": self.dataset_version_id,
             "analysis_type": self.analysis_type,
             "status": self.status,
             "parameters": self.parameters or {},
@@ -532,6 +561,12 @@ class ExportedReport(Base):
         nullable=False,
         index=True,
     )
+    dataset_version_id = Column(
+        Integer,
+        ForeignKey("dataset_versions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     user_id = Column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -543,12 +578,19 @@ class ExportedReport(Base):
     created_at = Column(DateTime, default=utcnow)
 
     dataset = relationship("Dataset", back_populates="reports")
+    dataset_version_record = relationship("DatasetVersion")
     user = relationship("User", back_populates="reports")
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
             "dataset_id": self.dataset_id,
+            "dataset_version": (
+                self.dataset_version_record.version
+                if self.dataset_version_record is not None
+                else None
+            ),
+            "dataset_version_id": self.dataset_version_id,
             "user_id": self.user_id,
             "file_format": self.file_format,
             "status": self.status,

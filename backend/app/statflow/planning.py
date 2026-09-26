@@ -319,6 +319,7 @@ def candidate_methods(
     predictor_type: str,
     predictor_levels: int,
     *,
+    outcome_levels: Optional[int] = None,
     intent: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Rules that map semantic types to statistically valid candidate methods."""
@@ -355,7 +356,7 @@ def candidate_methods(
         candidates.append(
             _candidate("chi_square", "Two categorical variables: independence test", 1)
         )
-        if predictor_levels == 2:
+        if predictor_levels == 2 and outcome_levels == 2:
             candidates.append(
                 _candidate(
                     "fisher_exact", "Exact test that stays valid when cells are small", 2
@@ -654,7 +655,11 @@ def _pick_recommendation(
                     "diagnostics show non-normal data or very small groups, and this "
                     "method does not rely on normality",
                 )
-    if small_cells and "fisher_exact" in alternatives:
+    if (
+        small_cells
+        and diagnostics.get("table_shape") == [2, 2]
+        and "fisher_exact" in alternatives
+    ):
         return (
             alternatives["fisher_exact"],
             "Fisher's exact test is recommended because some expected cell counts are "
@@ -703,7 +708,7 @@ def recommend(
         else None
     )
     if predictor == outcome:
-        predictor = None
+        raise PlanningError("Outcome and predictor must be different variables.")
 
     outcome_profile = describe_variable(frame, outcome)
     outcome_type = outcome_profile["semantic_type"]
@@ -712,7 +717,11 @@ def recommend(
     predictor_levels = int(predictor_profile["unique_count"]) if predictor_profile else 0
 
     candidates = candidate_methods(
-        outcome_type, predictor_type, predictor_levels, intent=intent
+        outcome_type,
+        predictor_type,
+        predictor_levels,
+        outcome_levels=int(outcome_profile["unique_count"]),
+        intent=intent,
     )
     diagnostics = (
         pair_diagnostics(frame, outcome, predictor, outcome_type, predictor_type)
@@ -728,14 +737,26 @@ def recommend(
     recommended, reason = _pick_recommendation(candidates, diagnostics)
     requested_method = parameters.get("method")
     if requested_method:
-        for candidate in candidates:
-            if candidate["analysis_type"] == str(requested_method):
-                recommended = candidate
-                reason = (
-                    f"Using the requested method {candidate['label']}; the engine still "
-                    "reports its assumptions and the alternative candidates"
-                )
-                break
+        requested = str(requested_method)
+        matching = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate["analysis_type"] == requested
+            ),
+            None,
+        )
+        if matching is None:
+            valid = ", ".join(candidate["analysis_type"] for candidate in candidates)
+            raise PlanningError(
+                f"Requested method '{requested}' is not valid for these variables. "
+                f"Valid methods: {valid}"
+            )
+        recommended = matching
+        reason = (
+            f"Using the requested method {recommended['label']}; the engine still "
+            "reports its assumptions and the alternative candidates"
+        )
 
     if frame.shape[0] < 3:
         validation_status = "blocked"

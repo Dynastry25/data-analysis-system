@@ -48,5 +48,7 @@ class AskRequest(BaseModel):
     """POST /assistant/ask (MVP-21)."""
 
     dataset_id: int
-    question: str = Field(..., min_length=3)
+    question: str = Field(..., min_length=3, max_length=1000)
     dataset_version: Optional[int] = None
+    outcome: Optional[str] = Field(default=None, max_length=150)
+    predictor: Optional[str] = Field(default=None, max_length=150)

@@ -107,6 +107,7 @@ export interface DatasetSummary {
   uploaded_at: string | null;
   row_count: number;
   column_count: number;
+  current_version: number | null;
 }
 
 export interface UploadResponse {
@@ -121,12 +122,14 @@ export interface UploadResponse {
 
 export interface DatasetDetailResponse {
   dataset: DatasetSummary;
+  dataset_version: number;
   columns: ColumnProfile[];
   preview_rows: Record<string, unknown>[];
 }
 
 export interface ProfileResponse {
   dataset_id: number;
+  dataset_version: number;
   row_count: number;
   column_count: number;
   columns: ColumnProfile[];
@@ -172,11 +175,13 @@ export interface ChartData {
 export interface ChartPayload {
   chart_type: ChartType;
   config: ChartConfig;
+  dataset_version?: number;
 }
 
 export interface ChartRecord {
   chart_id: number;
   dataset_id: number;
+  dataset_version: number | null;
   chart_type: ChartType;
   config: ChartConfig;
   chart_data: ChartData;
@@ -185,6 +190,7 @@ export interface ChartRecord {
 
 export interface ExportPayload {
   format: "pdf" | "xlsx";
+  dataset_version?: number;
   include_analysis_ids: number[];
   include_chart_ids: number[];
 }
@@ -197,6 +203,7 @@ export interface ExportResponse {
 export interface ReportRecord {
   id: number;
   dataset_id: number;
+  dataset_version: number | null;
   file_format: string;
   status: string;
   error_message: string | null;
@@ -207,6 +214,7 @@ export interface ReportRecord {
 export interface ReportStatus {
   report_id: number;
   dataset_id: number;
+  dataset_version: number | null;
   file_format: string;
   status: string;
   error_message: string | null;
@@ -472,6 +480,7 @@ export interface VersionInfo {
   column_count: number;
   is_current: boolean;
   label: string | null;
+  created_by: number | null;
   created_at: string | null;
 }
 
@@ -553,6 +562,7 @@ export interface AnalysisRunRecord {
   analysis_id: number;
   dataset_id: number;
   dataset_version: number;
+  dataset_version_id: number | null;
   analysis_type: string;
   status: string;
   parameters: Record<string, unknown>;
@@ -566,6 +576,7 @@ export interface AnalysisRecord extends AnalysisRunRecord {}
 export interface AnalysisRunResponse {
   dataset_id: number;
   dataset_version: number;
+  dataset_version_id: number | null;
   analysis_type: string;
   status: string;
   result: StandardResult;
@@ -640,7 +651,10 @@ export interface AssistantAnswer {
   question: string;
   intent: { intent: string | null; confidence: number; keywords: string[] };
   plan: {
-    variables: string[];
+    variables: {
+      outcome: string | null;
+      predictor: string | null;
+    };
     mentions: Record<string, unknown>[];
     method: string;
     method_label: string;
@@ -657,6 +671,7 @@ export interface AssistantAnswer {
   analysis_id?: number;
   dataset_id: number;
   dataset_version: number;
+  dataset_version_id: number;
 }
 
 export const statflowApi = {
@@ -740,7 +755,13 @@ export const statflowApi = {
     run?: boolean;
   }) =>
     http.post<Recommendation>("/v1/planning/recommend", payload).then((r) => r.data),
-  ask: (payload: { dataset_id: number; question: string; dataset_version?: number }) =>
+  ask: (payload: {
+    dataset_id: number;
+    question: string;
+    dataset_version?: number;
+    outcome?: string;
+    predictor?: string;
+  }) =>
     http.post<AssistantAnswer>("/v1/assistant/ask", payload).then((r) => r.data),
   assistantExamples: () =>
     http

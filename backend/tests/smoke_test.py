@@ -352,6 +352,17 @@ def main() -> int:
         check(single.status_code == 200, "GET /v1/analysis/{id} returns 200")
 
         print("\n5) Charts")
+        sorted_version = client.post(
+            f"/api/v1/datasets/{dataset_id}/transform",
+            json={
+                "operation_type": "sort",
+                "configuration": {"by": ["sales"], "ascending": True},
+            },
+            headers=headers,
+        )
+        check(sorted_version.status_code == 200, "sort creates a source version")
+        check(sorted_version.json()["version"] == 6, "sorted source version is v6")
+
         bar = client.post(
             f"/api/datasets/{dataset_id}/charts",
             json={
@@ -361,6 +372,10 @@ def main() -> int:
             headers=headers,
         )
         check(bar.status_code == 200, "bar chart returns 200")
+        check(
+            bar.json()["dataset_version"] == 6,
+            "chart defaults to the current immutable version",
+        )
         bar_series = bar.json()["chart_data"]["series"][0]
         check(len(bar_series["x"]) == 5, "bar chart has 5 regions (4 + 'Unknown')")
         check(len(bar_series["y"]) == 5, "bar chart has 5 values")
@@ -415,6 +430,35 @@ def main() -> int:
             "GET /charts/{id} returns 200",
         )
 
+        mixed_version_export = client.post(
+            f"/api/datasets/{dataset_id}/export",
+            json={
+                "format": "xlsx",
+                "include_analysis_ids": [analysis_ids[0]],
+                "include_chart_ids": [chart_ids[0]],
+            },
+            headers=headers,
+        )
+        check(
+            mixed_version_export.status_code == 400,
+            "report rejects artifacts from different dataset versions",
+        )
+
+        current_analysis = client.post(
+            f"/api/v1/datasets/{dataset_id}/analysis",
+            json={
+                "analysis_type": "descriptive",
+                "parameters": {"columns": ["sales"]},
+            },
+            headers=headers,
+        )
+        check(
+            current_analysis.status_code == 200
+            and current_analysis.json()["dataset_version"] == 6,
+            "current-version analysis is available to the report",
+        )
+        analysis_ids = [current_analysis.json()["analysis_id"]]
+
         print("\n6) Export + download")
         export = client.post(
             f"/api/datasets/{dataset_id}/export",
@@ -430,6 +474,10 @@ def main() -> int:
 
         status_response = client.get(f"/api/reports/{report_id}/status", headers=headers)
         check(status_response.status_code == 200, "report status endpoint returns 200")
+        check(
+            status_response.json()["dataset_version"] == 6,
+            "report records its immutable source version",
+        )
 
         download = client.get(f"/api/reports/{report_id}/download", headers=headers)
         check(download.status_code == 200, "xlsx report downloads")

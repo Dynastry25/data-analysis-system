@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
 from app.models import AnalysisRun, User
-from app.statflow import assistant, planning, version_store
+from app.statflow import assistant, planning, stats_engine, version_store
 from app.statflow.schemas import AskRequest
 from app.statflow.version_store import VersionError
 
@@ -35,11 +35,16 @@ def ask_endpoint(
     """Answer a plain-language question with a verified statistical result."""
     dataset = get_owned_dataset(payload.dataset_id, db, user)
     try:
-        version_store.ensure_base_version(db, dataset)
-        record = version_store.get_version(db, dataset, payload.dataset_version)
-        frame = version_store.read_version_file(record)
-        answer = assistant.ask(frame, payload.question)
-    except (planning.PlanningError, VersionError) as exc:
+        record, frame = version_store.load_version_frame(
+            db, dataset, payload.dataset_version
+        )
+        answer = assistant.ask(
+            frame,
+            payload.question,
+            outcome=payload.outcome,
+            predictor=payload.predictor,
+        )
+    except (planning.PlanningError, stats_engine.AnalysisError, VersionError) as exc:
         raise _fail(exc)
 
     # Store the verified run so it shows up in the analysis history.
@@ -48,6 +53,7 @@ def ask_endpoint(
         run = AnalysisRun(
             dataset_id=dataset.id,
             dataset_version=int(record.version),
+            dataset_version_id=record.id,
             analysis_type=str(answer["plan"]["method"]),
             status=str(result.get("status")),
             parameters=answer["plan"].get("parameters") or {},
@@ -61,6 +67,7 @@ def ask_endpoint(
 
     answer["dataset_id"] = dataset.id
     answer["dataset_version"] = int(record.version)
+    answer["dataset_version_id"] = record.id
     return answer
 
 

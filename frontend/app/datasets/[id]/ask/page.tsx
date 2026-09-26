@@ -10,12 +10,24 @@ import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
 import { StandardResultView } from "@/components/StandardResultView";
 import { useToast } from "@/components/Toast";
-import { apiErrorMessage, AssistantAnswer, statflowApi } from "@/lib/api";
+import {
+  apiErrorMessage,
+  AssistantAnswer,
+  PlanningVariable,
+  statflowApi,
+} from "@/lib/api";
 
 const INPUT_CLASSES =
   "w-full rounded border border-neutral-200 bg-white px-3 py-2 text-body outline-none focus:border-primary-500";
+const SELECT_CLASSES = INPUT_CLASSES;
 
-type Turn = { question: string; answer: AssistantAnswer | null; error?: string };
+type Turn = {
+  question: string;
+  outcome?: string;
+  predictor?: string;
+  answer: AssistantAnswer | null;
+  error?: string;
+};
 
 export default function AskPage() {
   const params = useParams<{ id: string }>();
@@ -23,7 +35,12 @@ export default function AskPage() {
   const { showToast } = useToast();
 
   const [examples, setExamples] = useState<string[]>([]);
+  const [profileVariables, setProfileVariables] = useState<PlanningVariable[]>([]);
+  const [profileVersion, setProfileVersion] = useState<number | undefined>();
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
+  const [outcome, setOutcome] = useState("");
+  const [predictor, setPredictor] = useState("");
   const [asking, setAsking] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -37,9 +54,27 @@ export default function AskPage() {
     }
   }, [showToast]);
 
+  const loadProfile = useCallback(async () => {
+    if (!Number.isFinite(datasetId)) return;
+    setProfileError(null);
+    try {
+      const response = await statflowApi.planningProfile(datasetId);
+      setProfileVariables(response.variables);
+      setProfileVersion(response.meta.dataset_version);
+    } catch (caught) {
+      const message = apiErrorMessage(caught);
+      setProfileError(message);
+      showToast(message, "danger");
+    }
+  }, [datasetId, showToast]);
+
   useEffect(() => {
     loadExamples();
   }, [loadExamples]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -48,11 +83,33 @@ export default function AskPage() {
   async function ask(text: string) {
     const trimmed = text.trim();
     if (trimmed.length < 3 || asking) return;
+    if (predictor && !outcome) {
+      showToast("Chagua outcome au weka predictor kuwa Automatic.", "warning");
+      return;
+    }
+    if (outcome && predictor && outcome === predictor) {
+      showToast("Outcome na predictor lazima viwe tofauti.", "warning");
+      return;
+    }
     setAsking(true);
     setQuestion("");
-    setTurns((previous) => [...previous, { question: trimmed, answer: null }]);
+    setTurns((previous) => [
+      ...previous,
+      {
+        question: trimmed,
+        outcome: outcome || undefined,
+        predictor: predictor || undefined,
+        answer: null,
+      },
+    ]);
     try {
-      const answer = await statflowApi.ask({ dataset_id: datasetId, question: trimmed });
+      const answer = await statflowApi.ask({
+        dataset_id: datasetId,
+        dataset_version: profileVersion,
+        question: trimmed,
+        outcome: outcome || undefined,
+        predictor: predictor || undefined,
+      });
       setTurns((previous) =>
         previous.map((turn, index) =>
           index === previous.length - 1 ? { ...turn, answer } : turn
@@ -99,6 +156,55 @@ export default function AskPage() {
             Uliza
           </Button>
         </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <label className="space-y-1 text-caption font-semibold text-neutral-600">
+            Outcome
+            <select
+              className={SELECT_CLASSES}
+              value={outcome}
+              onChange={(event) => {
+                const nextOutcome = event.target.value;
+                setOutcome(nextOutcome);
+                if (nextOutcome && nextOutcome === predictor) setPredictor("");
+              }}
+            >
+              <option value="">Automatic — infer from question</option>
+              {profileVariables.map((variable) => (
+                <option key={variable.name} value={variable.name}>
+                  {variable.name} ({variable.semantic_type})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1 text-caption font-semibold text-neutral-600">
+            Predictor / grouping variable
+            <select
+              className={SELECT_CLASSES}
+              value={predictor}
+              onChange={(event) => setPredictor(event.target.value)}
+            >
+              <option value="">Automatic — infer from question</option>
+              {profileVariables
+                .filter((variable) => !outcome || variable.name !== outcome)
+                .map((variable) => (
+                  <option key={variable.name} value={variable.name}>
+                    {variable.name} ({variable.semantic_type})
+                  </option>
+                ))}
+            </select>
+          </label>
+        </div>
+        {profileVersion != null && !profileError && (
+          <p className="mt-2 text-caption text-neutral-500">
+            Variable list is from dataset version {profileVersion}.
+          </p>
+        )}
+        {profileError && (
+          <p className="mt-2 text-caption text-danger">
+            Variable list could not be loaded. Questions will use the dataset&apos;s current
+            version; retry the page before relying on selectors.
+          </p>
+        )}
         {examples.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {examples.map((example) => (
@@ -130,6 +236,11 @@ export default function AskPage() {
             key={`${index}-${turn.question}`}
             title={`Swali ${index + 1}: ${turn.question}`}
           >
+            {(turn.outcome || turn.predictor) && (
+              <p className="mb-3 text-caption text-neutral-500">
+                Selected variables: {[turn.outcome, turn.predictor].filter(Boolean).join(", ")}
+              </p>
+            )}
             {turn.error ? (
               <p className="text-body text-danger">{turn.error}</p>
             ) : turn.answer == null ? (
@@ -168,11 +279,16 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
         )}
       </div>
 
-      {answer.plan.variables.length > 0 && (
-        <p className="text-caption text-neutral-600">
-          Variables: {answer.plan.variables.join(", ")}
-        </p>
-      )}
+      {(() => {
+        const variables = Object.values(answer.plan.variables).filter(
+          (value): value is string => Boolean(value)
+        );
+        return variables.length > 0 ? (
+          <p className="text-caption text-neutral-600">
+            Variables: {variables.join(", ")}
+          </p>
+        ) : null;
+      })()}
 
       {answer.plan.why && (
         <div className="rounded border border-neutral-200 bg-neutral-50 p-3">

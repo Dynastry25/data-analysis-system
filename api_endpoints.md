@@ -57,34 +57,40 @@ ni **analyst+** katika shirika ya mradi (vinginevyo 403).
 
 ---
 
-## 3. Cleaning
+## 3. Dataset versions, cleaning & transforms
 
-### POST /datasets/{id}/clean
-Tekeleza kitendo cha kusafisha data. Kila call inarekodiwa kwenye `cleaning_actions`.
-**Body:** `{ action_type: "drop_duplicates" | "fill_missing" | "drop_column" | "convert_type", parameters: {...} }`
-- `fill_missing` parameters: `{ column, method: "mean"|"median"|"mode"|"value", value? }`
-- `drop_column` parameters: `{ column }`
-**Response:** `{ dataset_id, status: "cleaned", row_count, applied_action }`
+### POST /v1/datasets/{id}/clean
+Tekeleza kitendo cha kusafisha data na kunda immutable version mpya.
+**Body:** `{ operation_type, configuration: {...}, dataset_version?, label? }`
 
-### GET /datasets/{id}/cleaning-history
-Orodha ya vitendo vyote vya cleaning vilivyofanyika kwenye dataset hiyo (audit trail).
+### POST /v1/datasets/{id}/transform
+Tekeleza transformation na kunda immutable version mpya; inaweza kuchomoza
+branch kutoka version ya zamani kwa `dataset_version`.
+**Response:** `{ dataset_id, version, current_version, operation, summary, warnings, row_count, column_count }`
+
+### GET /v1/datasets/{id}/operations?version={n}
+Orodha ya audit trail. bila `version`, inaonyesha branch yote; kwa `version`,
+inaonyesha hatua zinazopeleka exact version hiyo.
+
+### GET /v1/datasets/{id}/versions/{version}
+Pata metadata na preview rows za version maalum.
+
+### GET /v1/datasets/{id}/versions/{version}/download?format=parquet|csv
+Pakua immutable version iliyochaguliwa.
 
 ---
 
 ## 4. Analysis
 
-### POST /datasets/{id}/analyze
-Endesha uchambuzi wa kitakwimu. Matokeo yanahifadhiwa kwenye `analysis_results`.
-**Body:** `{ analysis_type: "descriptive_stats" | "correlation" | "regression" | "hypothesis_test", parameters: {...} }`
-- `descriptive_stats`: hauhitaji parameters (au `columns: [...]` kuchagua columns maalum)
-- `correlation`: `{ columns: [...], method: "pearson"|"spearman" }`
-- `regression`: `{ target, features: [...] }`
-**Response:** `{ analysis_id, analysis_type, result_data }`
+### POST /v1/datasets/{id}/analysis
+Endesha uchambuzi wa kitakwimu na uhifadhi exact dataset version iliyotumika.
+**Body:** `{ analysis_type, parameters: {...}, dataset_version?, save? }`
+**Response:** `{ analysis_id, dataset_id, dataset_version, dataset_version_id, analysis_type, status, result }`
 
-### GET /datasets/{id}/analysis
+### GET /v1/datasets/{id}/analysis
 Orodha ya matokeo yote ya uchambuzi yaliyofanyika kwa dataset hiyo.
 
-### GET /analysis/{analysis_id}
+### GET /v1/analysis/{analysis_id}
 Pata matokeo maalum ya uchambuzi mmoja.
 
 ---
@@ -92,12 +98,12 @@ Pata matokeo maalum ya uchambuzi mmoja.
 ## 5. Charts
 
 ### POST /datasets/{id}/charts
-Tengeneza chati.
-**Body:** `{ chart_type: "bar"|"line"|"scatter"|"histogram", config: { x, y, group_by? } }`
-**Response:** `{ chart_id, chart_type, config, chart_data }`
+Tengeneza chati kutoka current version au `dataset_version` iliyochaguliwa.
+**Body:** `{ chart_type: "bar"|"line"|"scatter"|"histogram", config: { x, y, group_by? }, dataset_version? }`
+**Response:** `{ chart_id, dataset_version, chart_type, config, chart_data }`
 
 ### GET /datasets/{id}/charts
-Orodha ya chati zote zilizotengenezwa kwa dataset husika.
+Orodha ya chati zote zilizotengenezwa kwa dataset husika, pamoja na version ya kila chati.
 
 ### GET /charts/{chart_id}
 Pata chati moja (config + data ya kuchora upya frontend).
@@ -107,9 +113,13 @@ Pata chati moja (config + data ya kuchora upya frontend).
 ## 6. Export / Reports
 
 ### POST /datasets/{id}/export
-Tengeneza ripoti (inaunganisha stats + charts zilizochaguliwa).
-**Body:** `{ format: "pdf"|"xlsx", include_analysis_ids: [...], include_chart_ids: [...] }`
-**Response:** `{ report_id, status: "processing" }` *(async job — kwa faili kubwa)*
+Tengeneza ripoti ya exact dataset version. Analyses na charts zote zilizochaguliwa
+lazima zitoke kwenye version ile ile.
+**Body:** `{ format: "pdf"|"xlsx", dataset_version?, include_analysis_ids: [...], include_chart_ids: [...] }`
+**Response:** `{ report_id, status: "processing" }` *(async job)*
+
+### GET /reports/{report_id}/status
+Pata status, exact source version na download URL.
 
 ### GET /reports/{report_id}/download
 Pakua ripoti iliyokamilika (redirect/stream ya faili).
@@ -204,6 +214,45 @@ wanapata ufikiaji kulingana na role:
 | Kufuta | **mmiliki wa dataset** |
 
 Datasets bila `project_id` zinabaki za mmiliki pekee.
+
+---
+
+## 8. Statistical planning, assistant and safety
+
+### GET /v1/analysis/types
+Orodha ya methods zinazotumika na engine: `descriptive`, `frequency`, `pearson`,
+`spearman`, `welch_t_test`, `mann_whitney`, `chi_square`, `fisher_exact`,
+`one_way_anova`, `kruskal_wallis` na `linear_regression`.
+
+### POST /v1/planning/profile
+**Body:** `{ dataset_id, dataset_version? }`
+**Response:** semantic type, missing/unique counts na dataset diagnostics za version
+iliyochaguliwa. `meta.dataset_version` ndiyo inayowekwa kwenye frontend selectors.
+
+### POST /v1/planning/recommend
+**Body:** `{ dataset_id, dataset_version?, outcome?, predictor?, intent?, method?, run? }`
+Ina-map semantic types kwa candidate methods, ina-onyesha assumptions/diagnostics
+na inaendesha engine tu pale `run: true`; matokeo ya ukweli yote yanatoka kwenye
+`stats_engine`.
+
+### POST /v1/assistant/ask
+**Body:** `{ dataset_id, dataset_version?, question, outcome?, predictor? }`
+`outcome` na `predictor` ni optional explicit selectors; ukiacha `null`, assistant
+hujaribu kutoka question. Swali lenye intention ya comparative lazima lielewe
+kwenye roles; selector moja tu halitoshi na kitatupa `400` badala ya silent fallback.
+Majibu yanaonyesha `intent`, `plan`, verified `result`, `explanation`,
+`analysis_id`, `dataset_version` na `dataset_version_id`.
+
+**Assistant safety contract:**
+- Hakuna variable inayopatikana kwa guessing; ambiguity au variable ya basi inarudi `400`.
+- Role za `outcome`/`predictor` hazibadilishwi kwa utaratibu wa swali.
+- P-value, significance, effect size na confidence interval zinaotoka kwenye engine;
+  hakuna claim ya causal au population-wide bila design ya kutosha.
+- Matokeo ya `insufficient_data` hayatoi significance decision.
+- Assistant anaokoa run tu pale method ina executable numeric engine implementation.
+
+### GET /v1/assistant/examples
+Mifano ya swali ambayo rule-based assistant inaweza kushughulikia.
 
 ---
 

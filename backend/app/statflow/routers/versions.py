@@ -31,9 +31,7 @@ def _fail(exc: ValueError) -> HTTPException:
 
 
 def _load_frame(db: Session, dataset: Dataset, version: Optional[int]) -> Any:
-    version_store.ensure_base_version(db, dataset)
-    record = version_store.get_version(db, dataset, version)
-    return record, version_store.read_version_file(record)
+    return version_store.load_version_frame(db, dataset, version)
 
 
 @router.get("/operations/catalog")
@@ -71,15 +69,10 @@ def _apply(
             summary=summary,
             warnings=warnings,
             label=payload.label,
+            created_by=user.id,
         )
     except (VersionError, OperationError) as exc:
         raise _fail(exc)
-
-    # Keep the legacy dataset summary in sync with the current version.
-    dataset.row_count = new_version.row_count
-    dataset.column_count = new_version.column_count
-    dataset.status = "cleaned"
-    db.commit()
 
     return {
         "dataset_id": dataset.id,

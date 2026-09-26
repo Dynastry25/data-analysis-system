@@ -23,9 +23,7 @@ def _fail(exc: ValueError) -> HTTPException:
 def _frame_for(
     db: Session, dataset: Dataset, version: int | None
 ) -> Any:
-    version_store.ensure_base_version(db, dataset)
-    record = version_store.get_version(db, dataset, version)
-    return record, version_store.read_version_file(record)
+    return version_store.load_version_frame(db, dataset, version)
 
 
 @router.get("/analysis/types")
@@ -54,6 +52,7 @@ def run_analysis_endpoint(
     response: Dict[str, Any] = {
         "dataset_id": dataset.id,
         "dataset_version": int(record.version),
+        "dataset_version_id": record.id,
         "analysis_type": payload.analysis_type,
         "status": result.get("status"),
         "result": result,
@@ -63,6 +62,7 @@ def run_analysis_endpoint(
         run = AnalysisRun(
             dataset_id=dataset.id,
             dataset_version=int(record.version),
+            dataset_version_id=record.id,
             analysis_type=payload.analysis_type,
             status=str(result.get("status")),
             parameters=payload.parameters or {},
@@ -106,7 +106,11 @@ def get_analysis(
     run = db.get(AnalysisRun, analysis_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Analysis run not found")
-    dataset = db.get(Dataset, run.dataset_id)
-    if dataset is None or dataset.user_id != user.id:
-        raise HTTPException(status_code=403, detail="You do not have access to this analysis")
+    get_owned_dataset(
+        run.dataset_id,
+        db,
+        user,
+        require_file=False,
+        min_role=ORG_ROLE_VIEWER,
+    )
     return run.to_dict()

@@ -87,6 +87,7 @@ class DatasetSummary(BaseModel):
     uploaded_at: Optional[str] = None
     row_count: int = 0
     column_count: int = 0
+    current_version: Optional[int] = None
 
 
 class DatasetProjectRequest(BaseModel):
@@ -97,12 +98,14 @@ class DatasetProjectRequest(BaseModel):
 
 class DatasetDetailResponse(BaseModel):
     dataset: Dict[str, Any]
+    dataset_version: int
     columns: List[ColumnProfile]
     preview_rows: List[Dict[str, Any]]
 
 
 class ProfileResponse(BaseModel):
     dataset_id: int
+    dataset_version: int
     row_count: int
     column_count: int
     columns: List[ColumnProfile]
@@ -130,11 +133,13 @@ class ChartConfig(BaseModel):
 class ChartRequest(BaseModel):
     chart_type: ChartType
     config: ChartConfig
+    dataset_version: Optional[int] = None
 
 
 class ChartResponse(BaseModel):
     chart_id: int
     dataset_id: int
+    dataset_version: Optional[int] = None
     chart_type: str
     config: Dict[str, Any]
     chart_data: Dict[str, Any]
@@ -152,6 +157,7 @@ ExportFormat = Literal["pdf", "xlsx"]
 
 class ExportRequest(BaseModel):
     format: ExportFormat
+    dataset_version: Optional[int] = None
     include_analysis_ids: List[int] = Field(default_factory=list)
     include_chart_ids: List[int] = Field(default_factory=list)
 
@@ -164,6 +170,7 @@ class ExportResponse(BaseModel):
 class ReportStatusResponse(BaseModel):
     report_id: int
     dataset_id: int
+    dataset_version: Optional[int] = None
     file_format: str
     status: str
     error_message: Optional[str] = None

@@ -9,6 +9,7 @@ Run it with:  python tests/statflow_test.py
 import os
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -24,8 +25,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app.database import SessionLocal
 from app.main import app  # noqa: E402
-from app.statflow import distributions, stats_engine  # noqa: E402
+from app.models import Dataset, DatasetOperation, DatasetVersion
+from app.statflow import assistant, distributions, planning, stats_engine, version_store
 
 PASSED = 0
 STANDARD_KEYS = {
@@ -82,6 +85,12 @@ def build_statflow_csv(path: Path) -> Path:
 
 def main() -> int:
     csv_path = build_statflow_csv(TEST_ROOT / "people.csv")
+    migrated_source = DatasetVersion(storage_path=str(csv_path), file_format="source")
+    migrated_frame = version_store.read_version_file(migrated_source)
+    check(
+        len(migrated_frame) == 305 and "income" in migrated_frame.columns,
+        "migrated source version reads the original upload",
+    )
     print(f"Test workspace: {TEST_ROOT}\n")
 
     print("0) Distribution math (known values, no scipy)")
@@ -148,6 +157,10 @@ def main() -> int:
         )
         check(v1_detail.status_code == 200, "v1 detail returns 200")
         check(v1_detail.json()["version"]["row_count"] == 305, "v1 has 305 rows")
+        check(
+            v1_detail.json()["version"]["created_by"] is not None,
+            "v1 records the dataset uploader as its creator",
+        )
 
         duplicates = client.post(
             f"/api/v1/datasets/{dataset_id}/clean",
@@ -218,6 +231,10 @@ def main() -> int:
         )
         check(grouped.status_code == 200, "group_by goes through /transform")
         check(grouped.json()["version"] == 7, "branch from v3 still creates the next number")
+        check(
+            grouped.json()["operation"]["source_version"] == 3,
+            "the grouped version records its exact parent",
+        )
 
                 # Return to the row pipeline (v6) for the remaining steps.
         mismatch = client.post(
@@ -319,6 +336,24 @@ def main() -> int:
         numbers = sorted(item["version"] for item in history.json()["versions"])
         check(numbers[-1] == latest_version and len(numbers) == len(set(numbers)),
               "one record per version, lineage sorted")
+        version_records = {
+            item["version"]: item for item in history.json()["versions"]
+        }
+        check(
+            version_records[7]["parent_version"] == 3,
+            "v7 preserves the v3 branch parent",
+        )
+        check(
+            version_records[7]["created_by"] is not None,
+            "derived versions record their creator",
+        )
+        branch_history = client.get(
+            f"/api/v1/datasets/{dataset_id}/operations?version=7", headers=headers
+        ).json()
+        check(
+            [item["version"] for item in branch_history["operations"]] == [2, 3, 7],
+            "branch history excludes operations from other branches",
+        )
 
         preview = client.get(f"/api/v1/datasets/{dataset_id}/versions/3", headers=headers)
         check(preview.status_code == 200, "old version preview still works (v3)")
@@ -375,7 +410,7 @@ def main() -> int:
             return result
 
         types_response = client.get("/api/v1/analysis/types", headers=headers)
-        check(len(types_response.json()) == 10, "10 analyses in the v1 catalog")
+        check(len(types_response.json()) == 11, "11 analyses in the v1 catalog")
 
         descriptive = run_analysis("descriptive", {"columns": ["age", "income"]})
         check(descriptive["status"] == "success", "descriptive status is success")
@@ -474,6 +509,58 @@ def main() -> int:
         check(
             "observed" in chi["estimate"]["contingency_table"],
             "chi-square carries the observed table",
+        )
+
+        rank_forward = stats_engine.mann_whitney_u(
+            np.array([1.0, 2.0, 3.0]), np.array([10.0, 11.0, 12.0])
+        )
+        rank_reverse = stats_engine.mann_whitney_u(
+            np.array([10.0, 11.0, 12.0]), np.array([1.0, 2.0, 3.0])
+        )
+        check(rank_forward["rank_biserial"] > 0, "rank-biserial sign follows group order")
+        check(rank_reverse["rank_biserial"] < 0, "reversed groups reverse rank-biserial sign")
+
+        sparse_frame = pd.DataFrame(
+            {
+                "row_group": ["x", "x", "y", "y"],
+                "column_group": ["u", "v", "u", "v"],
+            }
+        )
+        sparse_chi = stats_engine.run_analysis(
+            sparse_frame,
+            "chi_square",
+            {"row_column": "row_group", "column_column": "column_group"},
+        )
+        sparse_fisher = stats_engine.run_analysis(
+            sparse_frame,
+            "fisher_exact",
+            {"row_column": "row_group", "column_column": "column_group"},
+        )
+        check(
+            abs(sparse_chi["test"]["p_value"] - sparse_fisher["test"]["p_value"]) < 1e-12,
+            "small 2x2 chi-square uses Fisher's exact p-value",
+        )
+        try:
+            stats_engine.run_analysis(
+                pd.DataFrame(
+                    {"value": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0], "group": ["a", "a", "b", "b", "c", "c"]}
+                ),
+                "welch_t_test",
+                {"value_column": "value", "group_column": "group"},
+            )
+        except stats_engine.AnalysisError:
+            check(True, "two-group method rejects a three-group variable")
+        else:
+            check(False, "two-group method rejects a three-group variable")
+
+        missing_group = stats_engine.run_analysis(
+            pd.DataFrame({"value": [1.0, 2.0, 3.0, 4.0, None, None], "group": ["a", "a", "b", "b", None, None]}),
+            "welch_t_test",
+            {"value_column": "value", "group_column": "group"},
+        )
+        check(
+            "<missing>" not in missing_group["estimate"]["group_means"],
+            "missing group labels are excluded from two-group estimates",
         )
 
         anova_result = run_analysis(
@@ -657,6 +744,18 @@ def main() -> int:
             rec_cat["recommendation"]["analysis_type"] == "chi_square",
             "categorical x categorical -> chi-square",
         )
+        rec_three_by_two = recommend(
+            {
+                "dataset_id": dataset_id,
+                "dataset_version": latest_version,
+                "outcome": "region",
+                "predictor": "gender",
+            }
+        )
+        check(
+            rec_three_by_two["recommendation"]["analysis_type"] == "chi_square",
+            "3x2 categorical table does not recommend Fisher's exact test",
+        )
         rec_bad = client.post(
             "/api/v1/planning/recommend",
             json={
@@ -705,11 +804,265 @@ def main() -> int:
             ask_sw.json()["plan"]["method"] in {"pearson", "spearman"},
             "Swahili association question plans a correlation",
         )
+        check(
+            "confidence interval" in ask_sw.json()["explanation"].lower(),
+            "correlation explanation includes a confidence interval",
+        )
+        check(
+            ask_sw.json()["dataset_version_id"] is not None,
+            "assistant response carries the immutable dataset version id",
+        )
+        check(
+            ask_sw.json()["result"]["test"]["significant"]
+            == (ask_sw.json()["result"]["test"]["p_value"] < ask_sw.json()["result"]["test"]["alpha"]),
+            "assistant significance flag matches the computed p-value",
+        )
+
+        check(
+            assistant.extract_variable_mentions("What is the average?", pd.DataFrame(columns=["age"])) == [],
+            "word average does not match the age variable",
+        )
+        plural_mentions = assistant.extract_variable_mentions(
+            "Is there a difference in income across regions?",
+            pd.DataFrame(columns=["income", "region"]),
+        )
+        check(
+            {item["column"] for item in plural_mentions} == {"income", "region"},
+            "plural variable names are recognised",
+        )
+        ambiguous_frame = pd.DataFrame(
+            {
+                "total sales": [1.0, 2.0, 3.0],
+                "total_sales": [4.0, 5.0, 6.0],
+                "region": ["a", "b", "c"],
+            }
+        )
+        try:
+            assistant.plan_question(
+                ambiguous_frame,
+                "Compare total sales across regions",
+                outcome="total sales",
+                predictor="region",
+            )
+        except planning.PlanningError:
+            check(False, "explicit selectors resolve an ambiguous question")
+        else:
+            check(True, "explicit selectors resolve an ambiguous question")
+
+        runs_before_no_mentions = len(
+            client.get(f"/api/v1/datasets/{dataset_id}/analysis", headers=headers).json()
+        )
+        no_mentions = client.post(
+            "/api/v1/assistant/ask",
+            json={
+                "dataset_id": dataset_id,
+                "dataset_version": latest_version,
+                "question": "What is the average?",
+            },
+            headers=headers,
+        )
+        check(no_mentions.status_code == 400, "assistant fails closed without a variable")
+        runs_after_no_mentions = len(
+            client.get(f"/api/v1/datasets/{dataset_id}/analysis", headers=headers).json()
+        )
+        check(
+            runs_after_no_mentions == runs_before_no_mentions,
+            "failed assistant request does not create an analysis run",
+        )
+
+        explicit_prediction = client.post(
+            "/api/v1/assistant/ask",
+            json={
+                "dataset_id": dataset_id,
+                "dataset_version": latest_version,
+                "question": "Can we predict sales from price?",
+                "outcome": "income",
+                "predictor": "age",
+            },
+            headers=headers,
+        )
+        check(
+            explicit_prediction.status_code == 200
+            and explicit_prediction.json()["plan"]["method"] == "linear_regression",
+            "explicit selectors determine prediction roles",
+        )
+        predictor_only = client.post(
+            "/api/v1/assistant/ask",
+            json={
+                "dataset_id": dataset_id,
+                "dataset_version": latest_version,
+                "question": "Can we predict sales from price?",
+                "predictor": "age",
+            },
+            headers=headers,
+        )
+        check(predictor_only.status_code == 400, "predictor selector requires an outcome")
+        same_selector = client.post(
+            "/api/v1/assistant/ask",
+            json={
+                "dataset_id": dataset_id,
+                "dataset_version": latest_version,
+                "question": "Describe income.",
+                "outcome": "income",
+                "predictor": "income",
+            },
+            headers=headers,
+        )
+        check(same_selector.status_code == 400, "outcome and predictor cannot be identical")
+        distribution_by_group = client.post(
+            "/api/v1/assistant/ask",
+            json={
+                "dataset_id": dataset_id,
+                "dataset_version": latest_version,
+                "question": "What is the average income by region?",
+            },
+            headers=headers,
+        )
+        check(
+            distribution_by_group.status_code == 200
+            and distribution_by_group.json()["plan"]["method"]
+            in {"one_way_anova", "kruskal_wallis"},
+            "a distribution question with two variables routes to a group comparison",
+        )
+
+        insufficient_explanation = assistant.explain(
+            {"question": "What is the average income?"},
+            {
+                "status": "insufficient_data",
+                "warnings": ["The dataset version has fewer than 3 rows"],
+            },
+        )
+        check(
+            "not completed" in insufficient_explanation.lower()
+            and "no significance decision" in insufficient_explanation.lower(),
+            "insufficient results do not produce significance claims",
+        )
+        causal_explanation = assistant.explain(
+            {"question": "What is the causal effect of age on income?"},
+            {
+                "analysis_type": "pearson",
+                "status": "success",
+                "estimate": {
+                    "x": "age",
+                    "y": "income",
+                    "correlation": 0.4,
+                    "strength": "moderate",
+                    "direction": "positive",
+                },
+                "test": {"p_value": 0.01, "alpha": 0.05, "significant": True},
+                "effect_size": {"name": "r", "value": 0.4},
+                "confidence_interval": {"level": 0.95, "lower": 0.3, "upper": 0.5},
+                "warnings": [],
+            },
+        )
+        check(
+            "does not identify a causal effect" in causal_explanation,
+            "causal questions receive an observational limitation",
+        )
 
         examples = client.get("/api/v1/assistant/examples", headers=headers)
         check(len(examples.json()["examples"]) >= 5, "assistant exposes examples")
 
-        # A different user must not read these results (ownership check on v1 too).
+        race_path = TEST_ROOT / "race.csv"
+        race_path.write_text("name,value\nAlpha,1\nBeta,2\n", encoding="utf-8")
+        with race_path.open("rb") as handle:
+            race_upload = client.post(
+                "/api/datasets/upload",
+                files={"file": (race_path.name, handle, "text/csv")},
+                headers=headers,
+            )
+        race_id = race_upload.json()["dataset_id"]
+        client.get(f"/api/v1/datasets/{race_id}/operations", headers=headers)
+
+        def create_race_version(marker):
+            race_db = SessionLocal()
+            try:
+                race_dataset = race_db.get(Dataset, race_id)
+                base = version_store.get_version(race_db, race_dataset, 1)
+                frame = version_store.read_version_file(base)
+                frame["race_marker"] = marker
+                race_version, race_operation = version_store.create_version(
+                    race_db,
+                    race_dataset,
+                    frame,
+                    operation_group="transform",
+                    operation_type="calculate_column",
+                    configuration={"name": "race_marker"},
+                    source_version=1,
+                    summary={"marker": marker},
+                    created_by=base.created_by,
+                )
+                return race_version.version, race_operation.sequence
+            finally:
+                race_db.close()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            race_results = list(executor.map(create_race_version, ("left", "right")))
+        check(
+            sorted(version for version, _ in race_results) == [2, 3],
+            "concurrent writers receive unique version numbers",
+        )
+        check(
+            sorted(sequence for _, sequence in race_results) == [1, 2],
+            "concurrent writers receive unique operation sequences",
+        )
+
+        race_db = SessionLocal()
+        race_versions = (
+            race_db.query(DatasetVersion)
+            .filter(DatasetVersion.dataset_id == race_id)
+            .order_by(DatasetVersion.version)
+            .all()
+        )
+        race_operations = (
+            race_db.query(DatasetOperation)
+            .filter(DatasetOperation.dataset_id == race_id)
+            .all()
+        )
+        check(
+            sum(int(item.is_current or 0) for item in race_versions) == 1,
+            "concurrent writers leave exactly one current version",
+        )
+        check(
+            {version_store.read_version_file(item)["race_marker"].iloc[0] for item in race_versions if item.version > 1}
+            == {"left", "right"},
+            "concurrent version files are not overwritten",
+        )
+        check(
+            {item.result_version for item in race_operations} == {2, 3},
+            "each concurrent operation points to its own version",
+        )
+        race_db.close()
+
+        recovery_db = SessionLocal()
+        try:
+            recovery_dataset = recovery_db.get(Dataset, race_id)
+            recovery_base = version_store.get_version(recovery_db, recovery_dataset, 1)
+            recovery_frame = version_store.read_version_file(recovery_base)
+            recovery_frame["race_marker"] = "recovered"
+            suffix = "parquet" if version_store.PARQUET_AVAILABLE else "csv"
+            orphan_path = version_store.versions_dir(recovery_dataset) / f"v4.{suffix}"
+            orphan_path.write_bytes(b"incomplete")
+            recovered_version, _ = version_store.create_version(
+                recovery_db,
+                recovery_dataset,
+                recovery_frame,
+                operation_group="transform",
+                operation_type="calculate_column",
+                configuration={"name": "race_marker"},
+                source_version=1,
+                summary={"marker": "recovered"},
+                created_by=recovery_base.created_by,
+            )
+            check(recovered_version.version == 4, "orphan version file is replaced")
+            check(
+                version_store.read_version_file(recovered_version)["race_marker"].iloc[0]
+                == "recovered",
+                "replacement version file is complete",
+            )
+        finally:
+            recovery_db.close()
+
         client.post(
             "/api/auth/register",
             json={

@@ -130,6 +130,7 @@ def _dataset_summary_frame(dataset: Dict[str, Any]) -> pd.DataFrame:
         [
             {"field": "Dataset", "value": dataset.get("original_filename")},
             {"field": "File type", "value": dataset.get("file_type")},
+            {"field": "Dataset version", "value": dataset.get("current_version")},
             {"field": "Rows", "value": dataset.get("row_count")},
             {"field": "Columns", "value": dataset.get("column_count")},
             {"field": "Status", "value": dataset.get("status")},

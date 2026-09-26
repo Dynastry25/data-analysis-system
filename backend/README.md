@@ -100,11 +100,13 @@ backend/
   `.txt` delimiter is auto-sniffed; every format shares the same `read_dataframe`
   path (and the version store), so cleaning, statistics, charts and exports work
   identically for all of them.
-- **Profile**: recomputes the profile from the file on disk and refreshes the stored
-  metadata, so it always matches the current (cleaned) data.
+- **Profile**: recomputes the profile from the latest immutable version and returns it
+  as a read-only response, so profiling never changes database state.
 - **Clean / transform (versioned)**: every operation on
-  `POST /api/v1/datasets/{id}/clean|transform` writes a new immutable
-  `dataset_versions` row (parquet) plus a `dataset_operations` audit entry.
+  `POST /api/v1/datasets/{id}/clean|transform` writes a complete temporary file,
+  atomically publishes it, then commits a new immutable `dataset_versions` row plus a
+  `dataset_operations` audit entry. Dataset locks and bounded retries serialize writers;
+  each version records its creator and exact parent.
   Cleaning: `drop_duplicates`, `drop_missing`, `fill_missing`
   (drop/mean/median/mode/zero/constant), `rename_columns`, `cast_types`
   (numeric/integer/text/date/boolean). Transforms: `select_columns`,
@@ -112,13 +114,18 @@ backend/
   `GET /api/v1/datasets/operations/catalog`).
 - **Analyse (unified engine)**: `POST /api/v1/datasets/{id}/analysis` runs
   `descriptive`, `frequency`, `pearson`/`spearman`, `welch_t_test`,
-  `mann_whitney`, `chi_square`, `one_way_anova`, `kruskal_wallis` or
+  `mann_whitney`, `chi_square`, `fisher_exact`, `one_way_anova`, `kruskal_wallis` or
   `linear_regression` and always returns the same standard-result structure
   (status / estimate / test / confidence interval / effect size / diagnostics
-  / tables). Saved runs live in `analysis_runs` and feed the export.
+  / tables). Saved runs record the exact dataset version in `analysis_runs` and feed
+  version-consistent exports. A sparse 2x2 chi-square reports Fisher's exact
+  p-value as the primary result and keeps the Pearson p-value separately.
 - **Planning + assistant**: `POST /api/v1/planning/profile|recommend`
   detects variables and recommends a method; `POST /api/v1/assistant/ask`
-  answers plain-language questions with a verified engine result.
+  answers plain-language questions with a verified engine result. The assistant
+  fails closed on ambiguous or unresolved variables, requires both roles for a
+  comparative question, and reports p-values, effect sizes, confidence intervals
+  and observational limitations without making causal claims.
 - **Organizations (Phase 1)**: `POST/GET /api/v1/organizations` create and list
   organizations; `/api/v1/organizations/{id}/members` manages membership with an RBAC
   role ladder **owner > admin > analyst > viewer** (the role rules live in
@@ -127,9 +134,11 @@ backend/
   according to their role (`deps.get_owned_dataset`), while personal datasets stay
   private to their owner.
 - **Charts**: returns Plotly-ready `chart_data` (`series[]` with x/y plus axis labels),
-  capping categories (50) and scatter points (5000) so big files stay responsive.
+  stores the exact source version, and caps categories (50) and scatter points (5000)
+  so big files stay responsive.
 - **Export**: `POST` returns `202` with `{report_id, status: "processing"}` and builds the
-  PDF/XLSX in a FastAPI `BackgroundTasks` job; poll `GET /reports/{id}/status`, then
+  PDF/XLSX in a FastAPI `BackgroundTasks` job. The report and every selected artifact
+  must share one dataset version; poll `GET /reports/{id}/status`, then
   `GET /reports/{id}/download` streams the finished file.
 
 ## 7. Additions to `api_endpoints.md`
@@ -179,7 +188,7 @@ These were added because the UI screens need them (the documented endpoints are 
 │       └── export_service.py   # XLSX workbook + PDF document writers
 │   └── statflow/          # unified engines: versioning, operations,
 │                          # statistics, planning, assistant (+ v1 routers)
-├── migrations/            # Alembic: env.py + versions/ (initial 5215fbda1c26)
+├── migrations/            # Alembic: env.py + versions/ (initial, teams, provenance)
 ├── alembic.ini
 ├── tests/smoke_test.py
 ├── tests/orgs_test.py

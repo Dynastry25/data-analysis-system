@@ -510,6 +510,101 @@ def main() -> int:
         check(r.status_code == 200 and r.json()["project_id"] == project_id,
               "owner moves dataset into a project")
 
+        analysis = client.post(
+            f"/api/v1/datasets/{movable_id}/analysis",
+            json={
+                "analysis_type": "descriptive",
+                "parameters": {"columns": ["value"]},
+            },
+            headers=h_owner,
+        )
+        check(analysis.status_code == 200, "owner creates a versioned analysis")
+        analysis_id = analysis.json()["analysis_id"]
+
+        chart = client.post(
+            f"/api/datasets/{movable_id}/charts",
+            json={
+                "chart_type": "bar",
+                "config": {"x": "name", "y": "value", "aggregate": "sum"},
+            },
+            headers=h_owner,
+        )
+        check(chart.status_code == 200, "owner creates a versioned chart")
+        chart_id = chart.json()["chart_id"]
+
+        exported = client.post(
+            f"/api/datasets/{movable_id}/export",
+            json={
+                "format": "xlsx",
+                "include_analysis_ids": [analysis_id],
+                "include_chart_ids": [chart_id],
+            },
+            headers=h_owner,
+        )
+        check(exported.status_code == 202, "owner exports a shared report")
+        report_id = exported.json()["report_id"]
+
+        check(
+            client.post(
+                "/api/v1/planning/profile",
+                json={"dataset_id": movable_id},
+                headers=h_b,
+            ).status_code
+            == 200,
+            "viewer can request planning profile",
+        )
+        check(
+            client.get(
+                f"/api/v1/analysis/{analysis_id}", headers=h_b
+            ).status_code
+            == 200,
+            "viewer can read shared analysis detail",
+        )
+        check(
+            client.get(f"/api/charts/{chart_id}", headers=h_b).status_code == 200,
+            "viewer can read shared chart detail",
+        )
+        check(
+            client.get(f"/api/reports/{report_id}/status", headers=h_b).status_code
+            == 200,
+            "viewer can read shared report status",
+        )
+        check(
+            client.get(f"/api/reports/{report_id}/download", headers=h_b).status_code
+            == 200,
+            "viewer can download shared report",
+        )
+        check(
+            client.post(
+                f"/api/v1/datasets/{movable_id}/analysis",
+                json={"analysis_type": "descriptive", "parameters": {}},
+                headers=h_b,
+            ).status_code
+            == 403,
+            "viewer cannot create analyses",
+        )
+        check(
+            client.post(
+                f"/api/datasets/{movable_id}/charts",
+                json={
+                    "chart_type": "bar",
+                    "config": {"x": "name", "y": "value"},
+                },
+                headers=h_b,
+            ).status_code
+            == 403,
+            "viewer cannot create charts",
+        )
+        check(
+            client.post(
+                f"/api/datasets/{movable_id}/export",
+                json={"format": "pdf"},
+                headers=h_b,
+            ).status_code
+            == 403,
+            "viewer cannot create reports",
+        )
+
         r = client.get("/api/datasets", headers=h_c)
         shared_ids = [d["id"] for d in r.json()]
         check(r.status_code == 200 and movable_id in shared_ids,
