@@ -289,11 +289,15 @@ def infer_column_type(series: pd.Series) -> str:
     if converted.notna().mean() == 1.0:
         return "numeric"
 
-    lowered = sample.astype(str).str.strip().str.lower()
+    # One string cast serves both the boolean membership test and the length
+    # test below. Casting the whole column twice was the most expensive step
+    # when profiling wide text columns.
+    as_str = sample.astype(str)
+    lowered = as_str.str.strip().str.lower()
     if lowered.isin(TRUTHY_STRINGS | FALSY_STRINGS).mean() == 1.0:
         return "boolean"
 
-    if sample.astype(str).str.len().max() <= 32 and looks_like_dates(sample):
+    if as_str.str.len().max() <= 32 and looks_like_dates(sample):
         return "date"
 
     return "text"

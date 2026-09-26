@@ -442,6 +442,61 @@ def main() -> int:
         )
         print(f"  [info] type inference for 4 x 100k columns: {infer_seconds:.2f}s")
 
+        # infer_column_type casts the column to string once instead of twice.
+        # These cases pin the classification that the single cast must preserve.
+        tricky = {
+            "plain_text": ["alpha", "beta gamma", None, "x" * 40],
+            "numeric_strings": ["1", "2", "3"],
+            "decimal_strings": ["1.5", "2.5", "3.5"],
+            "padded_numbers": [" 1 ", " 2 ", " 3 "],
+            "bool_words": ["true", "FALSE", "ndiyo"],
+            "bool_mixed_case": ["True", "FALSE", "YeS"],
+            "iso_dates": ["2024-01-01", "2024-02-02", "2024-03-03"],
+            "one_bad_value": ["1", "2", "abc"],
+            "empty_strings": ["", "", ""],
+            "long_values": ["x" * 80, "y" * 90],
+        }
+        expected_types = {
+            "plain_text": "text",
+            "numeric_strings": "numeric",
+            "decimal_strings": "numeric",
+            "padded_numbers": "numeric",
+            "bool_words": "boolean",
+            "bool_mixed_case": "boolean",
+            "iso_dates": "date",
+            "one_bad_value": "text",
+            "empty_strings": "text",
+            "long_values": "text",
+        }
+        for name, values in tricky.items():
+            actual = data_service.infer_column_type(pd.Series(values, dtype=object))
+            check(
+                actual == expected_types[name],
+                f"infer_column_type({name}) is {expected_types[name]} (got {actual})",
+            )
+        # The date probe only considers strings of 32 characters or fewer, so
+        # pin both sides of that boundary.
+        exactly_32 = "2024-01-01 12:00:00.000000+03:00"
+        check(
+            len(exactly_32) == 32,
+            f"the boundary fixture is exactly 32 characters (got {len(exactly_32)})",
+        )
+        check(
+            data_service.infer_column_type(pd.Series([exactly_32] * 2, dtype=object))
+            == "date",
+            "a 32 character timestamp is still treated as a date",
+        )
+        over_32 = "2024-01-01 12:00:00.000000000+03:00"
+        check(
+            len(over_32) > 32,
+            f"the over-length fixture exceeds 32 characters (got {len(over_32)})",
+        )
+        check(
+            data_service.infer_column_type(pd.Series([over_32] * 2, dtype=object))
+            == "text",
+            "a timestamp longer than 32 characters stays text",
+        )
+
         expected_runs = 0
 
         def run_analysis(analysis_type, parameters):

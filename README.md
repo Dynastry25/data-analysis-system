@@ -201,6 +201,37 @@ vinahifadhiwa — hivyo mtumiaji anaweza kurudi baadaye na kuona kazi yake yote.
 | Kuchambua safu 100,000+ bila kuzuia UI | ⚠️ Inafanya kazi (bila memory ya ziada — upload inasoma kwa chunks), lakini kwa sasa uchambuzi unafanyika ndani ya request. Awamu inayofuata: kuhamisha `analyze`/`clean` kwenye Celery/RQ worker (API contract haitabadilika) |
 | Kutoka upload hadi ripoti bila kuandika code | ✅ |
 
+### 6b. Uamuzi wa utendaji: Polars/DuckDB (spec §5 na §9)
+
+Spec §5/§9 zinadai **Polars au DuckDB badala ya Pandas peke yake kwa faili kubwa**. Ilipimwa
+(1,000,000 safu × 14 columns, CSV 211 MB) kabla ya kuamua, na matokeo yalikuwa:
+
+| Njia | muda | Thibitisho |
+|---|---|---|
+| Sasa (pandas) | 7.94s | msingi |
+| DuckDB kwa kuwa na `profile_columns` kwenye SQL | 3.11s (2.7x) | **Haipo salama** — angalia hapa chini |
+| DuckDB kwa reader tu (faili ≥ 8 MB) | 6.61s (1.20x) | `data_type`/`missing_count`/`unique_count`/`min` sawana; ~30% ya floats tofauti |
+
+**Kwa nini DuckDB haukubaliwa:**
+
+1. **Aina ya data haisambieni.** Kisha DuckDB iliotua kila kitu kuwa `VARCHAR` ili kuondoa
+   kiole, lakini hivyo ndivyo ilivyoharibu upande mwingine: pandas huripoti kipeo
+   `numeric` kwa kulinganisha **dtype**, ambayo njia ya VARCHAR haisemi. Matokeo: kila
+   algorithm ya SQL itabadilisha utambuzi wa aina.
+2. **Faida ndogo sana.** Reader pekee ni 1.20x tu, kwa sababu `profile_columns` (hasa
+   `infer_column_type`) ndio bottleneck, si kusoma.
+3. **Usahihi wa data.** Kati ya 27-32% ya floats zilizotoka kwenye faili kubwa zinalipwa
+   tofauti na pandas (dhamana kubwa 9e-13). DuckDB ndio anayopanga kwa uweli; parser ya
+   C ya pandas ndio haipo. Tokeo: thamani zinazohifadhiwa zinabadilika kwa faili kubwa.
+
+**Ilichukuliwa badala yake:** `infer_column_type` ilikuwa ikifanya `astype(str)` mara mbili
+kwenye kila column. Kuondoa ile nakala rudufu ni salama kabisa (imehakikiwa kwenye
+mifano 10 ya hali magumu) na inaimaliza kwa 1.19x (3.04s → 2.56s) bila kubadilisha
+tabia yoyote.
+
+**Ikiwa sasa uamua:** hii si "fanyia polea". Inasema tu kwamba iko hatua moja tu — kupima
+kabla ya kuongeza mzigo.
+
 ---
 
 ## 7. Baada ya MVP (future work — spec §12)
