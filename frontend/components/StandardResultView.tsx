@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/Badge";
 import { DataTable } from "@/components/DataTable";
+import { Icon } from "@/components/Icon";
 import { StandardResult } from "@/lib/api";
 import { colorForIndex } from "@/lib/constants";
 
@@ -114,11 +115,13 @@ function EstimateTable({ record }: { record: Record<string, unknown> }) {
     <table className="w-full text-left text-body">
       <tbody>
         {entries.map(([key, value]) => (
-          <tr key={key} className="border-b border-neutral-100 last:border-0">
-            <th className="py-1.5 pr-4 font-medium text-neutral-600">{key}</th>
-            <td className="py-1.5">
+          <tr key={key} className="border-b border-surface-border last:border-0">
+            <th scope="row" className="py-1.5 pr-4 font-medium text-ink-secondary">
+              {key}
+            </th>
+            <td className="py-1.5 text-ink">
               {value !== null && typeof value === "object" ? (
-                <pre className="whitespace-pre-wrap text-caption">
+                <pre className="whitespace-pre-wrap font-mono text-caption">
                   {JSON.stringify(value, null, 2)}
                 </pre>
               ) : (
@@ -140,7 +143,7 @@ function TablesBlock({ tables }: { tables: Record<string, unknown> }) {
       const rows = value as Record<string, unknown>[];
       rendered.push(
         <div key={key}>
-          <p className="mb-1 text-caption font-semibold text-neutral-600">{key}</p>
+          <p className="mb-1.5 text-overline uppercase tracking-wide text-ink-muted">{key}</p>
           <DataTable
             caption={key}
             columns={Object.keys(rows[0])}
@@ -154,8 +157,8 @@ function TablesBlock({ tables }: { tables: Record<string, unknown> }) {
     } else {
       rendered.push(
         <div key={key}>
-          <p className="mb-1 text-caption font-semibold text-neutral-600">{key}</p>
-          <pre className="whitespace-pre-wrap rounded bg-neutral-50 p-2 text-caption">
+          <p className="mb-1.5 text-overline uppercase tracking-wide text-ink-muted">{key}</p>
+          <pre className="overflow-x-auto whitespace-pre-wrap rounded-md bg-surface-sunken p-2.5 font-mono text-caption text-ink-secondary">
             {JSON.stringify(value, null, 2)}
           </pre>
         </div>
@@ -166,7 +169,7 @@ function TablesBlock({ tables }: { tables: Record<string, unknown> }) {
 }
 
 /** Single key-number card (mono font per design system §3) — reused by result views. */
-export function MetricCard({
+export function ResultMetric({
   label,
   value,
   hint,
@@ -176,14 +179,12 @@ export function MetricCard({
   hint?: string;
 }) {
   return (
-    <div className="rounded border border-neutral-200 bg-neutral-50 p-4">
-      <p className="truncate text-caption uppercase tracking-wide text-neutral-600">
+    <div className="rounded-md border border-surface-border bg-surface-sunken p-3.5">
+      <p className="truncate text-overline uppercase tracking-wide text-ink-muted">
         {label}
       </p>
-      <p className="mt-1 truncate font-mono text-h2 text-neutral-900">{value}</p>
-      {hint && (
-        <p className="mt-1 truncate text-caption text-neutral-600">{hint}</p>
-      )}
+      <p className="tabular mt-1 truncate font-mono text-h2 text-ink">{value}</p>
+      {hint && <p className="mt-1 truncate text-caption text-ink-muted">{hint}</p>}
     </div>
   );
 }
@@ -197,11 +198,16 @@ export function CollapsibleDetails({
   children: React.ReactNode;
 }) {
   return (
-    <details className="rounded border border-neutral-200">
-      <summary className="cursor-pointer px-4 py-3 text-body font-medium text-neutral-600 transition-colors duration-150 ease-out hover:bg-neutral-50">
+    <details className="group rounded-md border border-surface-border bg-surface-panel">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-body font-medium text-ink-secondary transition-colors duration-150 ease-out hover:bg-surface-sunken hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500">
+        <Icon
+          name="chevron-down"
+          size={16}
+          className="shrink-0 text-ink-muted transition-transform duration-200 group-open:rotate-180"
+        />
         {label}
       </summary>
-      <div className="details-content space-y-4 border-t border-neutral-200 p-4">
+      <div className="details-content space-y-4 border-t border-surface-border p-4">
         {children}
       </div>
     </details>
@@ -211,11 +217,12 @@ export function CollapsibleDetails({
 /** Layer 5 — practical meaning in plain language, in an info box. */
 export function InterpretationBox({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded border border-info bg-info-bg p-4">
-      <p className="text-caption font-semibold text-info">
+    <div className="rounded-md border border-info/30 bg-info-bg p-4">
+      <p className="flex items-center gap-1.5 text-overline font-semibold uppercase tracking-wide text-info-700">
+        <Icon name="sparkles" size={14} />
         Tafsiri kwa lugha rahisi
       </p>
-      <p className="mt-1 text-body text-neutral-900">{children}</p>
+      <p className="mt-1.5 text-body text-ink">{children}</p>
     </div>
   );
 }
@@ -251,7 +258,7 @@ function MetricCards({ result }: { result: StandardResult }) {
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {metrics.map((metric) => (
-        <MetricCard key={metric.label} {...metric} />
+        <ResultMetric key={metric.label} {...metric} />
       ))}
     </div>
   );
@@ -279,11 +286,11 @@ function CiChart({ result }: { result: StandardResult }) {
 
   return (
     <div role="img" aria-label={ariaLabel}>
-      <p className="mb-2 text-caption font-semibold text-neutral-600">
+      <p className="mb-2 text-overline uppercase tracking-wide text-ink-muted">
         Confidence interval ({levelPct}%)
       </p>
       <div className="relative h-8" aria-hidden="true">
-        <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-neutral-200" />
+        <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-surface-border-strong" />
         {zeroInside && (
           <div
             className="absolute top-0 h-full w-px bg-neutral-400"
@@ -299,12 +306,12 @@ function CiChart({ result }: { result: StandardResult }) {
         />
         {point !== null && (
           <div
-            className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-primary-600"
+            className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface-panel bg-primary-600"
             style={{ left: `${pct(point)}%` }}
           />
         )}
       </div>
-      <div className="mt-1 flex justify-between font-mono text-caption text-neutral-600">
+      <div className="mt-1 flex justify-between font-mono text-caption text-ink-muted">
         <span>{fmt(ci.lower)}</span>
         {point !== null && <span className="text-primary-700">{fmt(point)}</span>}
         <span>{fmt(ci.upper)}</span>
@@ -327,19 +334,17 @@ export function GroupBars({
     .join(", ")}`;
   return (
     <div role="img" aria-label={ariaLabel}>
-      <p className="mb-2 text-caption font-semibold text-neutral-600">
-        {title}
-      </p>
+      <p className="mb-2 text-overline uppercase tracking-wide text-ink-muted">{title}</p>
       <div className="space-y-2" aria-hidden="true">
         {values.map((entry, index) => (
           <div key={entry.label} className="flex items-center gap-2">
             <span
-              className="w-28 truncate text-caption text-neutral-600"
+              className="w-28 truncate text-caption text-ink-secondary"
               title={entry.label}
             >
               {entry.label}
             </span>
-            <div className="h-4 flex-1 rounded bg-neutral-100">
+            <div className="h-4 flex-1 overflow-hidden rounded bg-surface-sunken">
               <div
                 className="bar-grow h-full rounded"
                 style={{
@@ -348,7 +353,7 @@ export function GroupBars({
                 }}
               />
             </div>
-            <span className="w-20 text-right font-mono text-caption text-neutral-900">
+            <span className="tabular w-20 text-right font-mono text-caption text-ink">
               {fmt(entry.value)}
             </span>
           </div>
@@ -362,6 +367,53 @@ interface StandardResultViewProps {
   result: StandardResult;
   /** Optional next-step buttons (design system §10 layer 6). */
   actions?: React.ReactNode;
+}
+
+function metaString(meta: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = meta[key];
+    if (typeof value === "string" && value.trim()) return value;
+    if (typeof value === "number") return String(value);
+  }
+  return null;
+}
+
+/** Layer 0 — reproducibility: which data version, engine and run produced this. */
+function ProvenanceStrip({ result }: { result: StandardResult }) {
+  const version = metaString(result.meta, "dataset_version", "version");
+  const engine = metaString(result.meta, "engine", "engine_version", "method_version");
+  const dataset = metaString(result.meta, "dataset_name", "filename", "original_filename");
+  const createdAt = metaString(result.meta, "created_at", "timestamp", "computed_at");
+  if (!version && !engine && !dataset && !createdAt) return null;
+
+  return (
+    <dl className="flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-md border border-surface-border bg-surface-sunken px-3.5 py-2.5 text-caption">
+      {version && (
+        <div className="flex items-center gap-1.5">
+          <dt className="text-ink-muted">Data version</dt>
+          <dd className="font-mono font-medium text-ink">v{version}</dd>
+        </div>
+      )}
+      {dataset && (
+        <div className="flex min-w-0 items-center gap-1.5">
+          <dt className="shrink-0 text-ink-muted">Dataset</dt>
+          <dd className="truncate font-medium text-ink">{dataset}</dd>
+        </div>
+      )}
+      {engine && (
+        <div className="flex items-center gap-1.5">
+          <dt className="text-ink-muted">Engine</dt>
+          <dd className="font-mono font-medium text-ink">{engine}</dd>
+        </div>
+      )}
+      {createdAt && (
+        <div className="flex items-center gap-1.5">
+          <dt className="text-ink-muted">Imekokolewa</dt>
+          <dd className="text-ink">{createdAt}</dd>
+        </div>
+      )}
+    </dl>
+  );
 }
 
 /**
@@ -387,29 +439,35 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
     <div className="space-y-6">
       {/* Layer 1 — Kichwa cha habari */}
       <div>
-        <p className="text-body-lg text-neutral-900">{buildHeadline(result)}</p>
+        <p className="text-body-lg text-ink">{buildHeadline(result)}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge tone="primary">{result.analysis_type}</Badge>
+          {result.test?.method && (
+            <Badge tone="neutral" icon="calculator">
+              {result.test.method}
+            </Badge>
+          )}
           {significant !== null && (
             <Badge tone={significant ? "success" : "neutral"}>
               Umuhimu wa kitakwimu: {significant ? "Ndiyo" : "Hapana"}
             </Badge>
           )}
-          {result.status !== "success" && (
-            <Badge tone="warning">
-              {result.status}
-            </Badge>
-          )}
+          {result.status !== "success" && <Badge tone="warning">{result.status}</Badge>}
         </div>
       </div>
+
+      <ProvenanceStrip result={result} />
 
       {result.warnings.length > 0 && (
         <div
           role="alert"
-          className="rounded border border-warning bg-warning-bg p-3 text-caption text-warning"
+          className="rounded-md border border-warning/40 bg-warning-bg p-3 text-caption text-warning-700"
         >
-          <p className="mb-1 font-semibold">⚠ Tahadhari</p>
-          <ul className="list-disc pl-5">
+          <p className="mb-1 flex items-center gap-1.5 font-semibold">
+            <Icon name="alert-triangle" size={14} />
+            Tahadhari
+          </p>
+          <ul className="list-disc space-y-0.5 pl-5">
             {result.warnings.map((warning) => (
               <li key={warning}>{warning}</li>
             ))}
@@ -422,7 +480,7 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
 
       {/* Layer 3 — Taswira */}
       {hasVisual && (
-        <div className="space-y-4 rounded border border-neutral-200 bg-neutral-50 p-4">
+        <div className="space-y-4 rounded-md border border-surface-border bg-surface-sunken p-4">
           <CiChart result={result} />
           {groupValues && <GroupBars values={groupValues} />}
         </div>
@@ -430,82 +488,82 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
 
       {/* Layer 4 — Angalia zaidi (undani wa kitakwimu) */}
       <CollapsibleDetails label="Angalia zaidi — undani wa kitakwimu (estimate, CI, df, diagnostics)">
-          <div className="grid gap-4 lg:grid-cols-2">
-        <div>
-          <p className="mb-1 text-caption font-semibold text-neutral-600">
-            Makadirio (estimate)
-          </p>
-          <EstimateTable record={result.estimate} />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div>
+            <p className="mb-1.5 text-overline uppercase tracking-wide text-ink-muted">
+              Makadirio (estimate)
+            </p>
+            <EstimateTable record={result.estimate} />
+          </div>
+          <div className="space-y-3">
+            {result.test && (
+              <div>
+                <p className="mb-1.5 text-overline uppercase tracking-wide text-ink-muted">
+                  Jaribio (test)
+                </p>
+                <div className="rounded-md border border-surface-border bg-surface-sunken/60 p-3">
+                  <EstimateTable
+                    record={{
+                      test: result.test.method,
+                      statistic: result.test.statistic,
+                      df: result.test.df ?? result.test.df1,
+                      p_value: pValue,
+                      alpha: result.test.alpha,
+                      significant: significant,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            {result.confidence_interval && (
+              <div>
+                <p className="mb-1.5 text-overline uppercase tracking-wide text-ink-muted">
+                  Confidence interval
+                </p>
+                <div className="rounded-md border border-surface-border bg-surface-sunken/60 p-3">
+                  <EstimateTable
+                    record={{
+                      level: result.confidence_interval.level,
+                      lower: result.confidence_interval.lower,
+                      upper: result.confidence_interval.upper,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            {result.effect_size && (
+              <div>
+                <p className="mb-1.5 text-overline uppercase tracking-wide text-ink-muted">
+                  Effect size
+                </p>
+                <div className="rounded-md border border-surface-border bg-surface-sunken/60 p-3">
+                  <EstimateTable
+                    record={{
+                      name: result.effect_size.name,
+                      value: result.effect_size.value,
+                      interpretation: result.effect_size.interpretation,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="space-y-3">
-          {result.test && (
-            <div>
-              <p className="mb-1 text-caption font-semibold text-neutral-600">
-                Jaribio (test)
-              </p>
-              <div className="rounded border border-neutral-200 p-3">
-                <EstimateTable
-                  record={{
-                    test: result.test.method,
-                    statistic: result.test.statistic,
-                    df: result.test.df ?? result.test.df1,
-                    p_value: pValue,
-                    alpha: result.test.alpha,
-                    significant: significant,
-                  }}
-                />
-              </div>
-            </div>
-          )}
-          {result.confidence_interval && (
-            <div>
-              <p className="mb-1 text-caption font-semibold text-neutral-600">
-                Confidence interval
-              </p>
-              <div className="rounded border border-neutral-200 p-3">
-                <EstimateTable
-                  record={{
-                    level: result.confidence_interval.level,
-                    lower: result.confidence_interval.lower,
-                    upper: result.confidence_interval.upper,
-                  }}
-                />
-              </div>
-            </div>
-          )}
-          {result.effect_size && (
-            <div>
-              <p className="mb-1 text-caption font-semibold text-neutral-600">
-                Effect size
-              </p>
-              <div className="rounded border border-neutral-200 p-3">
-                <EstimateTable
-                  record={{
-                    name: result.effect_size.name,
-                    value: result.effect_size.value,
-                    interpretation: result.effect_size.interpretation,
-                  }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
 
-          {Object.keys(result.diagnostics).length > 0 && (
-            <details>
-              <summary className="cursor-pointer text-caption font-semibold text-neutral-600">
-                Diagnostics
-              </summary>
-              <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-neutral-50 p-3 font-mono text-caption">
-                {JSON.stringify(result.diagnostics, null, 2)}
-              </pre>
-            </details>
-          )}
+        {Object.keys(result.diagnostics).length > 0 && (
+          <details>
+            <summary className="cursor-pointer text-caption font-semibold text-ink-secondary">
+              Diagnostics
+            </summary>
+            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-surface-sunken p-3 font-mono text-caption text-ink-secondary">
+              {JSON.stringify(result.diagnostics, null, 2)}
+            </pre>
+          </details>
+        )}
 
-          {Object.keys(result.tables).length > 0 && (
-            <TablesBlock tables={result.tables} />
-          )}
+        {Object.keys(result.tables).length > 0 && (
+          <TablesBlock tables={result.tables} />
+        )}
       </CollapsibleDetails>
 
       {/* Layer 5 — Tafsiri kwa lugha rahisi */}

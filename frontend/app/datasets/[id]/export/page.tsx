@@ -37,6 +37,7 @@ export default function ExportPage() {
   const [format, setFormat] = useState<"pdf" | "xlsx">("pdf");
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(datasetId)) return;
@@ -76,16 +77,28 @@ export default function ExportPage() {
     return list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
   }
 
-  async function waitForReport(reportId: number, attempt = 0): Promise<string> {
+  const canGenerate =
+    !loading && !generating && (selectedAnalyses.length > 0 || selectedCharts.length > 0);
+
+  async function waitForReport(
+    reportId: number,
+    attempt = 0,
+    onProgress?: (percent: number) => void
+  ): Promise<string> {
+    onProgress?.(Math.min(92, Math.round(((attempt + 1) / POLL_ATTEMPTS) * 100)));
     const status = await api.reports.status(reportId);
-    if (status.status !== "processing") return status.status;
+    if (status.status !== "processing") {
+      onProgress?.(100);
+      return status.status;
+    }
     if (attempt >= POLL_ATTEMPTS) return "timeout";
     await new Promise((resolve) => setTimeout(resolve, POLL_DELAY_MS));
-    return waitForReport(reportId, attempt + 1);
+    return waitForReport(reportId, attempt + 1, onProgress);
   }
 
   async function generateReport() {
     setGenerating(true);
+    setProgress(0);
     try {
       const created = await api.reports.create(datasetId, {
         format,
@@ -94,8 +107,9 @@ export default function ExportPage() {
         include_chart_ids: selectedCharts,
       });
       showToast("Ripoti inaandaliwa…", "info");
-      const finalStatus = await waitForReport(created.report_id);
+      const finalStatus = await waitForReport(created.report_id, 0, setProgress);
       await load();
+      setProgress(null);
       if (finalStatus === "completed") {
         showToast("Ripoti imekamilika", "success");
         await downloadReport(created.report_id, format);
@@ -105,6 +119,7 @@ export default function ExportPage() {
         showToast("Ripoti bado inaandaliwa. Jaribu kupakua baadaye.", "warning");
       }
     } catch (caught) {
+      setProgress(null);
       showToast(apiErrorMessage(caught), "danger");
     } finally {
       setGenerating(false);
@@ -137,17 +152,22 @@ export default function ExportPage() {
       actions={
         <>
           <Link href={`/datasets/${datasetId}/analyze`}>
-            <Button variant="secondary">Chambua zaidi</Button>
+            <Button variant="secondary" icon="calculator">
+              Chambua zaidi
+            </Button>
           </Link>
           <Link href={`/datasets/${datasetId}/charts`}>
-            <Button variant="secondary">Chora chati</Button>
+            <Button variant="secondary" icon="chart">
+              Chora chati
+            </Button>
           </Link>
         </>
       }
     >
       <Card
         title="Chagua maudhui ya ripoti"
-        description={`Cheki takwimu na chati za toleo la data ${datasetVersion ?? "—"}.`}
+        description={`Ripoti itatengenezwa kutoka toleo la data v${datasetVersion ?? "—"} ili matokeo yaweze kufuatilia data iliyotumika.`}
+        icon="clipboard"
       >
         {loading ? (
           <div className="space-y-2">
@@ -156,19 +176,44 @@ export default function ExportPage() {
           </div>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded border border-neutral-200 p-4">
-              <p className="text-h3 text-neutral-900">Takwimu (analyses)</p>
+            <div className="rounded-md border border-surface-border p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-h4 font-semibold text-ink">Takwimu (analyses)</h3>
+                {analyses.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    onClick={() =>
+                      setSelectedAnalyses(
+                        selectedAnalyses.length === analyses.length ? [] : analyses.map((a) => a.analysis_id)
+                      )
+                    }
+                  >
+                    {selectedAnalyses.length === analyses.length
+                      ? "Ondoa zote"
+                      : "Chagua zote"}
+                  </Button>
+                )}
+              </div>
               {analyses.length === 0 ? (
-                <p className="mt-2 text-body text-neutral-600">
-                  Hakuna matokeo ya uchambuzi bado. Endesha uchambuzi kwanza.
+                <p className="mt-2 text-body text-ink-secondary">
+                  Hakuna matokeo ya uchambuzi bado.{" "}
+                  <Link
+                    href={`/datasets/${datasetId}/statistics`}
+                    className="font-medium text-primary-700 underline underline-offset-2 hover:text-primary-800"
+                  >
+                    Endesha uchambuzi
+                  </Link>{" "}
+                  kwanza.
                 </p>
               ) : (
-                <ul className="mt-2 space-y-2">
+                <ul className="mt-2 space-y-1">
                   {analyses.map((analysis) => (
                     <li key={analysis.analysis_id}>
-                      <label className="flex min-h-[44px] items-center gap-2 text-body">
+                      <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded px-1 text-body text-ink transition-colors duration-150 hover:bg-surface-sunken">
                         <input
                           type="checkbox"
+                          className="size-4 shrink-0 rounded border-surface-border-strong text-primary-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
                           checked={selectedAnalyses.includes(analysis.analysis_id)}
                           onChange={() =>
                             setSelectedAnalyses((previous) =>
@@ -176,8 +221,8 @@ export default function ExportPage() {
                             )
                           }
                         />
-                        <span>{analysis.analysis_type}</span>
-                        <span className="text-caption text-neutral-600">
+                        <span className="font-medium">{analysis.analysis_type}</span>
+                        <span className="ml-auto text-caption text-ink-muted">
                           {analysis.created_at
                             ? new Date(analysis.created_at).toLocaleString()
                             : ""}
@@ -189,29 +234,55 @@ export default function ExportPage() {
               )}
             </div>
 
-            <div className="rounded border border-neutral-200 p-4">
-              <p className="text-h3 text-neutral-900">Chati (charts)</p>
+            <div className="rounded-md border border-surface-border p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-h4 font-semibold text-ink">Chati (charts)</h3>
+                {charts.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="small"
+                    onClick={() =>
+                      setSelectedCharts(
+                        selectedCharts.length === charts.length ? [] : charts.map((c) => c.chart_id)
+                      )
+                    }
+                  >
+                    {selectedCharts.length === charts.length
+                      ? "Ondoa zote"
+                      : "Chagua zote"}
+                  </Button>
+                )}
+              </div>
               {charts.length === 0 ? (
-                <p className="mt-2 text-body text-neutral-600">
-                  Hakuna chati bado. Tengeneza chati kwenye ukurasa wa chati.
+                <p className="mt-2 text-body text-ink-secondary">
+                  Hakuna chati bado.{" "}
+                  <Link
+                    href={`/datasets/${datasetId}/charts`}
+                    className="font-medium text-primary-700 underline underline-offset-2 hover:text-primary-800"
+                  >
+                    Tengeneza chati
+                  </Link>{" "}
+                  kwenye ukurasa wa chati.
                 </p>
               ) : (
-                <ul className="mt-2 space-y-2">
+                <ul className="mt-2 space-y-1">
                   {charts.map((chart) => (
                     <li key={chart.chart_id}>
-                      <label className="flex min-h-[44px] items-center gap-2 text-body">
+                      <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded px-1 text-body text-ink transition-colors duration-150 hover:bg-surface-sunken">
                         <input
                           type="checkbox"
+                          className="size-4 shrink-0 rounded border-surface-border-strong text-primary-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
                           checked={selectedCharts.includes(chart.chart_id)}
                           onChange={() =>
-                            setSelectedCharts((previous) =>
-                              toggle(previous, chart.chart_id)
-                            )
+                            setSelectedCharts((previous) => toggle(previous, chart.chart_id))
                           }
                         />
                         <span>
-                          {chart.chart_type} {chart.config.x}
-                          {chart.config.y ? ` vs ${chart.config.y}` : ""}
+                          <span className="font-medium">{chart.chart_type}</span>{" "}
+                          <span className="text-ink-secondary">
+                            {chart.config.x}
+                            {chart.config.y ? ` vs ${chart.config.y}` : ""}
+                          </span>
                         </span>
                       </label>
                     </li>
@@ -222,52 +293,109 @@ export default function ExportPage() {
           </div>
         )}
 
-        <fieldset className="mt-4">
-          <legend className="text-body text-neutral-900">Muundo wa faili</legend>
-          <div className="mt-2 flex flex-wrap gap-4">
-            <label className="flex min-h-[44px] items-center gap-2 text-body">
-              <input
-                type="radio"
-                name="format"
-                checked={format === "pdf"}
-                onChange={() => setFormat("pdf")}
-              />
-              PDF (ripoti ya kusoma/kuprint)
-            </label>
-            <label className="flex min-h-[44px] items-center gap-2 text-body">
-              <input
-                type="radio"
-                name="format"
-                checked={format === "xlsx"}
-                onChange={() => setFormat("xlsx")}
-              />
-              Excel (data kamili ya kila jedwali)
-            </label>
+        <fieldset className="mt-5">
+          <legend className="text-body font-medium text-ink">Muundo wa faili</legend>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {(
+              [
+                {
+                  value: "pdf" as const,
+                  label: "PDF",
+                  hint: "Ripoti ya kusoma na kuprint, yenye muhtasari na chati.",
+                },
+                {
+                  value: "xlsx" as const,
+                  label: "Excel (.xlsx)",
+                  hint: "Data kamili ya kila jedwali kwa uchambuzi zaidi.",
+                },
+              ]
+            ).map((option) => (
+              <label
+                key={option.value}
+                className={`flex cursor-pointer items-start gap-2.5 rounded-md border p-3 transition-colors duration-150 ${
+                  format === option.value
+                    ? "border-primary-500 bg-primary-50"
+                    : "border-surface-border bg-surface-panel hover:bg-surface-sunken"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="format"
+                  className="mt-0.5 size-4 shrink-0 border-surface-border-strong text-primary-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
+                  checked={format === option.value}
+                  onChange={() => setFormat(option.value)}
+                />
+                <span>
+                  <span className="block text-body font-medium text-ink">{option.label}</span>
+                  <span className="block text-caption text-ink-muted">{option.hint}</span>
+                </span>
+              </label>
+            ))}
           </div>
         </fieldset>
 
-        <Button
-          className="mt-4"
-          size="large"
-          loading={generating}
-          onClick={generateReport}
-        >
-          Tengeneza na pakua ripoti
-        </Button>
+        <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-surface-border pt-4">
+          <Button
+            size="large"
+            loading={generating}
+            disabled={!canGenerate}
+            onClick={generateReport}
+          >
+            Tengeneza na pakua ripoti
+          </Button>
+          <p className="text-caption text-ink-muted">
+            {selectedAnalyses.length} takwimu · {selectedCharts.length} chati · toleo{" "}
+            <span className="font-mono font-medium text-ink">v{datasetVersion ?? "—"}</span>
+          </p>
+        </div>
+
+        {progress !== null && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-4 rounded-md border border-info/30 bg-info-bg p-3"
+          >
+            <div className="flex items-center gap-2 text-body font-medium text-ink">
+              <span className="spinner size-4 shrink-0 rounded-full border-2 border-primary-200 border-t-primary-600" />
+              Ripoti inaandaliwa…
+            </div>
+            <div
+              className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-primary-100"
+              role="progressbar"
+              aria-valuenow={progress}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Maendeleo ya kutengeneza ripoti"
+            >
+              <div
+                className="h-full rounded-full bg-primary-600 transition-[width] duration-300 ease-out"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="mt-1.5 text-caption text-ink-secondary">
+              Hali: inaunganisha takwimu na chati ulizochagua. Unaweza kurudi tena kupakua
+              ripoti baadaye.
+            </p>
+          </div>
+        )}
       </Card>
 
       <Card
         title="Ripoti zilizotengenezwa"
         description="Ripoti zote za dataset hii unaweza kuzipakua tena."
+        icon="file-text"
       >
         {reports.length === 0 ? (
-          <EmptyState title="Hakuna ripoti bado" />
+          <EmptyState
+            title="Hakuna ripoti bado"
+            description="Ripoti zitaonekana hapa baada ya kutengeneza moja kwa juu."
+          />
         ) : (
-          <ul className="space-y-2">
+          <ul className="divide-y divide-surface-border">
             {reports.map((report) => (
               <li
                 key={report.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded border border-neutral-200 px-3 py-2"
+                className="flex flex-wrap items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0"
               >
                 <span className="flex flex-wrap items-center gap-3">
                   <Badge
@@ -281,10 +409,10 @@ export default function ExportPage() {
                   >
                     {report.status}
                   </Badge>
-                  <span className="text-body text-neutral-900">
+                  <span className="text-body font-medium text-ink">
                     {report.file_format.toUpperCase()}
                   </span>
-                  <span className="text-caption text-neutral-600">
+                  <span className="text-caption text-ink-muted">
                     {report.created_at
                       ? new Date(report.created_at).toLocaleString()
                       : ""}
@@ -293,6 +421,7 @@ export default function ExportPage() {
                 <Button
                   variant="secondary"
                   size="small"
+                  icon="download"
                   disabled={report.status !== "completed"}
                   onClick={() => downloadReport(report.id, report.file_format)}
                 >
@@ -303,7 +432,6 @@ export default function ExportPage() {
           </ul>
         )}
       </Card>
-
     </AppShell>
   );
 }

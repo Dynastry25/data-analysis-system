@@ -323,13 +323,18 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
         </div>
       )}
 
-      <section className="rounded-lg border border-surface-border bg-surface-sunken p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-success shadow-card">
+      <section className="rounded-lg border border-surface-border border-l-4 border-l-success bg-surface-panel p-4">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-success-bg text-success">
             <Icon name="shield" size={16} />
           </span>
           <h3 className="text-h3 text-ink">Computed by Statistical Engine</h3>
         </div>
+        <p className="mb-3 text-caption text-ink-muted">
+          Kila namba hapa chini imekokolewa na mhesabu wa takwimu kwa method
+          <span className="font-medium text-ink-secondary"> {answer.plan.method_label}</span>
+          — si na AI. AI hawezi kubadilisha namba hizi.
+        </p>
         {answer.result ? (
           <StandardResultView result={answer.result} />
         ) : (
@@ -339,13 +344,17 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
         )}
       </section>
 
-      <section className="rounded-lg border border-primary-200 bg-primary-50/60 p-4">
-        <div className="mb-3 flex items-center gap-2">
+      <section className="rounded-lg border border-primary-200 border-l-4 border-l-primary-400 bg-primary-50/60 p-4">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
           <span className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-primary-600 shadow-card">
             <Icon name="sparkles" size={16} />
           </span>
           <h3 className="text-h3 text-ink">AI Interpretation</h3>
         </div>
+        <p className="mb-3 text-caption text-ink-muted">
+          Sehemu hii ni maelezo ya AI kwa lugha rahisi. Haibadilishi na haisaini takwimu
+          yoyote iliyokokolewa na engine.
+        </p>
         <div className="space-y-3">
           {answer.plan.why && (
             <div>
@@ -356,9 +365,12 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
             </div>
           )}
           <p className="text-body text-ink">{answer.explanation}</p>
-          <p className="text-caption text-ink-muted">
-            Maelezo haya yametolewa na AI. Thibitisha kwa matokeo ya engine au dataset
-            rasmi kabla ya kutumia.
+          <p className="flex items-start gap-1.5 rounded-md bg-white/70 px-2.5 py-2 text-caption text-ink-muted">
+            <Icon name="alert-circle" size={14} className="mt-0.5 shrink-0 text-warning" />
+            <span>
+              Maelezo haya yametolewa na AI. Thibitisha kwa matokeo ya engine au dataset
+              rasmi kabla ya kutumia.
+            </span>
           </p>
         </div>
       </section>

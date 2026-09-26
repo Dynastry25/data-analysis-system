@@ -2,6 +2,8 @@
 
 import { ButtonHTMLAttributes, forwardRef } from "react";
 
+import { Icon, IconName } from "./Icon";
+
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "small" | "medium" | "large";
 
@@ -22,10 +24,17 @@ const SIZE_CLASSES: Record<Size, string> = {
   large: "h-12 px-5 text-body-lg",
 };
 
+const ICON_SIZE: Record<Size, number> = {
+  small: 14,
+  medium: 16,
+  large: 18,
+};
+
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
   loading?: boolean;
+  icon?: IconName;
 }
 
 /** Design-system button: primary / secondary / ghost / danger with all states. */
@@ -35,6 +44,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     size = "medium",
     loading = false,
     disabled,
+    icon,
     className = "",
     children,
     ...rest
@@ -55,6 +65,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
           className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
         />
       )}
+      {!loading && icon && <Icon name={icon} size={ICON_SIZE[size]} />}
       {children}
     </button>
   );
