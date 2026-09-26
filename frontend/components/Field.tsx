@@ -200,6 +200,8 @@ export function TextArea({
 interface CheckboxGroupProps {
   label: string;
   hint?: string;
+  error?: string;
+  optionalLabel?: string;
   options: string[];
   selected: string[];
   onToggle: (value: string) => void;
@@ -210,6 +212,8 @@ interface CheckboxGroupProps {
 export function CheckboxGroup({
   label,
   hint,
+  error,
+  optionalLabel,
   options,
   selected,
   onToggle,
@@ -219,8 +223,22 @@ export function CheckboxGroup({
   const groupId = useId();
   return (
     <fieldset>
-      <legend className="mb-1.5 text-body font-medium text-ink">{label}</legend>
-      {hint && <p className="mb-2 text-caption text-ink-muted">{hint}</p>}
+      <legend className="mb-1.5 flex w-full items-baseline justify-between gap-2">
+        <span className="text-body font-medium text-ink">{label}</span>
+        {optionalLabel && (
+          <span className="text-caption text-neutral-400">{optionalLabel}</span>
+        )}
+      </legend>
+      {hint && !error && <p className="mb-2 text-caption text-ink-muted">{hint}</p>}
+      {error && (
+        <p
+          role="alert"
+          className="mb-2 flex items-start gap-1.5 text-caption text-danger"
+        >
+          <Icon name="alert-circle" size={14} className="mt-0.5 shrink-0" />
+          {error}
+        </p>
+      )}
       {options.length === 0 ? (
         <p className="rounded border border-dashed border-surface-border bg-surface-sunken px-3 py-4 text-center text-caption text-ink-muted">
           {emptyLabel}
@@ -228,7 +246,10 @@ export function CheckboxGroup({
       ) : (
         <div
           id={groupId}
-          className={`flex flex-wrap gap-1.5 overflow-y-auto rounded border border-surface-border bg-white p-2 ${maxHeightClassName}`}
+          aria-invalid={error ? true : undefined}
+          className={`flex flex-wrap gap-1.5 overflow-y-auto rounded border p-2 ${maxHeightClassName} ${
+            error ? "border-danger" : "border-surface-border bg-white"
+          }`}
         >
           {options.map((option) => {
             const active = selected.includes(option);

@@ -8,6 +8,8 @@ import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
+import { SelectInput, TextInput } from "@/components/Field";
+import { Icon } from "@/components/Icon";
 import { StandardResultView } from "@/components/StandardResultView";
 import { useToast } from "@/components/Toast";
 import {
@@ -16,10 +18,6 @@ import {
   PlanningVariable,
   statflowApi,
 } from "@/lib/api";
-
-const INPUT_CLASSES =
-  "w-full rounded border border-neutral-200 bg-white px-3 py-2 text-body outline-none focus:border-primary-500";
-const SELECT_CLASSES = INPUT_CLASSES;
 
 type Turn = {
   question: string;
@@ -42,8 +40,18 @@ export default function AskPage() {
   const [outcome, setOutcome] = useState("");
   const [predictor, setPredictor] = useState("");
   const [asking, setAsking] = useState(false);
+  const [attempted, setAttempted] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  const questionError =
+    attempted && question.trim().length < 3
+      ? "Andika swali la angalau herufi 3."
+      : undefined;
+  const predictorError =
+    attempted && predictor && !outcome
+      ? "Chagua outcome kwanza, au weka predictor kuwa Automatic."
+      : undefined;
 
   const loadExamples = useCallback(async () => {
     try {
@@ -82,6 +90,7 @@ export default function AskPage() {
 
   async function ask(text: string) {
     const trimmed = text.trim();
+    setAttempted(true);
     if (trimmed.length < 3 || asking) return;
     if (predictor && !outcome) {
       showToast("Chagua outcome au weka predictor kuwa Automatic.", "warning");
@@ -140,85 +149,98 @@ export default function AskPage() {
     >
       <Card
         title="Uliza swali"
+        icon="message-circle"
         description="Mfano: 'Does income differ between male and female?' au 'Je, kuna uhusiano kati ya umri na mapato?'"
       >
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <input
-            className={`${INPUT_CLASSES} flex-1`}
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            ask(question);
+          }}
+          className="flex flex-col gap-2 sm:flex-row sm:items-start"
+        >
+          <TextInput
+            label="Swali lako"
             value={question}
+            error={questionError}
             placeholder="Andika swali lako hapa..."
+            inputClassName="flex-1"
             onChange={(event) => setQuestion(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") ask(question);
-            }}
           />
-          <Button loading={asking} onClick={() => ask(question)}>
+          <Button type="submit" className="sm:mt-[26px]" loading={asking}>
             Uliza
           </Button>
-        </div>
+        </form>
+
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="space-y-1 text-caption font-semibold text-neutral-600">
-            Outcome
-            <select
-              className={SELECT_CLASSES}
-              value={outcome}
-              onChange={(event) => {
-                const nextOutcome = event.target.value;
-                setOutcome(nextOutcome);
-                if (nextOutcome && nextOutcome === predictor) setPredictor("");
-              }}
-            >
-              <option value="">Automatic — infer from question</option>
-              {profileVariables.map((variable) => (
-                <option key={variable.name} value={variable.name}>
-                  {variable.name} ({variable.semantic_type})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1 text-caption font-semibold text-neutral-600">
-            Predictor / grouping variable
-            <select
-              className={SELECT_CLASSES}
-              value={predictor}
-              onChange={(event) => setPredictor(event.target.value)}
-            >
-              <option value="">Automatic — infer from question</option>
-              {profileVariables
+          <SelectInput
+            label="Outcome"
+            optionalLabel="hiari"
+            value={outcome}
+            onChange={(event) => {
+              const nextOutcome = event.target.value;
+              setOutcome(nextOutcome);
+              if (nextOutcome && nextOutcome === predictor) setPredictor("");
+            }}
+            options={[
+              { value: "", label: "Automatic — infer from question" },
+              ...profileVariables.map((variable) => ({
+                value: variable.name,
+                label: `${variable.name} (${variable.semantic_type})`,
+              })),
+            ]}
+          />
+          <SelectInput
+            label="Predictor / grouping variable"
+            optionalLabel="hiari"
+            value={predictor}
+            error={predictorError}
+            onChange={(event) => setPredictor(event.target.value)}
+            options={[
+              { value: "", label: "Automatic — infer from question" },
+              ...profileVariables
                 .filter((variable) => !outcome || variable.name !== outcome)
-                .map((variable) => (
-                  <option key={variable.name} value={variable.name}>
-                    {variable.name} ({variable.semantic_type})
-                  </option>
-                ))}
-            </select>
-          </label>
+                .map((variable) => ({
+                  value: variable.name,
+                  label: `${variable.name} (${variable.semantic_type})`,
+                })),
+            ]}
+          />
         </div>
         {profileVersion != null && !profileError && (
-          <p className="mt-2 text-caption text-neutral-500">
+          <p className="mt-2 text-caption text-ink-muted">
             Variable list is from dataset version {profileVersion}.
           </p>
         )}
         {profileError && (
-          <p className="mt-2 text-caption text-danger">
+          <p
+            role="alert"
+            className="mt-2 flex items-start gap-1.5 text-caption text-danger"
+          >
+            <Icon name="alert-circle" size={14} className="mt-0.5 shrink-0" />
             Variable list could not be loaded. Questions will use the dataset&apos;s current
             version; retry the page before relying on selectors.
           </p>
         )}
         {examples.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {examples.map((example) => (
-              <button
-                key={example}
-                type="button"
-                className="rounded border border-neutral-200 px-2 py-1 text-caption text-neutral-600 hover:border-primary-500 hover:text-primary-600"
-                onClick={() => {
-                  setQuestion(example);
-                }}
-              >
-                {example}
-              </button>
-            ))}
+          <div className="mt-4">
+            <p className="mb-2 text-overline uppercase tracking-wide text-ink-muted">
+              Mifano ya maswali
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {examples.map((example) => (
+                <button
+                  key={example}
+                  type="button"
+                  className="rounded-pill border border-surface-border bg-surface-sunken px-2.5 py-1 text-caption text-ink-secondary transition-colors duration-150 ease-standard hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
+                  onClick={() => {
+                    setQuestion(example);
+                  }}
+                >
+                  {example}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </Card>
@@ -264,8 +286,12 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
         ? "warning"
         : "danger";
 
+  const variables = Object.values(answer.plan.variables).filter(
+    (value): value is string => Boolean(value)
+  );
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
         {answer.intent.intent && (
           <Badge tone="primary">intent: {answer.intent.intent}</Badge>
@@ -279,30 +305,17 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
         )}
       </div>
 
-      {(() => {
-        const variables = Object.values(answer.plan.variables).filter(
-          (value): value is string => Boolean(value)
-        );
-        return variables.length > 0 ? (
-          <p className="text-caption text-neutral-600">
-            Variables: {variables.join(", ")}
-          </p>
-        ) : null;
-      })()}
-
-      {answer.plan.why && (
-        <div className="rounded border border-neutral-200 bg-neutral-50 p-3">
-          <p className="mb-1 text-caption font-semibold text-neutral-600">
-            Kwa nini method hii?
-          </p>
-          <p className="text-body">{answer.plan.why}</p>
-        </div>
+      {variables.length > 0 && (
+        <p className="text-caption text-ink-muted">Variables: {variables.join(", ")}</p>
       )}
 
       {answer.validation.issues.length > 0 && (
-        <div className="rounded border border-warning bg-warning/10 p-3 text-caption">
-          <p className="mb-1 font-semibold">Tahadhari za kuthibitisha</p>
-          <ul className="list-disc pl-5">
+        <div className="rounded-md border border-warning/40 bg-warning-bg p-3">
+          <p className="mb-1 flex items-center gap-1.5 text-caption font-semibold text-warning-700">
+            <Icon name="alert-triangle" size={14} />
+            Tahadhari za kuthibitisha
+          </p>
+          <ul className="list-disc space-y-0.5 pl-5 text-caption text-warning-700">
             {answer.validation.issues.map((issue, index) => (
               <li key={index}>{issue.message}</li>
             ))}
@@ -310,19 +323,57 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
         </div>
       )}
 
-      <div className="rounded border border-primary-200 bg-primary-50 p-3">
-        <p className="mb-1 text-caption font-semibold text-primary-700">Jawabu</p>
-        <p className="text-body">{answer.explanation}</p>
-      </div>
+      <section className="rounded-lg border border-surface-border bg-surface-sunken p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-success shadow-card">
+            <Icon name="shield" size={16} />
+          </span>
+          <h3 className="text-h3 text-ink">Computed by Statistical Engine</h3>
+        </div>
+        {answer.result ? (
+          <StandardResultView result={answer.result} />
+        ) : (
+          <p className="text-body text-ink-muted">
+            Engine haikui hesabu kwa swali hili. Hakuna takwimu inayotokana na msaidizi.
+          </p>
+        )}
+      </section>
 
-      {answer.result && <StandardResultView result={answer.result} />}
+      <section className="rounded-lg border border-primary-200 bg-primary-50/60 p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-primary-600 shadow-card">
+            <Icon name="sparkles" size={16} />
+          </span>
+          <h3 className="text-h3 text-ink">AI Interpretation</h3>
+        </div>
+        <div className="space-y-3">
+          {answer.plan.why && (
+            <div>
+              <p className="mb-1 text-overline uppercase tracking-wide text-ink-muted">
+                Kwa nini method hii?
+              </p>
+              <p className="text-body text-ink-secondary">{answer.plan.why}</p>
+            </div>
+          )}
+          <p className="text-body text-ink">{answer.explanation}</p>
+          <p className="text-caption text-ink-muted">
+            Maelezo haya yametolewa na AI. Thibitisha kwa matokeo ya engine au dataset
+            rasmi kabla ya kutumia.
+          </p>
+        </div>
+      </section>
 
       {answer.plan.alternatives.length > 0 && (
-        <details>
-          <summary className="cursor-pointer text-caption font-semibold text-neutral-600">
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-caption font-semibold text-ink-secondary hover:text-primary-700">
+            <Icon
+              name="chevron-right"
+              size={14}
+              className="transition-transform duration-150 group-open:rotate-90"
+            />
             Mbinu mbadala ({answer.plan.alternatives.length})
           </summary>
-          <ul className="mt-2 list-disc pl-5 text-caption text-neutral-600">
+          <ul className="details-content mt-2 list-disc space-y-1 pl-5 text-caption text-ink-secondary">
             {answer.plan.alternatives.map((alternative) => (
               <li key={alternative.analysis_type}>
                 <strong>{alternative.label}</strong> — {alternative.reason}

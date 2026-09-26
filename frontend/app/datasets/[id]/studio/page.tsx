@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
+import { CheckboxGroup, SelectInput, TextInput } from "@/components/Field";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import {
@@ -19,13 +20,12 @@ import {
   statflowApi,
 } from "@/lib/api";
 
-const SELECT_CLASSES =
-  "h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500";
-
 type FieldDef = {
   key: string;
   kind: "column" | "columns" | "text" | "number" | "select";
   label: string;
+  hint?: string;
+  required?: boolean;
   options?: { value: string; label: string }[];
 };
 
@@ -43,6 +43,11 @@ const TYPE_OPTIONS = ["numeric", "integer", "text", "date", "boolean"].map((valu
 const OPERATOR_OPTIONS = ["eq", "ne", "gt", "gte", "lt", "lte", "contains"].map(
   (value) => ({ value, label: value })
 );
+
+function isBlankValue(value: string | string[] | undefined): boolean {
+  if (value === undefined || value === "") return true;
+  return Array.isArray(value) && value.length === 0;
+}
 const ASC_OPTIONS = [
   { value: "true", label: "ascending (panda)" },
   { value: "false", label: "descending (shuka)" },
@@ -54,44 +59,46 @@ const AGG_OPTIONS = ["count", "sum", "mean", "median", "min", "max"].map((value)
 
 const OPERATION_FIELDS: Record<string, FieldDef[]> = {
   drop_duplicates: [
-    { key: "subset", kind: "columns", label: "Subset (hiari)" },
+    { key: "subset", kind: "columns", label: "Subset", hint: "Pengoja kama zisizo" },
     { key: "keep", kind: "select", label: "Weka (keep)", options: KEEP_OPTIONS },
   ],
   drop_missing: [
-    { key: "columns", kind: "columns", label: "Columns (hiari)" },
-    { key: "threshold", kind: "number", label: "Threshold (hiari)" },
+    { key: "columns", kind: "columns", label: "Columns", hint: "Acha wote kama hazitoshi" },
+    { key: "threshold", kind: "number", label: "Threshold", hint: "0.1 = 10% au zaidi" },
   ],
   fill_missing: [
-    { key: "strategy", kind: "select", label: "Strategy", options: STRATEGY_OPTIONS },
-    { key: "columns", kind: "columns", label: "Columns (hiari: zote)" },
+    { key: "strategy", kind: "select", label: "Strategy", required: true, options: STRATEGY_OPTIONS },
+    { key: "columns", kind: "columns", label: "Columns", hint: "Acha zote kama hazitoshi" },
     { key: "value", label: "Value (kwa 'constant')", kind: "text" },
   ],
   rename_columns: [
-    { key: "old", kind: "column", label: "Column ya zamani" },
-    { key: "new", kind: "text", label: "Jina jipya" },
+    { key: "old", kind: "column", label: "Column ya zamani", required: true },
+    { key: "new", kind: "text", label: "Jina jipya", required: true },
   ],
   cast_types: [
-    { key: "column", kind: "column", label: "Column" },
-    { key: "target_type", kind: "select", label: "Aina mpya", options: TYPE_OPTIONS },
+    { key: "column", kind: "column", label: "Column", required: true },
+    { key: "target_type", kind: "select", label: "Aina mpya", required: true, options: TYPE_OPTIONS },
   ],
-  select_columns: [{ key: "columns", kind: "columns", label: "Columns za kuweka" }],
+  select_columns: [
+    { key: "columns", kind: "columns", label: "Columns za kuweka", required: true },
+  ],
   filter: [
-    { key: "column", kind: "column", label: "Column" },
-    { key: "operator", kind: "select", label: "Operator", options: OPERATOR_OPTIONS },
-    { key: "value", kind: "text", label: "Value (mf. 18 au Dar)" },
+    { key: "column", kind: "column", label: "Column", required: true },
+    { key: "operator", kind: "select", label: "Operator", required: true, options: OPERATOR_OPTIONS },
+    { key: "value", kind: "text", label: "Value", required: true, hint: "mf. 18 au Dar" },
   ],
   sort: [
-    { key: "by", kind: "column", label: "Panga kwa (by)" },
+    { key: "by", kind: "column", label: "Panga kwa (by)", required: true },
     { key: "ascending", kind: "select", label: "Mpangilio", options: ASC_OPTIONS },
   ],
   calculate_column: [
-    { key: "name", kind: "text", label: "Jina la column mpya" },
-    { key: "expression", kind: "text", label: "Expression (mf. income / 12)" },
+    { key: "name", kind: "text", label: "Jina la column mpya", required: true },
+    { key: "expression", kind: "text", label: "Expression", required: true, hint: "mf. income / 12" },
   ],
   group_by: [
-    { key: "by", kind: "column", label: "Group by" },
-    { key: "column", kind: "column", label: "Column ya ku-aggregate" },
-    { key: "aggregation", kind: "select", label: "Aggregation", options: AGG_OPTIONS },
+    { key: "by", kind: "column", label: "Group by", required: true },
+    { key: "column", kind: "column", label: "Column ya ku-aggregate", required: true },
+    { key: "aggregation", kind: "select", label: "Aggregation", required: true, options: AGG_OPTIONS },
   ],
 };
 
@@ -110,6 +117,7 @@ export default function StudioPage() {
   const [fieldValues, setFieldValues] = useState<Record<string, string | string[]>>({});
   const [label, setLabel] = useState("");
   const [applying, setApplying] = useState(false);
+  const [attempted, setAttempted] = useState(false);
   const [downloading, setDownloading] = useState<number | null>(null);
 
   const columnNames = columns.map((column) => column.name);
@@ -181,6 +189,17 @@ export default function StudioPage() {
 
   async function applyOperation() {
     if (!currentOperation) return;
+    setAttempted(true);
+    const missing = fields.filter(
+      (field) => field.required && isBlankValue(fieldValues[field.key])
+    );
+    if (missing.length > 0) {
+      showToast(
+        `Jaza sehemu zote zinazohitajika: ${missing.map((field) => field.label).join(", ")}.`,
+        "warning"
+      );
+      return;
+    }
     setApplying(true);
     try {
       const payload = {
@@ -198,6 +217,7 @@ export default function StudioPage() {
       );
       setLabel("");
       setFieldValues({});
+      setAttempted(false);
       setHistory(await statflowApi.operationsHistory(datasetId));
     } catch (caught) {
       showToast(apiErrorMessage(caught), "danger");
@@ -235,63 +255,62 @@ export default function StudioPage() {
 
   function renderField(field: FieldDef) {
     const value = fieldValues[field.key];
-    if (field.kind === "column") {
-      return (
-        <select
-          className={`${SELECT_CLASSES} mt-1`}
-          value={String(value || "")}
-          onChange={(event) =>
-            setFieldValues((previous) => ({ ...previous, [field.key]: event.target.value }))
-          }
-        >
-          <option value="">— chagua column —</option>
-          {columnNames.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-      );
-    }
+    const error =
+      attempted && field.required && isBlankValue(value)
+        ? "Sehemu hii inahitajika."
+        : undefined;
+
     if (field.kind === "columns") {
       const selected = Array.isArray(value) ? value : [];
       return (
-        <div className="mt-1 flex max-h-32 flex-wrap gap-2 overflow-y-auto rounded border border-neutral-200 p-2">
-          {columnNames.map((name) => (
-            <label key={name} className="flex items-center gap-1 text-caption">
-              <input
-                type="checkbox"
-                checked={selected.includes(name)}
-                onChange={() => toggleColumn(field.key, name)}
-              />
-              {name}
-            </label>
-          ))}
-        </div>
+        <CheckboxGroup
+          label={field.label}
+          hint={field.hint}
+          error={error}
+          options={columnNames}
+          selected={selected}
+          onToggle={(name) => toggleColumn(field.key, name)}
+          maxHeightClassName="max-h-36"
+        />
+      );
+    }
+    if (field.kind === "column") {
+      return (
+        <SelectInput
+          label={field.label}
+          required={field.required}
+          error={error}
+          placeholder="— chagua column —"
+          value={String(value || "")}
+          options={columnNames.map((name) => ({ value: name, label: name }))}
+          onChange={(event) =>
+            setFieldValues((previous) => ({ ...previous, [field.key]: event.target.value }))
+          }
+        />
       );
     }
     if (field.kind === "select") {
       return (
-        <select
-          className={`${SELECT_CLASSES} mt-1`}
+        <SelectInput
+          label={field.label}
+          required={field.required}
+          error={error}
+          placeholder="— chagua —"
           value={String(value || "")}
+          options={field.options ?? []}
           onChange={(event) =>
             setFieldValues((previous) => ({ ...previous, [field.key]: event.target.value }))
           }
-        >
-          <option value="">— chagua —</option>
-          {(field.options ?? []).map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        />
       );
     }
     return (
-      <input
+      <TextInput
+        label={field.label}
+        hint={field.hint}
+        required={field.required}
+        error={error}
         type={field.kind === "number" ? "number" : "text"}
-        className={`${SELECT_CLASSES} mt-1`}
         value={String(value ?? "")}
         onChange={(event) =>
           setFieldValues((previous) => ({ ...previous, [field.key]: event.target.value }))
@@ -327,20 +346,22 @@ export default function StudioPage() {
         <>
           <Card
             title="Tumia operation mpya"
+            icon="sliders"
             description="Chagua operation, jaza parameters, kisha tumia. Version mpya itatengenezwa."
           >
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-body text-neutral-600" htmlFor="op-type">
+                <label htmlFor="op-type" className="mb-1.5 block text-body font-medium text-ink">
                   Operation
                 </label>
                 <select
                   id="op-type"
-                  className={`${SELECT_CLASSES} mt-1`}
+                  className="control cursor-pointer"
                   value={selectedOp}
                   onChange={(event) => {
                     setSelectedOp(event.target.value);
                     setFieldValues({});
+                    setAttempted(false);
                   }}
                 >
                   <optgroup label="Clean">
@@ -369,35 +390,25 @@ export default function StudioPage() {
                     >
                       {currentOperation.group}
                     </Badge>
-                    <span className="text-caption text-neutral-600">
+                    <span className="text-caption text-ink-muted">
                       {currentOperation.parameters.join(", ")}
                     </span>
                   </div>
                 )}
               </div>
-              <div>
-                <label className="block text-body text-neutral-600" htmlFor="op-label">
-                  Label ya version (hiari)
-                </label>
-                <input
-                  id="op-label"
-                  className={`${SELECT_CLASSES} mt-1`}
-                  value={label}
-                  onChange={(event) => setLabel(event.target.value)}
-                  placeholder="mf. Baada ya kusafisha missing values"
-                />
-              </div>
+              <TextInput
+                label="Label ya version"
+                optionalLabel="hiari"
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                placeholder="mf. Baada ya kusafisha missing values"
+              />
             </div>
 
             {fields.length > 0 && (
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 {fields.map((field) => (
-                  <div key={field.key}>
-                    <label className="block text-body text-neutral-600">
-                      {field.label}
-                    </label>
-                    {renderField(field)}
-                  </div>
+                  <div key={field.key}>{renderField(field)}</div>
                 ))}
               </div>
             )}

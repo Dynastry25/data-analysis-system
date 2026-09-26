@@ -6,6 +6,8 @@ import { DragEvent, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { SelectInput } from "@/components/Field";
+import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, OrgProject, Organization } from "@/lib/api";
 
@@ -118,54 +120,46 @@ export default function UploadPage() {
     >
       {orgs.length > 0 && (
         <Card
-          title="Weka data kwenye mradi (hiari)"
+          title="Weka data kwenye mradi"
+          icon="folder"
           description="Ikiwa uchague mradi, wanachama wa shirika hilo wataweza kufikia data kulingana na kiwango chao. Ikiwa hutaki, data itabaki yawewe pekee."
         >
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[220px] flex-1">
-              <label htmlFor="upload_org" className="block text-body text-neutral-900">
-                Shirika
-              </label>
-              <select
-                id="upload_org"
-                value={selectedOrg}
-                onChange={(event) =>
-                  changeOrg(event.target.value === "" ? "" : Number(event.target.value))
-                }
-                className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
-              >
-                <option value="">Data ya binafsi (Bila mradi)</option>
-                {orgs.map((org) => (
-                  <option key={org.id} value={org.id}>
-                    {org.name}
-                    {org.my_role === "viewer" ? " (mtazamaji)" : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="min-w-[220px] flex-1">
-              <label htmlFor="upload_project" className="block text-body text-neutral-900">
-                Mradi
-              </label>
-              <select
-                id="upload_project"
-                value={selectedProject}
-                onChange={(event) =>
-                  setSelectedProject(
-                    event.target.value === "" ? "" : Number(event.target.value)
-                  )
-                }
-                disabled={selectedOrg === ""}
-                className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500 disabled:bg-neutral-100"
-              >
-                <option value="">Bila mradi</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SelectInput
+              label="Shirika"
+              value={selectedOrg}
+              options={[
+                { value: "", label: "Data ya binafsi (Bila mradi)" },
+                ...orgs.map((org) => ({
+                  value: String(org.id),
+                  label:
+                    org.my_role === "viewer"
+                      ? `${org.name} (mtazamaji)`
+                      : org.name,
+                })),
+              ]}
+              onChange={(event) =>
+                changeOrg(event.target.value === "" ? "" : Number(event.target.value))
+              }
+            />
+            <SelectInput
+              label="Mradi"
+              value={selectedProject}
+              disabled={selectedOrg === ""}
+              placeholder="— Bila mradi —"
+              hint={
+                selectedOrg === "" ? "Chagua shirika kwanza" : "Chagua mradi wa kuhifadhi data"
+              }
+              options={projects.map((project) => ({
+                value: String(project.id),
+                label: project.name,
+              }))}
+              onChange={(event) =>
+                setSelectedProject(
+                  event.target.value === "" ? "" : Number(event.target.value)
+                )
+              }
+            />
           </div>
         </Card>
       )}
@@ -178,14 +172,28 @@ export default function UploadPage() {
           }}
           onDragLeave={() => setDragging(false)}
           onDrop={handleDrop}
-          className={`rounded border-2 border-dashed p-8 text-center transition-colors duration-200 ${
-            dragging ? "border-primary-500 bg-primary-50" : "border-neutral-200 bg-neutral-50"
+          className={`rounded-lg border-2 border-dashed px-6 py-12 text-center transition-colors duration-200 ease-standard ${
+            dragging
+              ? "border-primary-500 bg-primary-50"
+              : "border-surface-border-strong bg-surface-sunken"
           }`}
         >
-          <p className="text-body-lg text-neutral-900">
+          <span
+            className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full transition-colors duration-200 ${
+              dragging ? "bg-primary-100 text-primary-700" : "bg-white text-neutral-400"
+            }`}
+          >
+            <Icon name="upload" size={24} />
+          </span>
+          <p className="mt-3 text-body-lg font-medium text-ink">
             Kokota faili lako hapa (drag &amp; drop)
           </p>
-          <p className="mt-1 text-body text-neutral-600">au chagua faili kutoka kompyuta</p>
+          <p className="mt-1 text-body text-ink-secondary">
+            au chagua faili kutoka kompyuta
+          </p>
+          <p className="mt-1 text-caption text-ink-muted">
+            CSV, Excel (.xlsx), JSON, TSV, TXT au Parquet · hadi {MAX_MB}MB
+          </p>
           <input
             ref={inputRef}
             type="file"
@@ -198,18 +206,37 @@ export default function UploadPage() {
             className="mt-4"
             onClick={() => inputRef.current?.click()}
           >
+            <Icon name="folder" size={16} />
             Chagua faili
           </Button>
         </div>
 
         {file && (
           <div className="mt-6 space-y-3">
-            <p className="text-body text-neutral-900">
-              {file.name}{" "}
-              <span className="text-neutral-600">
-                ({(file.size / 1024 / 1024).toFixed(2)} MB)
+            <div className="flex items-center gap-3 rounded-md border border-surface-border bg-surface-sunken px-3.5 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white text-primary-600 shadow-card">
+                <Icon name="file-text" size={18} />
               </span>
-            </p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-body font-medium text-ink">{file.name}</p>
+                <p className="text-caption text-ink-muted">
+                  {(file.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+              </div>
+              {!uploading && (
+                <Button
+                  variant="ghost"
+                  size="small"
+                  onClick={() => {
+                    setFile(null);
+                    setProgress(0);
+                    setError(null);
+                  }}
+                >
+                  Badilisha
+                </Button>
+              )}
+            </div>
 
             {uploading && (
               <div>
@@ -219,14 +246,14 @@ export default function UploadPage() {
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-label="Upload progress"
-                  className="h-2 w-full overflow-hidden rounded bg-neutral-200"
+                  className="h-2 w-full overflow-hidden rounded-pill bg-neutral-200"
                 >
                   <div
-                    className="h-full bg-primary-600 transition-all duration-200 ease-out"
+                    className="h-full rounded-pill bg-primary-600 transition-all duration-200 ease-standard"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
-                <p className="mt-1 text-caption text-neutral-600">
+                <p className="mt-1.5 text-caption text-ink-secondary">
                   Inapakia… {progress}%
                 </p>
               </div>
@@ -239,14 +266,18 @@ export default function UploadPage() {
         )}
 
         {error && (
-          <p role="alert" className="mt-4 rounded bg-danger-bg px-3 py-2 text-body text-danger">
-            ⚠ {error}
+          <p
+            role="alert"
+            className="mt-4 flex items-start gap-2 rounded-md border border-danger/30 bg-danger-bg px-3 py-2.5 text-body text-danger-700"
+          >
+            <Icon name="alert-circle" size={16} className="mt-0.5 shrink-0" />
+            {error}
           </p>
         )}
       </Card>
 
-      <Card title="Vidokezo vya faili lako" description="Ili matokeo yawe bora:">
-        <ul className="list-disc space-y-1 pl-5 text-body text-neutral-600">
+      <Card title="Vidokezo vya faili lako" icon="info" description="Ili matokeo yawe bora:">
+        <ul className="list-disc space-y-1.5 pl-5 text-body text-ink-secondary">
           <li>Row ya kwanza iwe majina ya columns (header).</li>
           <li>Columns za namba zisiwe na alama kama &quot;TSh&quot; au &quot;%&quot;.</li>
           <li>Tarehe ziwe katika muundo mmoja (YYYY-MM-DD inapendekezwa).</li>

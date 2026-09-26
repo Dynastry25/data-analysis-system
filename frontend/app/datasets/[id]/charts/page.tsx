@@ -9,6 +9,7 @@ import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
 import { ChartView } from "@/components/ChartView";
+import { SelectInput, TextInput } from "@/components/Field";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import {
@@ -27,9 +28,6 @@ const CHART_TYPE_OPTIONS: { value: ChartType; label: string; use: string }[] = [
 ];
 
 const AGGREGATIONS = ["sum", "mean", "count", "min", "max", "median"] as const;
-
-const SELECT_CLASSES =
-  "h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500";
 
 export default function ChartsPage() {
   const params = useParams<{ id: string }>();
@@ -122,123 +120,77 @@ export default function ChartsPage() {
         </>
       }
     >
-      <Card title="Mipangilio ya chati">
+      <Card title="Mipangilio ya chati" icon="chart">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div>
-            <label className="block text-body text-neutral-600" htmlFor="chart-type">
-              Aina ya chati
-            </label>
-            <select
-              id="chart-type"
-              className={`${SELECT_CLASSES} mt-1`}
-              value={chartType}
-              onChange={(event) => setChartType(event.target.value as ChartType)}
-            >
-              {CHART_TYPE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}  {option.use}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SelectInput
+            label="Aina ya chati"
+            value={chartType}
+            hint={CHART_TYPE_OPTIONS.find((option) => option.value === chartType)?.use}
+            options={CHART_TYPE_OPTIONS.map((option) => ({
+              value: option.value,
+              label: `${option.label} — ${option.use}`,
+            }))}
+            onChange={(event) => setChartType(event.target.value as ChartType)}
+          />
 
-          <div>
-            <label className="block text-body text-neutral-600" htmlFor="x-column">
-              X axis
-            </label>
-            <select
-              id="x-column"
-              className={`${SELECT_CLASSES} mt-1`}
-              value={xColumn}
-              onChange={(event) => setXColumn(event.target.value)}
-            >
-              {allColumns.map((column) => (
-                <option key={column} value={column}>
-                  {column}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SelectInput
+            label="X axis"
+            value={xColumn}
+            required
+            options={allColumns.map((column) => ({ value: column, label: column }))}
+            onChange={(event) => setXColumn(event.target.value)}
+          />
 
-          <div>
-            <label className="block text-body text-neutral-600" htmlFor="y-column">
-              Y axis (numeric)
-            </label>
-            <select
-              id="y-column"
-              className={`${SELECT_CLASSES} mt-1`}
-              value={yColumn}
-              onChange={(event) => setYColumn(event.target.value)}
-              disabled={chartType === "histogram"}
-            >
-              <option value=""> count ya rows </option>
-              {numericColumns.map((column) => (
-                <option key={column} value={column}>
-                  {column}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SelectInput
+            label="Y axis (numeric)"
+            value={yColumn}
+            optionalLabel={chartType === "histogram" ? "haitumiki" : "hiari"}
+            disabled={chartType === "histogram"}
+            placeholder="— count ya rows —"
+            options={numericColumns.map((column) => ({ value: column, label: column }))}
+            onChange={(event) => setYColumn(event.target.value)}
+          />
 
-          <div>
-            <label className="block text-body text-neutral-600" htmlFor="group-by">
-              Group by (si lazima)
-            </label>
-            <select
-              id="group-by"
-              className={`${SELECT_CLASSES} mt-1`}
-              value={groupBy}
-              onChange={(event) => setGroupBy(event.target.value)}
-            >
-              <option value=""> Hakuna </option>
-              {allColumns.map((column) => (
-                <option key={column} value={column}>
-                  {column}
-                </option>
-              ))}
-            </select>
-          </div>
+          <SelectInput
+            label="Group by"
+            optionalLabel="hiari"
+            placeholder="— Hakuna —"
+            value={groupBy}
+            options={allColumns.map((column) => ({ value: column, label: column }))}
+            onChange={(event) => setGroupBy(event.target.value)}
+          />
 
-          {(chartType === "bar" || chartType === "line") && (
-            <div>
-              <label className="block text-body text-neutral-600" htmlFor="aggregate">
-                Hesabu (aggregate)
-              </label>
-              <select
-                id="aggregate"
-                className={`${SELECT_CLASSES} mt-1`}
-                value={aggregate}
-                onChange={(event) =>
-                  setAggregate(event.target.value as (typeof AGGREGATIONS)[number])
-                }
-              >
-                {AGGREGATIONS.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+          {chartType === "bar" || chartType === "line" ? (
+            <SelectInput
+              label="Hesabu (aggregate)"
+              value={aggregate}
+              options={AGGREGATIONS.map((item) => ({ value: item, label: item }))}
+              onChange={(event) =>
+                setAggregate(event.target.value as (typeof AGGREGATIONS)[number])
+              }
+            />
+          ) : null}
 
-          {chartType === "histogram" && (
-            <div>
-              <label className="block text-body text-neutral-600" htmlFor="bins">
-                Idadi ya bins
-              </label>
-              <input
-                id="bins"
-                className={`${SELECT_CLASSES} mt-1`}
-                value={bins}
-                onChange={(event) => setBins(event.target.value)}
-              />
-            </div>
-          )}
+          {chartType === "histogram" ? (
+            <TextInput
+              label="Idadi ya bins"
+              type="number"
+              min={2}
+              max={200}
+              value={bins}
+              onChange={(event) => setBins(event.target.value)}
+            />
+          ) : null}
         </div>
 
-        <Button className="mt-4" size="large" loading={creating} onClick={createChart}>
-          Tengeneza chati
-        </Button>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Button size="large" loading={creating} onClick={createChart} disabled={!xColumn}>
+            Tengeneza chati
+          </Button>
+          <span className="text-caption text-ink-muted">
+            Chati zinatengenezwa kwa version ya sasa ya dataset
+          </span>
+        </div>
       </Card>
 
       <Card

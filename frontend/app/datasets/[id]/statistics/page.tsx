@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
+import { CheckboxGroup, SelectInput, TextInput } from "@/components/Field";
 import { TableSkeleton } from "@/components/Skeleton";
 import { StandardResultView } from "@/components/StandardResultView";
 import { useToast } from "@/components/Toast";
@@ -19,9 +20,6 @@ import {
   StandardResult,
   statflowApi,
 } from "@/lib/api";
-
-const SELECT_CLASSES =
-  "h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500";
 
 /** Column-based parameter names used by the v1 engine. */
 const COLUMN_PARAMS = new Set([
@@ -35,11 +33,32 @@ const COLUMN_PARAMS = new Set([
 ]);
 const MULTI_COLUMN_PARAMS = new Set(["features", "columns"]);
 
+const PARAM_LABELS: Record<string, string> = {
+  x: "X axis (column)",
+  y: "Y axis (column)",
+  value_column: "Column ya thamani",
+  group_column: "Column ya kundi",
+  row_column: "Row axis",
+  column_column: "Column axis",
+  target: "Target (dependent variable)",
+  features: "Features",
+  columns: "Columns",
+};
+
+function humanize(name: string): string {
+  return PARAM_LABELS[name] ?? name.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
+
 /** Parse a `requires` entry like "columns (optional)" into name + required flag. */
 function parseRequirement(raw: string): { name: string; optional: boolean } {
   const optional = raw.includes("(optional)");
   const name = raw.split(" ")[0];
   return { name: name === "column" ? "columns" : name, optional };
+}
+
+function isBlank(value: string | string[] | undefined): boolean {
+  if (value === undefined || value === "") return true;
+  return Array.isArray(value) && value.length === 0;
 }
 
 export default function StatisticsPage() {
@@ -56,6 +75,7 @@ export default function StatisticsPage() {
   const [analysisType, setAnalysisType] = useState("");
   const [paramValues, setParamValues] = useState<Record<string, string | string[]>>({});
   const [running, setRunning] = useState(false);
+  const [attempted, setAttempted] = useState(false);
   const [result, setResult] = useState<StandardResult | null>(null);
 
   const load = useCallback(async () => {
@@ -95,6 +115,11 @@ export default function StatisticsPage() {
   const numericColumns = (profile?.variables_by_type?.numeric ?? []) as string[];
   const allColumns = (profile?.variables ?? []).map((variable) => variable.name);
 
+  const missingRequired = requirements.filter(
+    (requirement) => !requirement.optional && isBlank(paramValues[requirement.name])
+  );
+  const canRun = currentType !== null && missingRequired.length === 0 && !running;
+
   function buildParameters(): Record<string, unknown> {
     const parameters: Record<string, unknown> = {};
     for (const requirement of requirements) {
@@ -111,6 +136,11 @@ export default function StatisticsPage() {
 
   async function runAnalysis() {
     if (!currentType) return;
+    setAttempted(true);
+    if (!canRun) {
+      showToast("Jaza parameters zote zinazohitajika kwanza.", "warning");
+      return;
+    }
     setRunning(true);
     try {
       const response = await statflowApi.runAnalysis(datasetId, {
@@ -160,44 +190,50 @@ export default function StatisticsPage() {
   function renderParam(requirement: { name: string; optional: boolean }) {
     const { name } = requirement;
     const value = paramValues[name];
+    const error =
+      attempted && !requirement.optional && isBlank(value)
+        ? "Parameter hii inahitajika kwa uchambuzi huu."
+        : undefined;
+    const label = humanize(name);
+
     if (MULTI_COLUMN_PARAMS.has(name)) {
       const selected = Array.isArray(value) ? value : [];
       return (
-        <div className="mt-1 flex max-h-32 flex-wrap gap-2 overflow-y-auto rounded border border-neutral-200 p-2">
-          {columnOptions(name).map((column) => (
-            <label key={column} className="flex items-center gap-1 text-caption">
-              <input
-                type="checkbox"
-                checked={selected.includes(column)}
-                onChange={() => toggleMulti(name, column)}
-              />
-              {column}
-            </label>
-          ))}
-        </div>
+        <CheckboxGroup
+          label={label}
+          optionalLabel={requirement.optional ? "hiari" : undefined}
+          error={error}
+          options={columnOptions(name)}
+          selected={selected}
+          onToggle={(column) => toggleMulti(name, column)}
+          maxHeightClassName="max-h-36"
+        />
       );
     }
+
     if (COLUMN_PARAMS.has(name)) {
       return (
-        <select
-          className={`${SELECT_CLASSES} mt-1`}
+        <SelectInput
+          label={label}
+          optionalLabel={requirement.optional ? "hiari" : undefined}
+          required={!requirement.optional}
+          error={error}
+          placeholder="— chagua column —"
           value={String(value || "")}
+          options={columnOptions(name).map((column) => ({ value: column, label: column }))}
           onChange={(event) =>
             setParamValues((previous) => ({ ...previous, [name]: event.target.value }))
           }
-        >
-          <option value=""> chagua column </option>
-          {columnOptions(name).map((column) => (
-            <option key={column} value={column}>
-              {column}
-            </option>
-          ))}
-        </select>
+        />
       );
     }
+
     return (
-      <input
-        className={`${SELECT_CLASSES} mt-1`}
+      <TextInput
+        label={label}
+        optionalLabel={requirement.optional ? "hiari" : undefined}
+        required={!requirement.optional}
+        error={error}
         value={String(value ?? "")}
         onChange={(event) =>
           setParamValues((previous) => ({ ...previous, [name]: event.target.value }))
@@ -228,6 +264,7 @@ export default function StatisticsPage() {
         <>
           <Card
             title="Endesha uchambuzi"
+            icon="calculator"
             description={
               profile
                 ? `Version v${profile.meta.dataset_version ?? 1} · ${profile.sample_size} rows · ${profile.variable_count} columns`
@@ -235,49 +272,47 @@ export default function StatisticsPage() {
             }
           >
             <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label className="block text-body text-neutral-600" htmlFor="a-type">
-                  Aina ya uchambuzi
-                </label>
-                <select
-                  id="a-type"
-                  className={`${SELECT_CLASSES} mt-1`}
-                  value={analysisType}
-                  onChange={(event) => {
-                    setAnalysisType(event.target.value);
-                    setParamValues({});
-                  }}
-                >
-                  {types.map((entry) => (
-                    <option key={entry.analysis_type} value={entry.analysis_type}>
-                      {entry.analysis_type}
-                    </option>
-                  ))}
-                </select>
-                {currentType && (
-                  <p className="mt-2 text-caption text-neutral-600">
-                    {currentType.description}
-                  </p>
-                )}
-              </div>
-              {requirements.map((requirement) => (
-                <div key={requirement.name}>
-                  <label className="block text-body text-neutral-600">
-                    {requirement.name}
-                    {requirement.optional ? " (hiari)" : ""}
-                  </label>
-                  {renderParam(requirement)}
-                </div>
-              ))}
+              <SelectInput
+                label="Aina ya uchambuzi"
+                value={analysisType}
+                hint={currentType?.description}
+                options={types.map((entry) => ({
+                  value: entry.analysis_type,
+                  label: entry.analysis_type,
+                }))}
+                onChange={(event) => {
+                  setAnalysisType(event.target.value);
+                  setParamValues({});
+                  setAttempted(false);
+                  setResult(null);
+                }}
+              />
+              {requirements.map((requirement) =>
+                renderParam(requirement)
+              )}
             </div>
-            <Button
-              className="mt-4"
-              size="large"
-              loading={running}
-              onClick={runAnalysis}
-            >
-              Endesha uchambuzi
-            </Button>
+            {attempted && missingRequired.length > 0 && (
+              <p
+                role="alert"
+                className="mt-4 flex items-start gap-2 rounded-md border border-danger/30 bg-danger-bg px-3 py-2.5 text-body text-danger-700"
+              >
+                <span className="font-medium">
+                  Jaza parameters zote zinazohitajika:{" "}
+                  {missingRequired.map((requirement) => humanize(requirement.name)).join(", ")}.
+                </span>
+              </p>
+            )}
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button size="large" loading={running} onClick={runAnalysis}>
+                Endesha uchambuzi
+              </Button>
+              {currentType && (
+                <span className="text-caption text-ink-muted">
+                  {requirements.filter((entry) => !entry.optional).length} parameters zinazohitajika
+                  · matokeo yatafunguliwa hapa chini
+                </span>
+              )}
+            </div>
           </Card>
 
           <Card
