@@ -14,8 +14,15 @@ export default function HomePage() {
   }, [router]);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-neutral-50">
-      <p className="text-body text-neutral-600">Inapakia…</p>
+    <main className="flex min-h-screen items-center justify-center bg-surface-canvas">
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex items-center gap-2.5 text-body text-ink-muted"
+      >
+        <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" />
+        <span>Inapakia…</span>
+      </div>
     </main>
   );
 }

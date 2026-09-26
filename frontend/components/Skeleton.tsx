@@ -16,7 +16,7 @@ export function Skeleton({ className = "" }: SkeletonProps) {
 
 export function TableSkeleton({ rows = 6, columns = 4 }: { rows?: number; columns?: number }) {
   return (
-    <div className="space-y-2" role="status" aria-label="Loading data">
+    <div className="space-y-2" role="status" aria-label="Inapakia data">
       <Skeleton className="h-8 w-full" />
       {Array.from({ length: rows }).map((_, rowIndex) => (
         <div key={rowIndex} className="flex gap-2">
@@ -31,7 +31,7 @@ export function TableSkeleton({ rows = 6, columns = 4 }: { rows?: number; column
 
 export function ChartSkeleton() {
   return (
-    <div className="space-y-2" role="status" aria-label="Loading chart">
+    <div className="space-y-2" role="status" aria-label="Inapakia chati">
       <Skeleton className="h-[240px] w-full" />
       <div className="flex justify-center gap-2">
         <Skeleton className="h-3 w-16" />

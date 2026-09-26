@@ -245,7 +245,7 @@ export default function UploadPage() {
                   aria-valuenow={progress}
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-label="Upload progress"
+                  aria-label="Maendeleo ya upakiaji"
                   className="h-2 w-full overflow-hidden rounded-pill bg-surface-sunken"
                 >
                   <div
