@@ -1,11 +1,11 @@
-﻿"use client";
+"use client";
 
 import { ReactNode } from "react";
 
 export function formatCell(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "â€”";
+  if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) return "â€”";
+    if (!Number.isFinite(value)) return "—";
     return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(4);
   }
   if (typeof value === "boolean") return value ? "true" : "false";

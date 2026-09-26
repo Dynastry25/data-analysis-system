@@ -167,7 +167,7 @@ export default function AskPage() {
             inputClassName="flex-1"
             onChange={(event) => setQuestion(event.target.value)}
           />
-          <Button type="submit" className="sm:mt-[26px]" loading={asking}>
+          <Button type="submit" className="sm:mt-[26px]" loading={asking} icon="message-circle">
             Uliza
           </Button>
         </form>
@@ -209,17 +209,20 @@ export default function AskPage() {
         </div>
         {profileVersion != null && !profileError && (
           <p className="mt-2 text-caption text-ink-muted">
-            Variable list is from dataset version {profileVersion}.
+            Orodha ya variables imeambwa kutoka toleo la data{" "}
+            <span className="font-mono font-medium text-ink">v{profileVersion}</span>.
           </p>
         )}
         {profileError && (
           <p
             role="alert"
-            className="mt-2 flex items-start gap-1.5 text-caption text-danger"
+            className="mt-2 flex items-start gap-1.5 rounded-md border border-danger/30 bg-danger-bg px-3 py-2 text-caption text-danger-700"
           >
             <Icon name="alert-circle" size={14} className="mt-0.5 shrink-0" />
-            Variable list could not be loaded. Questions will use the dataset&apos;s current
-            version; retry the page before relying on selectors.
+            <span>
+              Orodha ya variables haijapakiwa. Maswali bado yatatumia toleo la data la
+              sasa — pakia ukurasa upya kabla ya kutumia kichaguzi.
+            </span>
           </p>
         )}
         {examples.length > 0 && (
@@ -250,23 +253,53 @@ export default function AskPage() {
           <EmptyState
             title="Hakuna maswali bado"
             description="Bonyeza moja ya mifano au andika swali lako la takwimu."
+            icon="message-circle"
           />
         </Card>
       ) : (
         turns.map((turn, index) => (
           <Card
             key={`${index}-${turn.question}`}
-            title={`Swali ${index + 1}: ${turn.question}`}
+            title={turn.question}
+            icon="message-circle"
+            actions={
+              <span className="text-caption text-ink-muted">Swali {index + 1}</span>
+            }
           >
             {(turn.outcome || turn.predictor) && (
-              <p className="mb-3 text-caption text-neutral-500">
-                Selected variables: {[turn.outcome, turn.predictor].filter(Boolean).join(", ")}
+              <p className="mb-3 flex flex-wrap items-center gap-1.5 text-caption text-ink-muted">
+                Variables zilizochaguliwa:
+                {[turn.outcome, turn.predictor]
+                  .filter(Boolean)
+                  .map((name) => (
+                    <span
+                      key={name}
+                      className="rounded border border-surface-border bg-surface-sunken px-1.5 py-0.5 font-medium text-ink"
+                    >
+                      {name}
+                    </span>
+                  ))}
               </p>
             )}
             {turn.error ? (
-              <p className="text-body text-danger">{turn.error}</p>
+              <p
+                role="alert"
+                className="flex items-start gap-1.5 rounded-md border border-danger/30 bg-danger-bg px-3 py-2 text-body text-danger-700"
+              >
+                <Icon name="alert-circle" size={15} className="mt-0.5 shrink-0" />
+                <span>{turn.error}</span>
+              </p>
             ) : turn.answer == null ? (
-              <p className="text-body text-neutral-600">Inachambua...</p>
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-center gap-2.5 text-body text-ink-secondary"
+              >
+                <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" />
+                <span>
+                  Inachambua — engine ya takwimu inafanya kazi, AI inatafsiri baadaye…
+                </span>
+              </div>
             ) : (
               <AnswerView answer={turn.answer} />
             )}

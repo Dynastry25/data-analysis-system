@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useRouter } from "next/navigation";
 import { DragEvent, useEffect, useRef, useState } from "react";
@@ -146,7 +146,7 @@ export default function UploadPage() {
               label="Mradi"
               value={selectedProject}
               disabled={selectedOrg === ""}
-              placeholder="â€” Bila mradi â€”"
+              placeholder="— Bila mradi —"
               hint={
                 selectedOrg === "" ? "Chagua shirika kwanza" : "Chagua mradi wa kuhifadhi data"
               }
@@ -192,7 +192,7 @@ export default function UploadPage() {
             au chagua faili kutoka kompyuta
           </p>
           <p className="mt-1 text-caption text-ink-muted">
-            CSV, Excel (.xlsx), JSON, TSV, TXT au Parquet Â· hadi {MAX_MB}MB
+            CSV, Excel (.xlsx), JSON, TSV, TXT au Parquet · hadi {MAX_MB}MB
           </p>
           <input
             ref={inputRef}
@@ -254,7 +254,7 @@ export default function UploadPage() {
                   />
                 </div>
                 <p className="mt-1.5 text-caption text-ink-secondary">
-                  Inapakiaâ€¦ {progress}%
+                  Inapakia… {progress}%
                 </p>
               </div>
             )}

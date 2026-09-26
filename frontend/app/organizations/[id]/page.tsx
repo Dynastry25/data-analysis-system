@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -128,7 +128,7 @@ function InlineConfirm({
         {copy.question}
       </p>
       <p className="mt-1 text-caption text-danger-700">
-        <span className="font-medium">{target.label}</span> â€” {copy.warning}
+        <span className="font-medium">{target.label}</span> — {copy.warning}
       </p>
       <div className="mt-2 flex items-center gap-2">
         <Button variant="danger" size="small" icon="trash" onClick={onConfirm}>
@@ -466,7 +466,7 @@ export default function OrganizationDetailPage() {
   return (
     <AppShell
       title={org.name}
-      description={`@${org.slug}${org.description ? ` â€” ${org.description}` : ""}`}
+      description={`@${org.slug}${org.description ? ` — ${org.description}` : ""}`}
       actions={
         org.my_role === "owner" &&
         (isSameTarget(confirm, "org", org.id) ? (
@@ -640,7 +640,7 @@ export default function OrganizationDetailPage() {
 
       <Card
         title="Miradi"
-        description="Miradi ni mapipa ya kufanyia kazi â€” data zinaweza kuwekwa ndani ya mradi kwenye siku zijazo."
+        description="Miradi ni mapipa ya kufanyia kazi — data zinaweza kuwekwa ndani ya mradi kwenye siku zijazo."
         icon="folder"
       >
         {!canCreateProject(myRole) ? (

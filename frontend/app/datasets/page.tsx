@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -15,7 +15,7 @@ import { api, apiErrorMessage, DatasetSummary } from "@/lib/api";
 import { completedStageCount } from "@/lib/pipeline";
 
 function formatDate(value: string | null): string {
-  if (!value) return "â€”";
+  if (!value) return "—";
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime())
     ? value
@@ -146,7 +146,7 @@ export default function DatasetsPage() {
         icon="database"
         description={
           datasets.length > 0
-            ? `${datasets.length} datasets Â· jumla ya ${totalRows.toLocaleString()} safu`
+            ? `${datasets.length} datasets · jumla ya ${totalRows.toLocaleString()} safu`
             : "Faili ulizopakia na data iliyoshirikishwa na wanachama wa mashirika yako."
         }
       >
@@ -186,8 +186,8 @@ export default function DatasetsPage() {
                         {dataset.original_filename}
                       </p>
                       <p className="mt-0.5 text-caption text-ink-muted">
-                        Safu {dataset.row_count.toLocaleString()} Â· Columns{" "}
-                        {dataset.column_count} Â· {dataset.file_type.toUpperCase()} Â·{" "}
+                        Safu {dataset.row_count.toLocaleString()} · Columns{" "}
+                        {dataset.column_count} · {dataset.file_type.toUpperCase()} ·{" "}
                         {formatDate(dataset.uploaded_at)}
                       </p>
                     </div>

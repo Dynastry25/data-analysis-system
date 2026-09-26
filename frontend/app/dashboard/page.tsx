@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -187,28 +187,28 @@ export default function DashboardPage() {
           icon="database"
           tone="primary"
           label="Datasets"
-          value={loading ? "â€¦" : datasets.length}
+          value={loading ? "…" : datasets.length}
           hint="Faili zilizopakiwa"
         />
         <MetricCard
           icon="layers"
           tone="info"
           label="Jumla ya safu"
-          value={loading ? "â€¦" : totalRows.toLocaleString()}
+          value={loading ? "…" : totalRows.toLocaleString()}
           hint="Rows katika datasets zote"
         />
         <MetricCard
           icon="calculator"
           tone="success"
           label="Uchambuzi"
-          value={loading ? "â€¦" : totalAnalyses + totalCharts}
-          hint={`${totalAnalyses} takwimu Â· ${totalCharts} chati`}
+          value={loading ? "…" : totalAnalyses + totalCharts}
+          hint={`${totalAnalyses} takwimu · ${totalCharts} chati`}
         />
         <MetricCard
           icon="file-text"
           tone="warning"
           label="Ripoti"
-          value={loading ? "â€¦" : totalReports}
+          value={loading ? "…" : totalReports}
           hint="PDF / Excel zilizotengenezwa"
         />
       </div>
@@ -278,8 +278,8 @@ export default function DashboardPage() {
                         {dataset.original_filename}
                       </p>
                       <p className="text-caption text-ink-muted">
-                        Safu {dataset.row_count.toLocaleString()} Â· Columns{" "}
-                        {dataset.column_count} Â· {dataset.file_type.toUpperCase()} Â·{" "}
+                        Safu {dataset.row_count.toLocaleString()} · Columns{" "}
+                        {dataset.column_count} · {dataset.file_type.toUpperCase()} ·{" "}
                         {formatDate(dataset.uploaded_at)}
                       </p>
                     </div>

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Badge } from "@/components/Badge";
 import { DataTable } from "@/components/DataTable";
@@ -8,7 +8,7 @@ import { colorForIndex } from "@/lib/constants";
 
 /** Format a scalar value for display. */
 export function fmt(value: unknown): string {
-  if (value === null || value === undefined) return "â€”";
+  if (value === null || value === undefined) return "—";
   if (typeof value === "number") {
     if (Math.abs(value) > 0 && Math.abs(value) < 0.0001) return value.toExponential(2);
     return Number.isInteger(value) ? String(value) : value.toFixed(4);
@@ -19,29 +19,29 @@ export function fmt(value: unknown): string {
 
 /** Format a p-value the way statisticians expect. */
 export function pFmt(p: number | null | undefined): string {
-  if (p === null || p === undefined) return "â€”";
+  if (p === null || p === undefined) return "—";
   if (p < 0.0001) return "< 0.0001";
   return p.toFixed(4);
 }
 
-/** Layer 1 â€” plain-language headline (design system Â§10). */
+/** Layer 1 — plain-language headline (design system §10). */
 function buildHeadline(result: StandardResult): string {
   if (result.status !== "success") {
-    return "Uchambuzi haujakamilika â€” hakikisha data inatosha na parameters ni sahihi.";
+    return "Uchambuzi haujakamilika — hakikisha data inatosha na parameters ni sahihi.";
   }
   const test = result.test;
   const method = test?.method ?? result.analysis_type;
   if (!test || test.significant === null || test.significant === undefined) {
-    return `Muhtasari wa takwimu (${result.analysis_type}) kwa n = ${result.sample_size ?? "â€”"} rekodi.`;
+    return `Muhtasari wa takwimu (${result.analysis_type}) kwa n = ${result.sample_size ?? "—"} rekodi.`;
   }
   const pText = `p = ${pFmt(test.p_value)}`;
   if (test.significant) {
-    return `Matokeo ni muhimu kiotakwimu (${method}, ${pText}) â€” kuna ushahidi wa kutosha kuwa tofauti/uhusiano ni wa kweli.`;
+    return `Matokeo ni muhimu kiotakwimu (${method}, ${pText}) — kuna ushahidi wa kutosha kuwa tofauti/uhusiano ni wa kweli.`;
   }
-  return `Matokeo si muhimu kiotakwimu (${method}, ${pText}) â€” hakuna ushahidi wa kutosha wa tofauti/uhusiano.`;
+  return `Matokeo si muhimu kiotakwimu (${method}, ${pText}) — hakuna ushahidi wa kutosha wa tofauti/uhusiano.`;
 }
 
-/** Layer 5 â€” practical (not just statistical) meaning in plain language. */
+/** Layer 5 — practical (not just statistical) meaning in plain language. */
 function buildInterpretation(result: StandardResult): string {
   const sentences: string[] = [];
   const test = result.test;
@@ -52,13 +52,13 @@ function buildInterpretation(result: StandardResult): string {
     );
   } else if (test?.significant === false) {
     sentences.push(
-      "Hatuna ushahidi wa kutosha kusema tofauti/uhusiano upo â€” inawezekana ni bahati au sample ndogo."
+      "Hatuna ushahidi wa kutosha kusema tofauti/uhusiano upo — inawezekana ni bahati au sample ndogo."
     );
   }
   if (effect && effect.value !== null && effect.value !== undefined) {
     const sizeText = effect.interpretation ? ` (${effect.interpretation})` : "";
     sentences.push(
-      `Ukubwa wa athari: ${effect.name ?? "effect size"} = ${fmt(effect.value)}${sizeText} â€” huu ndio uzito wa vitendo wa matokeo.`
+      `Ukubwa wa athari: ${effect.name ?? "effect size"} = ${fmt(effect.value)}${sizeText} — huu ndio uzito wa vitendo wa matokeo.`
     );
   }
   if (result.sample_size !== null && result.sample_size < 30) {
@@ -66,7 +66,7 @@ function buildInterpretation(result: StandardResult): string {
   }
   if (sentences.length === 0) {
     sentences.push(
-      "Angalia jedwali la makadirio ndani ya 'Angalia zaidi' â€” lina muhtasari kamili wa data yako."
+      "Angalia jedwali la makadirio ndani ya 'Angalia zaidi' — lina muhtasari kamili wa data yako."
     );
   }
   return sentences.join(" ");
@@ -168,7 +168,7 @@ function TablesBlock({ tables }: { tables: Record<string, unknown> }) {
   return <div className="space-y-3">{rendered}</div>;
 }
 
-/** Single key-number card (mono font per design system Â§3) â€” reused by result views. */
+/** Single key-number card (mono font per design system §3) — reused by result views. */
 export function ResultMetric({
   label,
   value,
@@ -189,7 +189,7 @@ export function ResultMetric({
   );
 }
 
-/** Layer 4 wrapper â€” full statistical details behind a collapsible (design system Â§10). */
+/** Layer 4 wrapper — full statistical details behind a collapsible (design system §10). */
 export function CollapsibleDetails({
   label,
   children,
@@ -214,7 +214,7 @@ export function CollapsibleDetails({
   );
 }
 
-/** Layer 5 â€” practical meaning in plain language, in an info box. */
+/** Layer 5 — practical meaning in plain language, in an info box. */
 export function InterpretationBox({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-md border border-info/30 bg-info-bg p-4">
@@ -227,7 +227,7 @@ export function InterpretationBox({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Layer 2 â€” key numbers as short metric cards (mono font per design system Â§3). */
+/** Layer 2 — key numbers as short metric cards (mono font per design system §3). */
 function MetricCards({ result }: { result: StandardResult }) {
   const metrics: { label: string; value: string; hint?: string }[] = [];
   if (result.test && result.test.statistic !== null && result.test.statistic !== undefined) {
@@ -264,7 +264,7 @@ function MetricCards({ result }: { result: StandardResult }) {
   );
 }
 
-/** Layer 3a â€” confidence interval whisker (pure CSS, screen-reader friendly). */
+/** Layer 3a — confidence interval whisker (pure CSS, screen-reader friendly). */
 function CiChart({ result }: { result: StandardResult }) {
   const ci = result.confidence_interval;
   if (!ci || ci.lower === null || ci.upper === null || ci.upper <= ci.lower) {
@@ -320,7 +320,7 @@ function CiChart({ result }: { result: StandardResult }) {
   );
 }
 
-/** Layer 3b â€” horizontal bars comparing values (Okabe-Ito colors). */
+/** Layer 3b — horizontal bars comparing values (Okabe-Ito colors). */
 export function GroupBars({
   values,
   title = "Kulinganisha makundi",
@@ -365,7 +365,7 @@ export function GroupBars({
 
 interface StandardResultViewProps {
   result: StandardResult;
-  /** Optional next-step buttons (design system Â§10 layer 6). */
+  /** Optional next-step buttons (design system §10 layer 6). */
   actions?: React.ReactNode;
 }
 
@@ -378,7 +378,7 @@ function metaString(meta: Record<string, unknown>, ...keys: string[]): string | 
   return null;
 }
 
-/** Layer 0 â€” reproducibility: which data version, engine and run produced this. */
+/** Layer 0 — reproducibility: which data version, engine and run produced this. */
 function ProvenanceStrip({ result }: { result: StandardResult }) {
   const version = metaString(result.meta, "dataset_version", "version");
   const engine = metaString(result.meta, "engine", "engine_version", "method_version");
@@ -417,11 +417,11 @@ function ProvenanceStrip({ result }: { result: StandardResult }) {
 }
 
 /**
- * Progressive-disclosure result view (design system Â§10 â€” inverted pyramid):
+ * Progressive-disclosure result view (design system §10 — inverted pyramid):
  * 1. headline (plain language) + significance badge
  * 2. metric cards (statistic, p-value, n, effect size)
  * 3. visuals (CI whisker, group bars)
- * 4. "Angalia zaidi" â€” full details behind a collapsible
+ * 4. "Angalia zaidi" — full details behind a collapsible
  * 5. plain-language interpretation
  * 6. next-step actions
  */
@@ -437,7 +437,7 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
 
   return (
     <div className="space-y-6">
-      {/* Layer 1 â€” Kichwa cha habari */}
+      {/* Layer 1 — Kichwa cha habari */}
       <div>
         <p className="text-body-lg text-ink">{buildHeadline(result)}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -475,10 +475,10 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
         </div>
       )}
 
-      {/* Layer 2 â€” Namba muhimu */}
+      {/* Layer 2 — Namba muhimu */}
       <MetricCards result={result} />
 
-      {/* Layer 3 â€” Taswira */}
+      {/* Layer 3 — Taswira */}
       {hasVisual && (
         <div className="space-y-4 rounded-md border border-surface-border bg-surface-sunken p-4">
           <CiChart result={result} />
@@ -486,8 +486,8 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
         </div>
       )}
 
-      {/* Layer 4 â€” Angalia zaidi (undani wa kitakwimu) */}
-      <CollapsibleDetails label="Angalia zaidi â€” undani wa kitakwimu (estimate, CI, df, diagnostics)">
+      {/* Layer 4 — Angalia zaidi (undani wa kitakwimu) */}
+      <CollapsibleDetails label="Angalia zaidi — undani wa kitakwimu (estimate, CI, df, diagnostics)">
         <div className="grid gap-4 lg:grid-cols-2">
           <div>
             <p className="mb-1.5 text-overline uppercase tracking-wide text-ink-muted">
@@ -566,10 +566,10 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
         )}
       </CollapsibleDetails>
 
-      {/* Layer 5 â€” Tafsiri kwa lugha rahisi */}
+      {/* Layer 5 — Tafsiri kwa lugha rahisi */}
       <InterpretationBox>{buildInterpretation(result)}</InterpretationBox>
 
-      {/* Layer 6 â€” Hatua zinazofuata */}
+      {/* Layer 6 — Hatua zinazofuata */}
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
   );
