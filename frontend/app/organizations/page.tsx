@@ -7,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
+import { TextArea, TextInput } from "@/components/Field";
 import { Icon } from "@/components/Icon";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
@@ -32,6 +33,7 @@ export default function OrganizationsPage() {
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -50,10 +52,14 @@ export default function OrganizationsPage() {
 
   async function handleCreate(event: React.FormEvent) {
     event.preventDefault();
+    if (name.trim().length < 2) {
+      setError("Jina la shirika linapaswa kuwa angalau herufi 2.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const org = await api.organizations.create({ name, description });
+      const org = await api.organizations.create({ name: name.trim(), description });
       showToast("Shirika limetengenezwa", "success");
       setName("");
       setDescription("");
@@ -71,10 +77,14 @@ export default function OrganizationsPage() {
   }
 
   async function handleDelete(org: Organization) {
-    if (!window.confirm(`Futa shirika "${org.name}" na data yake yote?`)) return;
+    if (confirmingDelete !== org.id) {
+      setConfirmingDelete(org.id);
+      return;
+    }
     try {
       await api.organizations.remove(org.id);
       showToast("Shirika limefutwa", "success");
+      setConfirmingDelete(null);
       load();
     } catch (caught) {
       showToast(apiErrorMessage(caught), "danger");
@@ -86,8 +96,13 @@ export default function OrganizationsPage() {
       title="Mashirika"
       description="Panga watu na data kwenye mashirika, na kila mwanachama apate kiwango chake cha ruhusa."
       actions={
-        <Button onClick={() => setShowForm((value) => !value)}>
-          <Icon name="plus" size={18} />
+        <Button
+          onClick={() => {
+            setShowForm((value) => !value);
+            setError(null);
+          }}
+          icon="plus"
+        >
           Shirika jipya
         </Button>
       }
@@ -96,38 +111,33 @@ export default function OrganizationsPage() {
         <Card
           title="Tengeneza shirika"
           description="Wewe utakuwa mwenyekiti (owner) wa shirika hili."
+          icon="building"
         >
           <form onSubmit={handleCreate} className="space-y-4">
-            <div>
-              <label htmlFor="org_name" className="block text-body text-neutral-900">
-                Jina la shirika
-              </label>
-              <input
-                id="org_name"
-                required
-                minLength={2}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                className="mt-1 h-10 w-full rounded border border-neutral-200 px-3 text-body outline-none focus:border-primary-500"
-                placeholder="Mfano: Shule ya Taifa"
-              />
-            </div>
-            <div>
-              <label htmlFor="org_desc" className="block text-body text-neutral-900">
-                Maelezo (hiari)
-              </label>
-              <textarea
-                id="org_desc"
-                rows={2}
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                className="mt-1 w-full rounded border border-neutral-200 px-3 py-2 text-body outline-none focus:border-primary-500"
-                placeholder="Shirika hili litachambua data gani?"
-              />
-            </div>
-            {error && <p className="text-body text-danger">{error}</p>}
+            <TextInput
+              id="org_name"
+              label="Jina la shirika"
+              required
+              minLength={2}
+              value={name}
+              error={error ?? undefined}
+              onChange={(event) => {
+                setName(event.target.value);
+                if (error) setError(null);
+              }}
+              placeholder="Mfano: Shule ya Taifa"
+            />
+            <TextArea
+              id="org_desc"
+              label="Maelezo"
+              optionalLabel="hiari"
+              rows={2}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Shirika hili litachambua data gani?"
+            />
             <div className="flex items-center gap-2">
-              <Button type="submit" loading={busy}>
+              <Button type="submit" loading={busy} icon="check">
                 Tengeneza
               </Button>
               <Button variant="ghost" onClick={() => setShowForm(false)}>
@@ -144,9 +154,9 @@ export default function OrganizationsPage() {
         <EmptyState
           title="Huna mashirika bado"
           description="Shirika hukusanya wanachama, miradi na data pamoja chini ya sheria zile zile."
+          icon="building"
           action={
-            <Button onClick={() => setShowForm(true)}>
-              <Icon name="building" size={18} />
+            <Button onClick={() => setShowForm(true)} icon="plus">
               Tengeneza la kwanza
             </Button>
           }
@@ -156,57 +166,84 @@ export default function OrganizationsPage() {
           {organizations.map((org) => (
             <Card key={org.id} className="flex flex-col">
               <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded bg-primary-100 text-primary-700">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-100 text-primary-700">
                     <Icon name="building" size={20} />
                   </span>
-                  <div>
+                  <div className="min-w-0">
                     <Link
                       href={`/organizations/${org.id}`}
-                      className="block text-h3 text-neutral-900 hover:text-primary-700"
+                      className="block truncate text-h3 text-ink transition-colors duration-150 hover:text-primary-700"
                     >
                       {org.name}
                     </Link>
-                    <p className="text-caption text-neutral-600">@{org.slug}</p>
+                    <p className="truncate text-caption text-ink-muted">@{org.slug}</p>
                   </div>
                 </div>
                 {org.my_role && <RoleBadge role={org.my_role} />}
               </div>
 
               {org.description && (
-                <p className="mt-3 text-body text-neutral-600">{org.description}</p>
+                <p className="mt-3 line-clamp-3 text-body text-ink-secondary">
+                  {org.description}
+                </p>
               )}
 
-              <div className="mt-4 flex items-center gap-4 text-body text-neutral-600">
+              <div className="mt-4 flex flex-wrap items-center gap-4 text-caption text-ink-secondary">
                 <span className="inline-flex items-center gap-1.5">
-                  <Icon name="users" size={16} className="text-neutral-400" />
+                  <Icon name="users" size={16} className="text-ink-muted" />
                   {org.member_count} wanachama
                 </span>
                 <span className="inline-flex items-center gap-1.5">
-                  <Icon name="folder" size={16} className="text-neutral-400" />
+                  <Icon name="folder" size={16} className="text-ink-muted" />
                   {org.project_count} miradi
                 </span>
               </div>
 
-              <div className="mt-4 flex items-center gap-2 border-t border-neutral-200 pt-3">
-                <Link
-                  href={`/organizations/${org.id}`}
-                  className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded border border-neutral-200 bg-white px-3 text-[13px] font-medium text-neutral-600 transition-colors duration-150 hover:bg-neutral-100"
-                >
-                  Fungua
-                  <Icon name="arrow-right" size={16} />
-                </Link>
-                {org.my_role === "owner" && (
-                  <Button
-                    variant="danger"
-                    size="small"
-                    onClick={() => handleDelete(org)}
-                    aria-label={`Futa shirika ${org.name}`}
+              {org.my_role === "owner" && confirmingDelete === org.id ? (
+                <div className="mt-4 rounded-md border border-danger/30 bg-danger-bg p-2.5">
+                  <p className="text-caption text-danger-700">
+                    Futa &ldquo;{org.name}&rdquo; na data yake yote? Kitendo hiki hakiwezi
+                    kubatilishwa.
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Button
+                      variant="danger"
+                      size="small"
+                      icon="trash"
+                      onClick={() => handleDelete(org)}
+                    >
+                      Ndiyo, futa
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="small"
+                      onClick={() => setConfirmingDelete(null)}
+                    >
+                      Ghairi
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 flex items-center gap-2 border-t border-surface-border pt-3">
+                  <Link
+                    href={`/organizations/${org.id}`}
+                    className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded border border-surface-border bg-surface-panel px-3 text-caption font-medium text-ink-secondary transition-colors duration-150 hover:border-surface-border-strong hover:bg-surface-sunken"
                   >
-                    <Icon name="trash" size={16} />
-                  </Button>
-                )}
-              </div>
+                    Fungua
+                    <Icon name="arrow-right" size={16} />
+                  </Link>
+                  {org.my_role === "owner" && (
+                    <Button
+                      variant="danger"
+                      size="small"
+                      icon="trash"
+                      onClick={() => handleDelete(org)}
+                      aria-label={`Futa shirika ${org.name}`}
+                    />
+                  )}
+                </div>
+              )}
             </Card>
           ))}
         </div>

@@ -9,6 +9,7 @@ import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState, Stat } from "@/components/Card";
 import { DataTable } from "@/components/DataTable";
+import { SelectInput } from "@/components/Field";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, DatasetDetailResponse, OrgProject } from "@/lib/api";
@@ -94,16 +95,27 @@ export default function DatasetDetailPage() {
       actions={
         <>
           <Link href="/datasets">
-            <Button variant="secondary">Rudi kwenye orodha</Button>
+            <Button variant="ghost" icon="arrow-right">
+              Orodha
+            </Button>
           </Link>
           <Link href={`/datasets/${datasetId}/studio`}>
-            <Button variant="secondary">Data studio</Button>
-          </Link>
-          <Link href={`/datasets/${datasetId}/statistics`}>
-            <Button>Chambua takwimu</Button>
+            <Button variant="secondary" icon="sliders">
+              Data studio
+            </Button>
           </Link>
           <Link href={`/datasets/${datasetId}/ask`}>
-            <Button variant="secondary">Msaidizi</Button>
+            <Button variant="secondary" icon="sparkles">
+              Msaidizi
+            </Button>
+          </Link>
+          <Link href={`/datasets/${datasetId}/charts`}>
+            <Button variant="secondary" icon="chart">
+              Chora chati
+            </Button>
+          </Link>
+          <Link href={`/datasets/${datasetId}/statistics`}>
+            <Button icon="calculator">Chambua takwimu</Button>
           </Link>
         </>
       }
@@ -117,6 +129,7 @@ export default function DatasetDetailPage() {
           <EmptyState
             title="Imeshindikana kupata dataset"
             description={error}
+            icon="alert-circle"
             action={
               <Link href="/datasets">
                 <Button variant="secondary">Rudi kwenye orodha</Button>
@@ -126,31 +139,79 @@ export default function DatasetDetailPage() {
         </Card>
       ) : (
         <>
+          {detail && (
+            <dl className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-md border border-surface-border bg-surface-panel px-4 py-3 text-caption">
+              <div className="flex items-center gap-1.5">
+                <dt className="text-ink-muted">Toleo</dt>
+                <dd className="font-mono font-medium text-ink">
+                  v{detail.dataset_version}
+                </dd>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <dt className="text-ink-muted">Aina</dt>
+                <dd className="font-medium uppercase text-ink">{detail.dataset.file_type}</dd>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <dt className="text-ink-muted">Imepakiwa</dt>
+                <dd className="text-ink">
+                  {detail.dataset.uploaded_at
+                    ? new Date(detail.dataset.uploaded_at).toLocaleString()
+                    : "—"}
+                </dd>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <dt className="text-ink-muted">Hali</dt>
+                <dd>
+                  <Badge tone={detail.dataset.status === "ready" ? "success" : "warning"}>
+                    {detail.dataset.status}
+                  </Badge>
+                </dd>
+              </div>
+              <div className="ml-auto flex items-center gap-1.5">
+                <dt className="text-ink-muted">Ufikiaji</dt>
+                <dd>
+                  {detail.dataset.project_name ? (
+                    <Badge tone="info" icon="folder">
+                      {detail.dataset.project_name}
+                    </Badge>
+                  ) : (
+                    <Badge tone="neutral">Binafsi</Badge>
+                  )}
+                </dd>
+              </div>
+            </dl>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="Safu (rows)" value={detail?.dataset.row_count.toLocaleString()} />
             <Stat label="Columns" value={detail?.dataset.column_count} />
             <Stat
               label="Missing values"
               value={totalMissing.toLocaleString()}
-              hint={`Katika columns ${columnsWithMissing.length}`}
+              hint={
+                columnsWithMissing.length === 0
+                  ? "Hakuna missing values"
+                  : `Katika columns ${columnsWithMissing.length}`
+              }
             />
             <Stat
               label="Columns za namba"
               value={numericColumns.length}
-              hint={numericColumns.slice(0, 3).join(", ") || ""}
+              hint={numericColumns.slice(0, 3).join(", ") || "Hakuna"}
             />
           </div>
 
           <Card
             title="Ufikiaji wa data"
             description="Data ya binafsi ni yawewe pekee. Ukiiweka kwenye mradi, wanachama wa shirika hilo wataweza kuiona kulingana na kiwango chao."
+            icon="folder"
           >
             {meId !== null && detail?.dataset.user_id !== meId ? (
               <div className="flex flex-wrap items-center gap-3">
-                <Badge tone="primary">
+                <Badge tone="primary" icon="folder">
                   {detail?.dataset.project_name ?? "Mradi"}
                 </Badge>
-                <p className="text-body text-neutral-600">
+                <p className="text-body text-ink-secondary">
                   Dataset hii ni ya mwanachama mwingine. Unaweza kuiangalia na
                   kuichambua kama kiwango chako kinaruhusu.
                 </p>
@@ -158,37 +219,50 @@ export default function DatasetDetailPage() {
             ) : (
               <div className="flex flex-wrap items-end gap-3">
                 <div className="min-w-[220px] flex-1">
-                  <label
-                    htmlFor="dataset_project"
-                    className="block text-body text-neutral-900"
-                  >
-                    Mradi
-                  </label>
-                  <select
+                  <SelectInput
                     id="dataset_project"
+                    label="Mradi"
                     value={detail?.dataset.project_id ?? ""}
                     onChange={(event) => handleProjectChange(event.target.value)}
-                    className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
-                  >
-                    <option value="">Data ya binafsi</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: "", label: "Data ya binafsi" },
+                      ...projects.map((project) => ({
+                        value: String(project.id),
+                        label: project.name,
+                      })),
+                    ]}
+                  />
                 </div>
                 {detail?.dataset.project_id ? (
-                  <Badge tone="info">Inashirikishwa na shirika</Badge>
+                  <Badge tone="info" icon="users">
+                    Inashirikishwa na shirika
+                  </Badge>
                 ) : (
-                  <Badge tone="neutral">Binafsi</Badge>
+                  <Badge tone="neutral" icon="lock">
+                    Binafsi
+                  </Badge>
                 )}
               </div>
             )}
           </Card>
 
           {columnsWithMissing.length > 0 && (
-            <Card title="Tahadhari: missing values" tone="warning">
+            <Card
+              title="Tahadhari: missing values"
+              icon="alert-triangle"
+              tone="warning"
+              actions={
+                <Link href={`/datasets/${datasetId}/studio`}>
+                  <Button variant="secondary" size="small" icon="sliders">
+                    Safisha
+                  </Button>
+                </Link>
+              }
+            >
+              <p className="mb-3 text-body text-ink-secondary">
+                Columns zifuata zina thamani zilizo-kosekana. Safisha katika data studio
+                kabla ya kuchambua ili matokeo yaweze sahihi.
+              </p>
               <div className="flex flex-wrap gap-2">
                 {columnsWithMissing.map((column) => (
                   <Badge key={column.name} tone="warning">
@@ -202,6 +276,7 @@ export default function DatasetDetailPage() {
           <Card
             title="Muundo wa columns"
             description="Aina ya data, missing values na unique values kwa kila column."
+            icon="table"
           >
             <DataTable
               caption="Column profile"
@@ -217,11 +292,7 @@ export default function DatasetDetailPage() {
                   );
                 }
                 if (column === "missing_count" && Number(value) > 0) {
-                  return (
-                    <Badge tone="warning">
-                      {String(value)}
-                    </Badge>
-                  );
+                  return <Badge tone="warning">{String(value)}</Badge>;
                 }
                 if (value === null || value === undefined) return "—";
                 return String(value);
@@ -232,11 +303,13 @@ export default function DatasetDetailPage() {
           <Card
             title="Preview ya data"
             description={`Rows ${previewRows.length} za kwanza kama zilivyo sasa.`}
+            icon="table"
           >
             {previewRows.length === 0 ? (
               <EmptyState
                 title="Hakuna data ya kutosha"
                 description="Faili linaonekana halina rows."
+                icon="table"
               />
             ) : (
               <DataTable
@@ -252,13 +325,14 @@ export default function DatasetDetailPage() {
           <Card
             title="Safisha na badilisha data"
             description="Data studio huunda version mpya kwa kila hatua hakuna data inayopotea."
+            icon="sliders"
             actions={
               <Link href={`/datasets/${datasetId}/studio`}>
-                <Button>Fungua data studio</Button>
+                <Button icon="sliders">Fungua data studio</Button>
               </Link>
             }
           >
-            <p className="text-body text-neutral-600">
+            <p className="text-body text-ink-secondary">
               Safisha missing values, duplicates na aina za columns, kisha
               badilisha (filter, group, calculate) kabla ya kuchambua.
             </p>

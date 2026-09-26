@@ -1,6 +1,5 @@
-"use client";
+﻿"use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -8,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
+import { SelectInput, TextInput } from "@/components/Field";
 import { Icon } from "@/components/Icon";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
@@ -41,6 +41,10 @@ function initials(name: string | null): string {
   return (parts[0]?.[0] ?? "?").toUpperCase() + (parts[1]?.[0] ?? "").toUpperCase();
 }
 
+function memberLabel(person: { full_name: string | null; email: string | null }): string {
+  return person.full_name ?? person.email ?? "Mwanachama";
+}
+
 // ------------------------------------------------------------- permissions
 
 function canManageMembers(role: OrgRole | null): boolean {
@@ -61,6 +65,81 @@ function canCreateProject(role: OrgRole | null): boolean {
 
 function canManageProject(role: OrgRole | null): boolean {
   return role === "owner" || role === "admin";
+}
+
+type ConfirmTarget =
+  | { kind: "member"; id: number; label: string }
+  | { kind: "team-member"; id: number; label: string }
+  | { kind: "project"; id: number; label: string }
+  | { kind: "team"; id: number; label: string }
+  | { kind: "org"; id: number; label: string };
+
+type RenameTarget = { kind: "project" | "team"; id: number; name: string };
+
+const CONFIRM_COPY: Record<ConfirmTarget["kind"], { question: string; warning: string }> = {
+  member: {
+    question: "Mtoe mwanachama huyu kwenye shirika?",
+    warning: "Atapoteza ruhusa ya kufikia data ya shirika hili.",
+  },
+  "team-member": {
+    question: "Mtoe mwanachama huyu kwenye timu?",
+    warning: "Ataendelea kuwa mwanachama wa shirika.",
+  },
+  project: {
+    question: "Futa mradi huu?",
+    warning: "Data iliyowekwa ndani ya mradi itabaki, lakini haitaonekana tena.",
+  },
+  team: {
+    question: "Futa timu hii?",
+    warning: "Wanachama wa timu itabaki kwenye shirika.",
+  },
+  org: {
+    question: "Futa shirika zima?",
+    warning: "Hii itafuta wanachama, miradi, timu na data zote za shirika. Kitendo hiki hakiwezi kubatilishwa.",
+  },
+};
+
+function isSameTarget(
+  target: ConfirmTarget | null,
+  kind: ConfirmTarget["kind"],
+  id: number
+): boolean {
+  return target?.kind === kind && target.id === id;
+}
+
+function InlineConfirm({
+  target,
+  onCancel,
+  onConfirm,
+}: {
+  target: ConfirmTarget;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const copy = CONFIRM_COPY[target.kind];
+  return (
+    <div
+      role="alertdialog"
+      aria-label={copy.question}
+      className="w-full rounded-md border border-danger/30 bg-danger-bg p-3"
+    >
+      <p className="flex items-start gap-1.5 text-body font-medium text-danger-700">
+        <Icon name="alert-triangle" size={15} className="mt-0.5 shrink-0" />
+        {copy.question}
+      </p>
+      <p className="mt-1 text-caption text-danger-700">
+        <span className="font-medium">{target.label}</span> â€” {copy.warning}
+      </p>
+      <div className="mt-2 flex items-center gap-2">
+        <Button variant="danger" size="small" icon="trash" onClick={onConfirm}>
+          Ndiyo, endelea
+        </Button>
+        <Button variant="ghost" size="small" onClick={onCancel}>
+          Ghairi
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export default function OrganizationDetailPage() {
@@ -85,6 +164,11 @@ export default function OrganizationDetailPage() {
   const [memberPicks, setMemberPicks] = useState<Record<number, number | "">>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [memberError, setMemberError] = useState<string | null>(null);
+  const [projectError, setProjectError] = useState<string | null>(null);
+  const [teamError, setTeamError] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmTarget | null>(null);
+  const [rename, setRename] = useState<RenameTarget | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -135,19 +219,21 @@ export default function OrganizationDetailPage() {
 
   async function handleAddMember(event: React.FormEvent) {
     event.preventDefault();
+    const email = memberEmail.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      setMemberError("Andika barua pepe sahihi, kwa mfano: mwanachama@example.com");
+      return;
+    }
     setBusy(true);
-    setError(null);
+    setMemberError(null);
     try {
-      await api.organizations.addMember(organizationId, {
-        email: memberEmail,
-        role: memberRole,
-      });
+      await api.organizations.addMember(organizationId, { email, role: memberRole });
       showToast("Mwanachama ameongezwa", "success");
       setMemberEmail("");
       load();
     } catch (caught) {
       const message = apiErrorMessage(caught);
-      setError(message);
+      setMemberError(message);
       showToast(message, "danger");
     } finally {
       setBusy(false);
@@ -166,9 +252,12 @@ export default function OrganizationDetailPage() {
   }
 
   async function handleRemoveMember(member: OrgMember) {
-    if (!window.confirm(`Mtoe "${member.full_name ?? member.email}" kwenye shirika?`)) {
+    const label = memberLabel(member);
+    if (!isSameTarget(confirm, "member", member.user_id)) {
+      setConfirm({ kind: "member", id: member.user_id, label });
       return;
     }
+    setConfirm(null);
     try {
       await api.organizations.removeMember(organizationId, member.user_id);
       showToast("Mwanachama ameondolewa", "success");
@@ -182,12 +271,16 @@ export default function OrganizationDetailPage() {
 
   async function handleCreateProject(event: React.FormEvent) {
     event.preventDefault();
+    if (projectName.trim().length < 2) {
+      setProjectError("Jina la mradi linapaswa kuwa angalau herufi 2.");
+      return;
+    }
     setBusy(true);
-    setError(null);
+    setProjectError(null);
     try {
       await api.organizations.createProject(organizationId, {
-        name: projectName,
-        description: projectDescription,
+        name: projectName.trim(),
+        description: projectDescription.trim() || undefined,
       });
       showToast("Mradi umetengenezwa", "success");
       setProjectName("");
@@ -195,7 +288,7 @@ export default function OrganizationDetailPage() {
       load();
     } catch (caught) {
       const message = apiErrorMessage(caught);
-      setError(message);
+      setProjectError(message);
       showToast(message, "danger");
     } finally {
       setBusy(false);
@@ -203,16 +296,18 @@ export default function OrganizationDetailPage() {
   }
 
   async function handleRenameProject(project: OrgProject) {
-    const name = window.prompt("Jina jipya la mradi:", project.name);
-    if (name === null) return;
-    if (name.trim() === "") {
+    if (rename?.kind !== "project" || rename.id !== project.id) {
+      setRename({ kind: "project", id: project.id, name: project.name });
+      return;
+    }
+    const next = rename.name.trim();
+    if (next.length < 2) {
       showToast("Jina la mradi haliachiwi tupu", "danger");
       return;
     }
+    setRename(null);
     try {
-      await api.organizations.updateProject(organizationId, project.id, {
-        name: name.trim(),
-      });
+      await api.organizations.updateProject(organizationId, project.id, { name: next });
       showToast("Mradi umesasishwa", "success");
       load();
     } catch (caught) {
@@ -221,7 +316,11 @@ export default function OrganizationDetailPage() {
   }
 
   async function handleDeleteProject(project: OrgProject) {
-    if (!window.confirm(`Futa mradi "${project.name}"?`)) return;
+    if (!isSameTarget(confirm, "project", project.id)) {
+      setConfirm({ kind: "project", id: project.id, label: project.name });
+      return;
+    }
+    setConfirm(null);
     try {
       await api.organizations.removeProject(organizationId, project.id);
       showToast("Mradi umefutwa", "success");
@@ -235,12 +334,16 @@ export default function OrganizationDetailPage() {
 
   async function handleCreateTeam(event: React.FormEvent) {
     event.preventDefault();
+    if (teamName.trim().length < 2) {
+      setTeamError("Jina la timu linapaswa kuwa angalau herufi 2.");
+      return;
+    }
     setBusy(true);
-    setError(null);
+    setTeamError(null);
     try {
       await api.organizations.teams.create(organizationId, {
-        name: teamName,
-        description: teamDescription,
+        name: teamName.trim(),
+        description: teamDescription.trim() || undefined,
       });
       showToast("Timu imetengenezwa", "success");
       setTeamName("");
@@ -248,7 +351,7 @@ export default function OrganizationDetailPage() {
       load();
     } catch (caught) {
       const message = apiErrorMessage(caught);
-      setError(message);
+      setTeamError(message);
       showToast(message, "danger");
     } finally {
       setBusy(false);
@@ -256,16 +359,18 @@ export default function OrganizationDetailPage() {
   }
 
   async function handleRenameTeam(team: OrgTeam) {
-    const name = window.prompt("Jina jipya la timu:", team.name);
-    if (name === null) return;
-    if (name.trim() === "") {
+    if (rename?.kind !== "team" || rename.id !== team.id) {
+      setRename({ kind: "team", id: team.id, name: team.name });
+      return;
+    }
+    const next = rename.name.trim();
+    if (next.length < 2) {
       showToast("Jina la timu haliachiwi tupu", "danger");
       return;
     }
+    setRename(null);
     try {
-      await api.organizations.teams.update(organizationId, team.id, {
-        name: name.trim(),
-      });
+      await api.organizations.teams.update(organizationId, team.id, { name: next });
       showToast("Timu imesasishwa", "success");
       load();
     } catch (caught) {
@@ -274,7 +379,11 @@ export default function OrganizationDetailPage() {
   }
 
   async function handleDeleteTeam(team: OrgTeam) {
-    if (!window.confirm(`Futa timu "${team.name}"? Wanachama wake itabaki.`)) return;
+    if (!isSameTarget(confirm, "team", team.id)) {
+      setConfirm({ kind: "team", id: team.id, label: team.name });
+      return;
+    }
+    setConfirm(null);
     try {
       await api.organizations.teams.remove(organizationId, team.id);
       showToast("Timu imefutwa", "success");
@@ -302,9 +411,12 @@ export default function OrganizationDetailPage() {
   }
 
   async function handleRemoveTeamMember(team: OrgTeam, member: TeamMember) {
-    if (!window.confirm(`Mtoe "${member.full_name ?? member.email}" kwenye timu?`)) {
+    const label = memberLabel(member);
+    if (!isSameTarget(confirm, "team-member", member.user_id)) {
+      setConfirm({ kind: "member", id: member.user_id, label });
       return;
     }
+    setConfirm(null);
     try {
       await api.organizations.teams.removeMember(organizationId, team.id, member.user_id);
       showToast("Mwanachama ameondolewa kwenye timu", "success");
@@ -317,12 +429,11 @@ export default function OrganizationDetailPage() {
 
   async function handleDeleteOrganization() {
     if (!org || org.my_role !== "owner") return;
-    if (
-      !window.confirm(
-        `Futa shirika zima "${org.name}"? Hii itafuta wanachama na miradi.`
-      )
-    )
+    if (!isSameTarget(confirm, "org", org.id)) {
+      setConfirm({ kind: "org", id: org.id, label: org.name });
       return;
+    }
+    setConfirm(null);
     try {
       await api.organizations.remove(organizationId);
       showToast("Shirika limefutwa", "success");
@@ -343,7 +454,11 @@ export default function OrganizationDetailPage() {
   if (!org) {
     return (
       <AppShell title="Shirika">
-        <EmptyState title="Shirika halipo" description="Halijapatikana au huna ruhusa ya kuliona." />
+        <EmptyState
+          title="Shirika halipo"
+          description="Halijapatikana au huna ruhusa ya kuliona."
+          icon="building"
+        />
       </AppShell>
     );
   }
@@ -351,112 +466,131 @@ export default function OrganizationDetailPage() {
   return (
     <AppShell
       title={org.name}
-      description={`@${org.slug}${org.description ? ` — ${org.description}` : ""}`}
+      description={`@${org.slug}${org.description ? ` â€” ${org.description}` : ""}`}
       actions={
-        org.my_role === "owner" && (
-          <Button variant="danger" onClick={handleDeleteOrganization}>
-            <Icon name="trash" size={18} />
+        org.my_role === "owner" &&
+        (isSameTarget(confirm, "org", org.id) ? (
+          <Button variant="secondary" onClick={() => setConfirm(null)}>
+            Ghairi futa
+          </Button>
+        ) : (
+          <Button variant="danger" icon="trash" onClick={handleDeleteOrganization}>
             Futa shirika
           </Button>
-        )
+        ))
       }
     >
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-3 rounded border border-neutral-200 bg-white px-4 py-3">
-          <Icon name="users" size={20} className="text-primary-600" />
-          <div>
-            <p className="text-h2">{members.length}</p>
-            <p className="text-caption text-neutral-600">Wanachama</p>
+      {isSameTarget(confirm, "org", org.id) && (
+        <InlineConfirm
+          target={confirm!}
+          onCancel={() => setConfirm(null)}
+          onConfirm={handleDeleteOrganization}
+        />
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        {[
+          { label: "Wanachama", value: members.length, icon: "users" as const },
+          { label: "Miradi", value: projects.length, icon: "folder" as const },
+          { label: "Timu", value: teams.length, icon: "layers" as const },
+        ].map((item) => (
+          <div
+            key={item.label}
+            className="flex items-center gap-3 rounded-md border border-surface-border bg-surface-panel px-4 py-3"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-50 text-primary-600">
+              <Icon name={item.icon} size={18} />
+            </span>
+            <div>
+              <p className="tabular font-mono text-h2 text-ink">{item.value}</p>
+              <p className="text-caption text-ink-muted">{item.label}</p>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-3 rounded border border-neutral-200 bg-white px-4 py-3">
-          <Icon name="folder" size={20} className="text-primary-600" />
-          <div>
-            <p className="text-h2">{projects.length}</p>
-            <p className="text-caption text-neutral-600">Miradi</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 rounded border border-neutral-200 bg-white px-4 py-3">
-          <Icon name="users" size={20} className="text-primary-600" />
-          <div>
-            <p className="text-h2">{teams.length}</p>
-            <p className="text-caption text-neutral-600">Timu</p>
-          </div>
-        </div>
-        {myRole && (
-          <Badge tone={ROLE_TONE[myRole]} className="px-3 py-1">
-            {ROLE_LABEL[myRole]}
-          </Badge>
-        )}
+        ))}
       </div>
+
+      {myRole && (
+        <p className="flex flex-wrap items-center gap-2 text-caption text-ink-muted">
+          Kiwango chako katika shirika hili:
+          <Badge tone={ROLE_TONE[myRole]}>{ROLE_LABEL[myRole]}</Badge>
+        </p>
+      )}
 
       <Card
         title="Wanachama"
         description="Kila mwanachama ana kiwango: mwenyekiti, msimamizi, mchambuzi au mtazamaji."
+        icon="users"
         actions={
           canManageMembers(myRole) && (
-            <Link
+            <a
               href="#add-member"
-              className="inline-flex h-10 items-center gap-2 rounded bg-primary-600 px-4 text-body font-medium text-white transition-colors duration-150 hover:bg-primary-700"
+              className="inline-flex h-9 items-center gap-1.5 rounded border border-surface-border bg-surface-panel px-3 text-caption font-medium text-ink-secondary transition-colors duration-150 hover:bg-surface-sunken"
             >
-              <Icon name="plus" size={18} />
+              <Icon name="plus" size={16} />
               Ongeza mwanachama
-            </Link>
+            </a>
           )
         }
       >
-        <ul className="divide-y divide-neutral-200">
+        <ul className="divide-y divide-surface-border">
           {members.map((member) => (
-            <li key={member.id} className="flex flex-wrap items-center gap-3 py-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700">
-                <span className="text-body font-medium">{initials(member.full_name)}</span>
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-body text-neutral-900">
-                  {member.full_name ?? member.email}
-                  {member.role === "owner" && (
-                    <span className="sr-only">, mwenyekiti</span>
-                  )}
-                </p>
-                <p className="truncate text-caption text-neutral-600">{member.email}</p>
-              </div>
-              {canChangeMember(myRole, member.role) ? (
-                <>
-                  <label className="sr-only" htmlFor={`role-${member.user_id}`}>
-                    Kiwango cha {member.full_name ?? member.email}
-                  </label>
-                  <select
-                    id={`role-${member.user_id}`}
-                    value={member.role}
-                    onChange={(event) =>
-                      handleChangeRole(member, event.target.value as OrgRole)
-                    }
-                    className="h-9 rounded border border-neutral-200 bg-white px-2 text-body outline-none focus:border-primary-500"
-                  >
-                  <option value="analyst">Mchambuzi</option>
-                  <option value="viewer">Mtazamaji</option>
-                  {myRole === "owner" && (
-                    <>
-                      <option value="admin">Msimamizi</option>
-                      <option value="owner">Mwenyekiti</option>
-                    </>
-                  )}
-                </select>
-                </>
+            <li key={member.id} className="py-3">
+              {isSameTarget(confirm, "member", member.user_id) ? (
+                <InlineConfirm
+                  target={confirm!}
+                  onCancel={() => setConfirm(null)}
+                  onConfirm={() => handleRemoveMember(member)}
+                />
               ) : (
-                <Badge tone={ROLE_TONE[member.role as OrgRole] ?? "neutral"}>
-                  {ROLE_LABEL[member.role as OrgRole] ?? member.role}
-                </Badge>
-              )}
-              {canChangeMember(myRole, member.role) && (
-                <Button
-                  variant="ghost"
-                  size="small"
-                  onClick={() => handleRemoveMember(member)}
-                  aria-label={`Mtoe ${member.full_name ?? member.email}`}
-                >
-                  <Icon name="trash" size={16} />
-                </Button>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700">
+                    <span className="text-body font-medium">{initials(member.full_name)}</span>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-body text-ink">
+                      {memberLabel(member)}
+                      {member.role === "owner" && (
+                        <span className="sr-only">, mwenyekiti</span>
+                      )}
+                    </p>
+                    <p className="truncate text-caption text-ink-muted">{member.email}</p>
+                  </div>
+                  {canChangeMember(myRole, member.role) ? (
+                    <div className="flex items-center gap-2">
+                      <label className="sr-only" htmlFor={`role-${member.user_id}`}>
+                        Kiwango cha {memberLabel(member)}
+                      </label>
+                      <select
+                        id={`role-${member.user_id}`}
+                        value={member.role}
+                        onChange={(event) =>
+                          handleChangeRole(member, event.target.value as OrgRole)
+                        }
+                        className="control h-9 w-auto py-0 text-caption"
+                      >
+                        <option value="analyst">Mchambuzi</option>
+                        <option value="viewer">Mtazamaji</option>
+                        {myRole === "owner" && (
+                          <>
+                            <option value="admin">Msimamizi</option>
+                            <option value="owner">Mwenyekiti</option>
+                          </>
+                        )}
+                      </select>
+                      <Button
+                        variant="ghost"
+                        size="small"
+                        icon="trash"
+                        onClick={() => handleRemoveMember(member)}
+                        aria-label={`Mtoe ${memberLabel(member)}`}
+                      />
+                    </div>
+                  ) : (
+                    <Badge tone={ROLE_TONE[member.role as OrgRole] ?? "neutral"}>
+                      {ROLE_LABEL[member.role as OrgRole] ?? member.role}
+                    </Badge>
+                  )}
+                </div>
               )}
             </li>
           ))}
@@ -466,52 +600,51 @@ export default function OrganizationDetailPage() {
           <form
             id="add-member"
             onSubmit={handleAddMember}
-            className="mt-4 flex flex-wrap items-end gap-3 rounded border border-neutral-200 bg-neutral-50 p-4"
+            className="mt-4 flex flex-wrap items-end gap-3 rounded-md border border-surface-border bg-surface-sunken p-4"
           >
             <div className="min-w-[220px] flex-1">
-              <label htmlFor="member_email" className="block text-body text-neutral-900">
-                Barua pepe ya mwanachama
-              </label>
-              <input
+              <TextInput
                 id="member_email"
+                label="Barua pepe ya mwanachama"
                 type="email"
                 required
                 value={memberEmail}
-                onChange={(event) => setMemberEmail(event.target.value)}
-                className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
+                error={memberError ?? undefined}
+                onChange={(event) => {
+                  setMemberEmail(event.target.value);
+                  if (memberError) setMemberError(null);
+                }}
                 placeholder="mwanachama@example.com"
               />
             </div>
-            <div>
-              <label htmlFor="member_role" className="block text-body text-neutral-900">
-                Kiwango
-              </label>
-              <select
+            <div className="min-w-[160px]">
+              <SelectInput
                 id="member_role"
+                label="Kiwango"
                 value={memberRole}
                 onChange={(event) => setMemberRole(event.target.value as OrgRole)}
-                className="mt-1 h-10 rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
-              >
-                <option value="owner">Mwenyekiti</option>
-                <option value="admin">Msimamizi</option>
-                <option value="analyst">Mchambuzi</option>
-                <option value="viewer">Mtazamaji</option>
-              </select>
+                options={[
+                  { value: "owner", label: "Mwenyekiti" },
+                  { value: "admin", label: "Msimamizi" },
+                  { value: "analyst", label: "Mchambuzi" },
+                  { value: "viewer", label: "Mtazamaji" },
+                ]}
+              />
             </div>
-            <Button type="submit" loading={busy}>
+            <Button type="submit" loading={busy} icon="plus">
               Ongeza
             </Button>
-            {error && <p className="w-full text-body text-danger">{error}</p>}
           </form>
         )}
       </Card>
 
       <Card
         title="Miradi"
-        description="Miradi ni mapipa ya kufanyia kazi — data zinaweza kuwekwa ndani ya mradi kwenye siku zijazo."
+        description="Miradi ni mapipa ya kufanyia kazi â€” data zinaweza kuwekwa ndani ya mradi kwenye siku zijazo."
+        icon="folder"
       >
         {!canCreateProject(myRole) ? (
-          <p className="text-body text-neutral-600">
+          <p className="text-body text-ink-secondary">
             Kiwango cha{" "}
             <Badge tone={ROLE_TONE["viewer"]}>Mtazamaji</Badge> hakiruhusu kuunda
             miradi. Muulize msimamizi au mwenyekiti akupe kiwango cha mchambuzi.
@@ -519,35 +652,36 @@ export default function OrganizationDetailPage() {
         ) : (
           <form
             onSubmit={handleCreateProject}
-            className="mb-4 flex flex-wrap items-end gap-3 rounded border border-neutral-200 bg-neutral-50 p-4"
+            className="mb-4 flex flex-wrap items-end gap-3 rounded-md border border-surface-border bg-surface-sunken p-4"
           >
             <div className="min-w-[220px] flex-1">
-              <label htmlFor="project_name" className="block text-body text-neutral-900">
-                Jina la mradi
-              </label>
-              <input
+              <TextInput
                 id="project_name"
+                label="Jina la mradi"
                 required
                 minLength={2}
                 value={projectName}
-                onChange={(event) => setProjectName(event.target.value)}
-                className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
+                error={projectError ?? undefined}
+                onChange={(event) => {
+                  setProjectName(event.target.value);
+                  if (projectError) setProjectError(null);
+                }}
                 placeholder="Mfano: Mauzo 2026"
               />
             </div>
             <div className="min-w-[220px] flex-1">
-              <label htmlFor="project_desc" className="block text-body text-neutral-900">
-                Maelezo (hiari)
-              </label>
-              <input
+              <TextInput
                 id="project_desc"
+                label="Maelezo"
+                optionalLabel="hiari"
                 value={projectDescription}
                 onChange={(event) => setProjectDescription(event.target.value)}
-                className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
                 placeholder="Mradi huu una data gani?"
               />
             </div>
-            <Button type="submit">Unda mradi</Button>
+            <Button type="submit" loading={busy} icon="plus">
+              Unda mradi
+            </Button>
           </form>
         )}
 
@@ -555,41 +689,80 @@ export default function OrganizationDetailPage() {
           <EmptyState
             title="Hakuna miradi bado"
             description="Unda mradi wa kwanza na uanze kupanga kazi za uchambuzi."
+            icon="folder"
           />
         ) : (
-          <ul className="divide-y divide-neutral-200">
+          <ul className="divide-y divide-surface-border">
             {projects.map((project) => (
-              <li key={project.id} className="flex flex-wrap items-center gap-3 py-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-neutral-100 text-neutral-600">
-                  <Icon name="folder" size={18} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-body text-neutral-900">{project.name}</p>
-                  <p className="truncate text-caption text-neutral-600">
-                    {project.description ?? "Hakuna maelezo"}
-                  </p>
-                </div>
-                <Badge tone="info">
-                  {project.dataset_count} {project.dataset_count === 1 ? "dataset" : "datasets"}
-                </Badge>
-                {canManageProject(myRole) && (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="small"
-                      onClick={() => handleRenameProject(project)}
-                      aria-label={`Badilisha jina la ${project.name}`}
-                    >
-                      <Icon name="sliders" size={16} />
+              <li key={project.id} className="py-3">
+                {isSameTarget(confirm, "project", project.id) ? (
+                  <InlineConfirm
+                    target={confirm!}
+                    onCancel={() => setConfirm(null)}
+                    onConfirm={() => handleDeleteProject(project)}
+                  />
+                ) : rename?.kind === "project" && rename.id === project.id ? (
+                  <form
+                    className="flex flex-wrap items-end gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      handleRenameProject(project);
+                    }}
+                  >
+                    <div className="min-w-[220px] flex-1">
+                      <TextInput
+                        id={`rename-project-${project.id}`}
+                        label="Jina jipya la mradi"
+                        value={rename.name}
+                        onChange={(event) =>
+                          setRename({ ...rename, name: event.target.value })
+                        }
+                      />
+                    </div>
+                    <Button type="submit" size="small" icon="check">
+                      Hifadhi
                     </Button>
                     <Button
                       variant="ghost"
                       size="small"
-                      onClick={() => handleDeleteProject(project)}
-                      aria-label={`Futa mradi ${project.name}`}
+                      onClick={() => setRename(null)}
                     >
-                      <Icon name="trash" size={16} />
+                      Ghairi
                     </Button>
+                  </form>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-ink-secondary">
+                      <Icon name="folder" size={18} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-body text-ink">{project.name}</p>
+                      <p className="truncate text-caption text-ink-muted">
+                        {project.description ?? "Hakuna maelezo"}
+                      </p>
+                    </div>
+                    <Badge tone="info" icon="database">
+                      {project.dataset_count}{" "}
+                      {project.dataset_count === 1 ? "dataset" : "datasets"}
+                    </Badge>
+                    {canManageProject(myRole) && (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          icon="sliders"
+                          onClick={() => handleRenameProject(project)}
+                          aria-label={`Badilisha jina la ${project.name}`}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          icon="trash"
+                          onClick={() => handleDeleteProject(project)}
+                          aria-label={`Futa mradi ${project.name}`}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </li>
@@ -601,9 +774,10 @@ export default function OrganizationDetailPage() {
       <Card
         title="Timu"
         description="Timu zinakusanya wanachama ili kushiriki kazi. Kiwango cha mwanachama kwenye shirika ndio kinachodhibiti ruhusa yake."
+        icon="layers"
       >
         {!canCreateProject(myRole) ? (
-          <p className="text-body text-neutral-600">
+          <p className="text-body text-ink-secondary">
             Kiwango cha{" "}
             <Badge tone={ROLE_TONE["viewer"]}>Mtazamaji</Badge> hakiruhusu kutengeneza
             timu. Muulize msimamizi au mwenyekiti akupe kiwango cha mchambuzi.
@@ -611,35 +785,34 @@ export default function OrganizationDetailPage() {
         ) : (
           <form
             onSubmit={handleCreateTeam}
-            className="mb-4 flex flex-wrap items-end gap-3 rounded border border-neutral-200 bg-neutral-50 p-4"
+            className="mb-4 flex flex-wrap items-end gap-3 rounded-md border border-surface-border bg-surface-sunken p-4"
           >
             <div className="min-w-[220px] flex-1">
-              <label htmlFor="team_name" className="block text-body text-neutral-900">
-                Jina la timu
-              </label>
-              <input
+              <TextInput
                 id="team_name"
+                label="Jina la timu"
                 required
                 minLength={2}
                 value={teamName}
-                onChange={(event) => setTeamName(event.target.value)}
-                className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
+                error={teamError ?? undefined}
+                onChange={(event) => {
+                  setTeamName(event.target.value);
+                  if (teamError) setTeamError(null);
+                }}
                 placeholder="Mfano: Timu ya Uchambuzi"
               />
             </div>
             <div className="min-w-[220px] flex-1">
-              <label htmlFor="team_desc" className="block text-body text-neutral-900">
-                Maelezo (hiari)
-              </label>
-              <input
+              <TextInput
                 id="team_desc"
+                label="Maelezo"
+                optionalLabel="hiari"
                 value={teamDescription}
                 onChange={(event) => setTeamDescription(event.target.value)}
-                className="mt-1 h-10 w-full rounded border border-neutral-200 bg-white px-3 text-body outline-none focus:border-primary-500"
                 placeholder="Timu hii inafanya nini?"
               />
             </div>
-            <Button type="submit" loading={busy}>
+            <Button type="submit" loading={busy} icon="plus">
               Unda timu
             </Button>
           </form>
@@ -649,119 +822,164 @@ export default function OrganizationDetailPage() {
           <EmptyState
             title="Hakuna timu bado"
             description="Tengeneza timu ya kwanza kwa kupanua wanachama kwenye kazi moja."
+            icon="layers"
           />
         ) : (
-          <ul className="divide-y divide-neutral-200">
+          <ul className="divide-y divide-surface-border">
             {teams.map((team) => {
               const currentMembers = teamMembers[team.id] ?? [];
               const taken = new Set(currentMembers.map((member) => member.user_id));
               const available = members.filter((member) => !taken.has(member.user_id));
               return (
                 <li key={team.id} className="py-4">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-neutral-100 text-neutral-600">
-                      <Icon name="users" size={18} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-body text-neutral-900">{team.name}</p>
-                      <p className="truncate text-caption text-neutral-600">
-                        {team.description ?? "Hakuna maelezo"}
-                      </p>
-                    </div>
-                    <Badge tone="info">
-                      {team.member_count}{" "}
-                      {team.member_count === 1 ? "mwanachama" : "wanachama"}
-                    </Badge>
-                    {canManageProject(myRole) && (
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="small"
-                          onClick={() => handleRenameTeam(team)}
-                          aria-label={`Badilisha jina la ${team.name}`}
-                        >
-                          <Icon name="sliders" size={16} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="small"
-                          onClick={() => handleDeleteTeam(team)}
-                          aria-label={`Futa timu ${team.name}`}
-                        >
-                          <Icon name="trash" size={16} />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  <ul className="mt-3 space-y-2 pl-12">
-                    {currentMembers.length === 0 && (
-                      <li className="text-caption text-neutral-600">
-                        Hakuna mwanachama kwenye timu hii bado.
-                      </li>
-                    )}
-                    {currentMembers.map((member) => (
-                      <li
-                        key={member.id}
-                        className="flex flex-wrap items-center gap-3 text-body"
-                      >
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700">
-                          <span className="text-caption font-medium">
-                            {initials(member.full_name)}
-                          </span>
-                        </span>
-                        <span className="min-w-0 flex-1 truncate">
-                          {member.full_name ?? member.email}
-                        </span>
-                        {canManageProject(myRole) && (
-                          <Button
-                            variant="ghost"
-                            size="small"
-                            onClick={() => handleRemoveTeamMember(team, member)}
-                            aria-label={`Mtoe ${member.full_name ?? member.email} kwenye ${team.name}`}
-                          >
-                            <Icon name="trash" size={16} />
-                          </Button>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-
-                  {canManageProject(myRole) && available.length > 0 && (
-                    <div className="mt-3 flex flex-wrap items-end gap-3 pl-12">
-                      <div>
-                        <label
-                          htmlFor={`team-member-${team.id}`}
-                          className="block text-caption text-neutral-600"
-                        >
-                          Ongeza mwanachama
-                        </label>
-                        <select
-                          id={`team-member-${team.id}`}
-                          value={memberPicks[team.id] ?? ""}
+                  {isSameTarget(confirm, "team", team.id) ? (
+                    <InlineConfirm
+                      target={confirm!}
+                      onCancel={() => setConfirm(null)}
+                      onConfirm={() => handleDeleteTeam(team)}
+                    />
+                  ) : rename?.kind === "team" && rename.id === team.id ? (
+                    <form
+                      className="flex flex-wrap items-end gap-2"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        handleRenameTeam(team);
+                      }}
+                    >
+                      <div className="min-w-[220px] flex-1">
+                        <TextInput
+                          id={`rename-team-${team.id}`}
+                          label="Jina jipya la timu"
+                          value={rename.name}
                           onChange={(event) =>
-                            setMemberPicks((current) => ({
-                              ...current,
-                              [team.id]: Number(event.target.value),
-                            }))
+                            setRename({ ...rename, name: event.target.value })
                           }
-                          className="mt-1 h-9 rounded border border-neutral-200 bg-white px-2 text-body outline-none focus:border-primary-500"
-                        >
-                          <option value="">Chagua mwanachama</option>
-                          {available.map((member) => (
-                            <option key={member.user_id} value={member.user_id}>
-                              {member.full_name ?? member.email}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </div>
-                      <Button
-                        size="small"
-                        onClick={() => handleAddTeamMember(team)}
-                      >
-                        Ongeza
+                      <Button type="submit" size="small" icon="check">
+                        Hifadhi
                       </Button>
-                    </div>
+                      <Button
+                        variant="ghost"
+                        size="small"
+                        onClick={() => setRename(null)}
+                      >
+                        Ghairi
+                      </Button>
+                    </form>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-ink-secondary">
+                          <Icon name="users" size={18} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-body text-ink">{team.name}</p>
+                          <p className="truncate text-caption text-ink-muted">
+                            {team.description ?? "Hakuna maelezo"}
+                          </p>
+                        </div>
+                        <Badge tone="info" icon="users">
+                          {team.member_count}{" "}
+                          {team.member_count === 1 ? "mwanachama" : "wanachama"}
+                        </Badge>
+                        {canManageProject(myRole) && (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="small"
+                              icon="sliders"
+                              onClick={() => handleRenameTeam(team)}
+                              aria-label={`Badilisha jina la ${team.name}`}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="small"
+                              icon="trash"
+                              onClick={() => handleDeleteTeam(team)}
+                              aria-label={`Futa timu ${team.name}`}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <ul className="mt-3 space-y-2 pl-12">
+                        {currentMembers.length === 0 && (
+                          <li className="text-caption text-ink-muted">
+                            Hakuna mwanachama kwenye timu hii bado.
+                          </li>
+                        )}
+                        {currentMembers.map((member) => (
+                          <li key={member.id} className="py-1">
+                            {isSameTarget(confirm, "team-member", member.user_id) ? (
+                              <InlineConfirm
+                                target={confirm!}
+                                onCancel={() => setConfirm(null)}
+                                onConfirm={() => handleRemoveTeamMember(team, member)}
+                              />
+                            ) : (
+                              <div className="flex flex-wrap items-center gap-3 text-body">
+                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-100 text-primary-700">
+                                  <span className="text-caption font-medium">
+                                    {initials(member.full_name)}
+                                  </span>
+                                </span>
+                                <span className="min-w-0 flex-1 truncate">
+                                  {memberLabel(member)}
+                                </span>
+                                {canManageProject(myRole) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="small"
+                                    icon="trash"
+                                    onClick={() => handleRemoveTeamMember(team, member)}
+                                    aria-label={`Mtoe ${memberLabel(member)} kwenye ${team.name}`}
+                                  />
+                                )}
+                              </div>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+
+                      {canManageProject(myRole) && available.length > 0 && (
+                        <div className="mt-3 flex flex-wrap items-end gap-3 pl-12">
+                          <div className="min-w-[200px]">
+                            <SelectInput
+                              id={`team-member-${team.id}`}
+                              label="Ongeza mwanachama"
+                              value={
+                                memberPicks[team.id] === undefined
+                                  ? ""
+                                  : String(memberPicks[team.id])
+                              }
+                              onChange={(event) =>
+                                setMemberPicks((current) => ({
+                                  ...current,
+                                  [team.id]: event.target.value
+                                    ? Number(event.target.value)
+                                    : "",
+                                }))
+                              }
+                              options={[
+                                { value: "", label: "Chagua mwanachama" },
+                                ...available.map((member) => ({
+                                  value: String(member.user_id),
+                                  label: memberLabel(member),
+                                })),
+                              ]}
+                            />
+                          </div>
+                          <Button
+                            size="small"
+                            icon="plus"
+                            onClick={() => handleAddTeamMember(team)}
+                          >
+                            Ongeza
+                          </Button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </li>
               );
@@ -772,3 +990,5 @@ export default function OrganizationDetailPage() {
     </AppShell>
   );
 }
+
+
