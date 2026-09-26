@@ -297,7 +297,6 @@ export default function DashboardPage() {
                             ? "info"
                             : "neutral"
                       }
-                      withIcon
                     >
                       {dataset.status}
                     </Badge>

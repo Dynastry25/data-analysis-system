@@ -192,12 +192,11 @@ export default function DatasetsPage() {
                             ? "info"
                             : "neutral"
                       }
-                      withIcon
                     >
                       {dataset.status}
                     </Badge>
                     {dataset.project_id ? (
-                      <Badge tone="primary" withIcon>
+                      <Badge tone="primary">
                         {dataset.project_name ?? "Mradi"}
                       </Badge>
                     ) : (

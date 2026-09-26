@@ -391,12 +391,12 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge tone="primary">{result.analysis_type}</Badge>
           {significant !== null && (
-            <Badge tone={significant ? "success" : "neutral"} withIcon>
+            <Badge tone={significant ? "success" : "neutral"}>
               Umuhimu wa kitakwimu: {significant ? "Ndiyo" : "Hapana"}
             </Badge>
           )}
           {result.status !== "success" && (
-            <Badge tone="warning" withIcon>
+            <Badge tone="warning">
               {result.status}
             </Badge>
           )}

@@ -278,7 +278,6 @@ export default function ExportPage() {
                           ? "danger"
                           : "warning"
                     }
-                    withIcon
                   >
                     {report.status}
                   </Badge>

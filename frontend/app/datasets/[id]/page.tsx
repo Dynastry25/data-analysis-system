@@ -147,7 +147,7 @@ export default function DatasetDetailPage() {
           >
             {meId !== null && detail?.dataset.user_id !== meId ? (
               <div className="flex flex-wrap items-center gap-3">
-                <Badge tone="primary" withIcon>
+                <Badge tone="primary">
                   {detail?.dataset.project_name ?? "Mradi"}
                 </Badge>
                 <p className="text-body text-neutral-600">
@@ -188,10 +188,10 @@ export default function DatasetDetailPage() {
           </Card>
 
           {columnsWithMissing.length > 0 && (
-            <Card title="Tahadhari: missing values" className="border-warning">
+            <Card title="Tahadhari: missing values" tone="warning">
               <div className="flex flex-wrap gap-2">
                 {columnsWithMissing.map((column) => (
-                  <Badge key={column.name} tone="warning" withIcon>
+                  <Badge key={column.name} tone="warning">
                     {column.name}: {column.missing_count}
                   </Badge>
                 ))}
@@ -218,7 +218,7 @@ export default function DatasetDetailPage() {
                 }
                 if (column === "missing_count" && Number(value) > 0) {
                   return (
-                    <Badge tone="warning" withIcon>
+                    <Badge tone="warning">
                       {String(value)}
                     </Badge>
                   );

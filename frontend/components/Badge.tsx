@@ -1,47 +1,49 @@
 "use client";
 
+import { Icon, IconName } from "./Icon";
+
 type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger" | "primary";
 
 const TONES: Record<BadgeTone, string> = {
   neutral: "bg-neutral-100 text-neutral-600 border-neutral-200",
-  primary: "bg-primary-100 text-primary-900 border-primary-300",
-  info: "bg-info-bg text-info border-info",
-  success: "bg-success-bg text-success border-success",
-  warning: "bg-warning-bg text-warning border-warning",
-  danger: "bg-danger-bg text-danger border-danger",
+  primary: "bg-primary-50 text-primary-800 border-primary-200",
+  info: "bg-info-bg text-info-700 border-info/30",
+  success: "bg-success-bg text-success-700 border-success/30",
+  warning: "bg-warning-bg text-warning-700 border-warning/30",
+  danger: "bg-danger-bg text-danger-700 border-danger/30",
 };
 
-const ICONS: Partial<Record<BadgeTone, string>> = {
-  warning: "⚠",
-  danger: "✕",
-  success: "✓",
-  info: "i",
+const STATUS_ICONS: Partial<Record<BadgeTone, IconName>> = {
+  warning: "alert-triangle",
+  danger: "alert-circle",
+  success: "check",
+  info: "info",
 };
 
 interface BadgeProps {
   tone?: BadgeTone;
   children: React.ReactNode;
   className?: string;
-  withIcon?: boolean;
+  icon?: IconName | null;
+  size?: "sm" | "md";
 }
 
-/**
- * Status badge. Meaning is never conveyed by colour alone: warning/danger/info
- * badges always show a small icon as well (accessibility requirement).
- */
 export function Badge({
   tone = "neutral",
   children,
   className = "",
-  withIcon = false,
+  icon,
+  size = "md",
 }: BadgeProps) {
-  const icon = withIcon ? ICONS[tone] : undefined;
+  const statusIcon = icon === null ? undefined : (icon ?? STATUS_ICONS[tone]);
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-caption ${TONES[tone]} ${className}`}
+      className={`inline-flex max-w-full items-center gap-1 rounded-pill border font-medium ${
+        size === "sm" ? "px-1.5 py-0 text-caption" : "px-2 py-0.5 text-caption"
+      } ${TONES[tone]} ${className}`}
     >
-      {icon && <span aria-hidden="true">{icon}</span>}
-      {children}
+      {statusIcon && <Icon name={statusIcon} size={12} className="shrink-0" />}
+      <span className="truncate">{children}</span>
     </span>
   );
 }

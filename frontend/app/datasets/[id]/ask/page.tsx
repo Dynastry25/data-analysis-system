@@ -271,7 +271,7 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
           <Badge tone="primary">intent: {answer.intent.intent}</Badge>
         )}
         <Badge tone="neutral">method: {answer.plan.method_label}</Badge>
-        <Badge tone={validationTone as "success" | "warning" | "danger"} withIcon>
+        <Badge tone={validationTone as "success" | "warning" | "danger"}>
           validation: {answer.validation.status}
         </Badge>
         {answer.dataset_version != null && (

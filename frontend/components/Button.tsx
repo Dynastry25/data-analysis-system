@@ -7,16 +7,17 @@ type Size = "small" | "medium" | "large";
 
 const VARIANT_CLASSES: Record<Variant, string> = {
   primary:
-    "bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-900 disabled:hover:bg-primary-600",
+    "bg-primary-600 text-white shadow-sm hover:bg-primary-700 active:bg-primary-800 disabled:hover:bg-primary-600",
   secondary:
-    "border border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-100 disabled:hover:bg-white",
+    "border border-surface-border bg-white text-ink-secondary hover:border-surface-border-strong hover:bg-surface-sunken active:bg-neutral-100 disabled:hover:bg-white",
   ghost:
-    "text-neutral-600 hover:bg-neutral-100 disabled:hover:bg-transparent",
-  danger: "bg-danger text-white hover:brightness-90 disabled:hover:brightness-100",
+    "text-ink-secondary hover:bg-surface-sunken active:bg-neutral-100 disabled:hover:bg-transparent",
+  danger:
+    "bg-danger text-white shadow-sm hover:bg-danger-700 active:bg-danger-700 disabled:hover:bg-danger",
 };
 
 const SIZE_CLASSES: Record<Size, string> = {
-  small: "h-8 px-3 text-[13px]",
+  small: "h-8 px-3 text-caption",
   medium: "h-10 px-4 text-body",
   large: "h-12 px-5 text-body-lg",
 };
@@ -45,7 +46,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       disabled={disabled || loading}
       aria-busy={loading}
-      className={`inline-flex items-center justify-center gap-2 rounded font-medium transition-colors duration-150 ease-out active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 ${VARIANT_CLASSES[variant]} ${SIZE_CLASSES[size]} ${className}`}
+      className={`inline-flex select-none items-center justify-center gap-2 rounded font-medium transition-all duration-150 ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 ${VARIANT_CLASSES[variant]} ${SIZE_CLASSES[size]} ${className}`}
       {...rest}
     >
       {loading && (

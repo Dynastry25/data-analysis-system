@@ -5,6 +5,7 @@ import { ReactNode } from "react";
 export function formatCell(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "—";
     return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(4);
   }
   if (typeof value === "boolean") return value ? "true" : "false";
@@ -19,12 +20,10 @@ interface DataTableProps {
   numericColumns?: string[];
   renderCell?: (column: string, value: unknown, row: Record<string, unknown>) => ReactNode;
   maxHeight?: string;
+  emptyMessage?: string;
+  stickyHeader?: boolean;
 }
 
-/**
- * Scrollable data table. Numbers use the monospace font so digits line up.
- * On mobile the table scrolls horizontally instead of squashing columns.
- */
 export function DataTable({
   columns,
   rows,
@@ -32,19 +31,28 @@ export function DataTable({
   numericColumns = [],
   renderCell,
   maxHeight,
+  emptyMessage = "Hakuna data ya kuonyesha.",
+  stickyHeader = true,
 }: DataTableProps) {
   const numeric = new Set(numericColumns);
   return (
-    <div className="overflow-x-auto rounded border border-neutral-200" style={{ maxHeight }}>
+    <div
+      className="overflow-auto rounded-lg border border-surface-border bg-white"
+      style={{ maxHeight }}
+    >
       <table className="min-w-full border-collapse text-body">
         {caption && <caption className="sr-only">{caption}</caption>}
-        <thead className="bg-neutral-100">
+        <thead
+          className={`bg-surface-sunken ${
+            stickyHeader ? "sticky top-0 z-10" : ""
+          }`}
+        >
           <tr>
             {columns.map((column) => (
               <th
                 key={column}
                 scope="col"
-                className="whitespace-nowrap border-b border-neutral-200 px-3 py-2 text-left text-caption font-medium uppercase tracking-wide text-neutral-600"
+                className="whitespace-nowrap border-b border-surface-border px-3 py-2.5 text-left text-overline uppercase tracking-wide text-ink-muted"
               >
                 {column}
               </th>
@@ -53,7 +61,10 @@ export function DataTable({
         </thead>
         <tbody>
           {rows.map((row, rowIndex) => (
-            <tr key={rowIndex} className="odd:bg-white even:bg-neutral-50">
+            <tr
+              key={rowIndex}
+              className="odd:bg-white even:bg-surface-sunken hover:bg-primary-50/60"
+            >
               {columns.map((column) => {
                 const value = row[column];
                 const isNumeric =
@@ -62,7 +73,7 @@ export function DataTable({
                 return (
                   <td
                     key={column}
-                    className={`whitespace-nowrap border-b border-neutral-200 px-3 py-2 text-neutral-900 ${
+                    className={`whitespace-nowrap border-b border-surface-border px-3 py-2 text-ink ${
                       isNumeric ? "numeric-table text-right" : ""
                     }`}
                   >
@@ -75,7 +86,7 @@ export function DataTable({
         </tbody>
       </table>
       {rows.length === 0 && (
-        <p className="p-4 text-body text-neutral-600">No rows to display.</p>
+        <p className="px-4 py-8 text-center text-body text-ink-muted">{emptyMessage}</p>
       )}
     </div>
   );
