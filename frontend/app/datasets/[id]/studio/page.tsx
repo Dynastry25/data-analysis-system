@@ -9,6 +9,7 @@ import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
 import { CheckboxGroup, SelectInput, TextInput } from "@/components/Field";
+import { Icon } from "@/components/Icon";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import {
@@ -418,6 +419,7 @@ export default function StudioPage() {
               size="large"
               loading={applying}
               onClick={applyOperation}
+              icon="check"
             >
               Tumia operation (tengeneza version mpya)
             </Button>
@@ -426,18 +428,27 @@ export default function StudioPage() {
           <Card
             title="Version lineage"
             description={`v${history?.current_version ?? 1} ndiyo version ya sasa. Kila version haiharibiki — uchambuzi wowote unaweza kurudiwa.`}
+            icon="layers"
           >
             {versions.length === 0 ? (
-              <EmptyState title="Hakuna versions bado" />
+              <EmptyState
+                title="Hakuna versions bado"
+                description="Tumia operation ya juu kutengeneza version v2 — version ya kwanza haina harakati."
+                icon="layers"
+              />
             ) : (
               <ol className="space-y-2">
                 {versions.map((version) => (
                   <li
                     key={version.version}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded border border-neutral-200 px-3 py-2"
+                    className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2.5 ${
+                      version.is_current
+                        ? "border-success/30 bg-success-bg"
+                        : "border-surface-border"
+                    }`}
                   >
                     <span className="flex flex-wrap items-center gap-3">
-                      <Badge tone={version.is_current ? "success" : "neutral"}>
+                      <Badge tone={version.is_current ? "success" : "neutral"} icon={version.is_current ? "check" : undefined}>
                         v{version.version}
                         {version.is_current ? " · sasa" : ""}
                       </Badge>
@@ -447,9 +458,9 @@ export default function StudioPage() {
                         <Badge tone="neutral">original (upload)</Badge>
                       )}
                       {version.label && (
-                        <span className="text-body">{version.label}</span>
+                        <span className="text-body text-ink">{version.label}</span>
                       )}
-                      <span className="text-caption text-neutral-600">
+                      <span className="text-caption text-ink-muted">
                         {version.row_count} rows × {version.column_count} columns
                         {version.parent_version
                           ? ` · kutoka v${version.parent_version}`
@@ -462,6 +473,7 @@ export default function StudioPage() {
                     <Button
                       variant="secondary"
                       size="small"
+                      icon="download"
                       loading={downloading === version.version}
                       onClick={() => downloadVersion(version.version)}
                     >
@@ -476,41 +488,44 @@ export default function StudioPage() {
           <Card
             title="Historia ya operations (audit trail)"
             description="Hatua zote za kusafisha/kubadilisha data, mpangilio ulivyotokea."
+            icon="history"
           >
             {operations.length === 0 ? (
               <EmptyState
                 title="Hakuna operation iliyofanywa bado"
                 description="Tumia form ya juu kutengeneza version v2."
+                icon="history"
               />
             ) : (
               <ol className="space-y-2">
                 {operations.map((operation) => (
                   <li
                     key={operation.sequence}
-                    className="rounded border border-neutral-200 px-3 py-2"
+                    className="rounded-md border border-surface-border px-3 py-2.5"
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge tone="neutral">#{operation.sequence}</Badge>
-                      <Badge
-                        tone={operation.group === "clean" ? "primary" : "neutral"}
-                      >
+                      <Badge tone={operation.group === "clean" ? "primary" : "neutral"}>
                         {operation.type}
                       </Badge>
-                      <span className="text-caption text-neutral-600">
-                        v{operation.source_version} → v{operation.version}
+                      <span className="text-caption text-ink-muted">
+                        <span className="font-mono font-medium text-ink">
+                          v{operation.source_version} → v{operation.version}
+                        </span>
                         {operation.created_at
                           ? ` · ${new Date(operation.created_at).toLocaleString()}`
                           : ""}
                       </span>
                     </div>
                     {Object.keys(operation.configuration).length > 0 && (
-                      <pre className="mt-1 whitespace-pre-wrap text-caption text-neutral-600">
-                        {JSON.stringify(operation.configuration)}
+                      <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap rounded-md bg-surface-sunken p-2 font-mono text-caption text-ink-secondary">
+                        {JSON.stringify(operation.configuration, null, 2)}
                       </pre>
                     )}
                     {operation.warnings.length > 0 && (
-                      <p className="mt-1 text-caption text-warning">
-                        {operation.warnings.join(" ")}
+                      <p className="mt-1.5 flex items-start gap-1.5 rounded-md bg-warning-bg px-2 py-1.5 text-caption text-warning-700">
+                        <Icon name="alert-triangle" size={13} className="mt-0.5 shrink-0" />
+                        <span>{operation.warnings.join(" ")}</span>
                       </p>
                     )}
                   </li>

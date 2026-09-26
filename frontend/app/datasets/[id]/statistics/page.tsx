@@ -61,6 +61,33 @@ function isBlank(value: string | string[] | undefined): boolean {
   return Array.isArray(value) && value.length === 0;
 }
 
+/** Map a stored run's parameters back into form state so a run can be reproduced. */
+function parametersToFormValues(
+  parameters: Record<string, unknown>
+): Record<string, string | string[]> {
+  const values: Record<string, string | string[]> = {};
+  for (const [name, raw] of Object.entries(parameters)) {
+    if (Array.isArray(raw)) {
+      values[name] = raw.map((item) => String(item));
+    } else if (raw !== null && raw !== undefined) {
+      values[name] = typeof raw === "string" ? raw : String(raw);
+    }
+  }
+  return values;
+}
+
+/** Compact chips describing what a stored run actually computed. */
+function parameterChips(
+  parameters: Record<string, unknown>
+): { name: string; value: string }[] {
+  return Object.entries(parameters)
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .map(([name, value]) => ({
+      name: humanize(name),
+      value: Array.isArray(value) ? value.map(String).join(", ") : String(value),
+    }));
+}
+
 export default function StatisticsPage() {
   const params = useParams<{ id: string }>();
   const datasetId = Number(params?.id);
@@ -114,6 +141,7 @@ export default function StatisticsPage() {
   const requirements = (currentType?.requires ?? []).map(parseRequirement);
   const numericColumns = (profile?.variables_by_type?.numeric ?? []) as string[];
   const allColumns = (profile?.variables ?? []).map((variable) => variable.name);
+  const datasetVersion = profile?.meta.dataset_version ?? null;
 
   const missingRequired = requirements.filter(
     (requirement) => !requirement.optional && isBlank(paramValues[requirement.name])
@@ -165,9 +193,21 @@ export default function StatisticsPage() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${result.analysis_type}_matokeo.json`;
+    anchor.download = `${result.analysis_type}_v${datasetVersion ?? 1}_matokeo.json`;
     anchor.click();
     URL.revokeObjectURL(url);
+  }
+
+  /** Re-open a stored run: restore its parameters so it can be re-run or tweaked. */
+  function openRun(run: AnalysisRunRecord) {
+    setAnalysisType(run.analysis_type);
+    setParamValues(parametersToFormValues(run.parameters));
+    setAttempted(false);
+    setResult(run.result);
+    showToast(
+      `Umefungua uchambuzi wa ${run.analysis_type} kwenye toleo v${run.dataset_version}.`,
+      "info"
+    );
   }
 
   function toggleMulti(name: string, column: string) {
@@ -248,7 +288,9 @@ export default function StatisticsPage() {
       description="Endesha uchambuzi wowote wa engine moja ya takwimu matokeo yote yana muundo mmoja."
       actions={
         <Link href={`/datasets/${datasetId}`}>
-          <Button variant="secondary">Rudi kwenye dataset</Button>
+          <Button variant="secondary" icon="arrow-right">
+            Rudi kwenye dataset
+          </Button>
         </Link>
       }
     >
@@ -318,19 +360,29 @@ export default function StatisticsPage() {
           <Card
             title="Matokeo"
             description="Muundo wa kawaida wa matokeo: estimate, test, CI, effect size, diagnostics."
+            icon="chart"
           >
             {result ? (
               <StandardResultView
                 result={result}
                 actions={
                   <>
-                    <Button variant="secondary" size="small" onClick={downloadResultJson}>
-                      Pakua ripoti (JSON)
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      icon="download"
+                      onClick={downloadResultJson}
+                    >
+                      Pakua matokeo (JSON)
                     </Button>
                     <Button
                       variant="ghost"
                       size="small"
-                      onClick={() => setResult(null)}
+                      icon="calculator"
+                      onClick={() => {
+                        setResult(null);
+                        setAttempted(false);
+                      }}
                     >
                       Fanya uchambuzi mwingine
                     </Button>
@@ -340,48 +392,71 @@ export default function StatisticsPage() {
             ) : (
               <EmptyState
                 title="Hakuna matokeo bado"
-                description="Chagua aina ya uchambuzi kisha bonyeza 'Endesha uchambuzi'."
+                description="Chagua aina ya uchambuzi kisha bonyeza Endesha uchambuzi. Matokeo yataonyesha hapa pamoja na chanzo cha kila namba."
+                icon="calculator"
               />
             )}
           </Card>
 
           <Card
             title="Historia ya uchambuzi"
-            description="Matokeo yote yaliyohifadhiwa kwa dataset hii (v1 engine)."
+            description="Kila run inarekodi aina, parameters, toleo la data na wakati — hivyo matokeo yanaweza kurudiwa."
+            icon="history"
           >
             {runs.length === 0 ? (
-              <EmptyState title="Hakuna uchambuzi uliohifadhiwa" />
+              <EmptyState
+                title="Hakuna uchambuzi uliohifadhiwa"
+                description="Uchambuzi wote unaofanywa hapa huhifadhiwa na unaweza kufunguliwa tena baadaye."
+                icon="history"
+              />
             ) : (
-              <ul className="space-y-2">
-                {runs.map((run) => (
-                  <li
-                    key={run.analysis_id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded border border-neutral-200 px-3 py-2"
-                  >
-                    <span className="flex flex-wrap items-center gap-3">
-                      <Badge tone="primary">{run.analysis_type}</Badge>
-                      <Badge tone={run.status === "success" ? "success" : "warning"}>
-                        {run.status}
-                      </Badge>
-                      <span className="text-caption text-neutral-600">
-                        v{run.dataset_version}
-                        {run.created_at
-                          ? ` · ${new Date(run.created_at).toLocaleString()}`
-                          : ""}
-                      </span>
-                    </span>
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      onClick={() => {
-                        setAnalysisType(run.analysis_type);
-                        setResult(run.result);
-                      }}
-                    >
-                      Onyesha matokeo
-                    </Button>
-                  </li>
-                ))}
+              <ul className="divide-y divide-surface-border">
+                {runs.map((run) => {
+                  const chips = parameterChips(run.parameters);
+                  return (
+                    <li key={run.analysis_id} className="py-3 first:pt-0 last:pb-0">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <Badge tone="primary">{run.analysis_type}</Badge>
+                          <Badge tone={run.status === "success" ? "success" : "warning"}>
+                            {run.status}
+                          </Badge>
+                          <span className="text-caption text-ink-muted">
+                            <span className="font-mono font-medium text-ink">
+                              v{run.dataset_version}
+                            </span>
+                            {run.created_at
+                              ? ` · ${new Date(run.created_at).toLocaleString()}`
+                              : ""}
+                          </span>
+                        </span>
+                        <Button
+                          variant="secondary"
+                          size="small"
+                          icon="table"
+                          onClick={() => openRun(run)}
+                        >
+                          Fungua
+                        </Button>
+                      </div>
+                      {chips.length > 0 && (
+                        <ul className="mt-2 flex flex-wrap gap-1.5">
+                          {chips.map((chip) => (
+                            <li
+                              key={chip.name}
+                              className="inline-flex items-center gap-1 rounded border border-surface-border bg-surface-sunken px-2 py-0.5 text-caption"
+                            >
+                              <span className="text-ink-muted">{chip.name}:</span>
+                              <span className="truncate font-medium text-ink">
+                                {chip.value}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Card>

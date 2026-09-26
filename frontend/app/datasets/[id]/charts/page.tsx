@@ -184,7 +184,13 @@ export default function ChartsPage() {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button size="large" loading={creating} onClick={createChart} disabled={!xColumn}>
+          <Button
+            size="large"
+            loading={creating}
+            onClick={createChart}
+            disabled={!xColumn}
+            icon="chart"
+          >
             Tengeneza chati
           </Button>
           <span className="text-caption text-ink-muted">
@@ -196,6 +202,7 @@ export default function ChartsPage() {
       <Card
         title="Preview ya chati"
         description={current ? `${current.chart_type} chart` : "Chati itaonekana hapa"}
+        icon="chart"
       >
         {loading ? (
           <Skeleton className="h-[380px] w-full" />
@@ -206,19 +213,32 @@ export default function ChartsPage() {
 
       <Card
         title="Chati zilizohifadhiwa"
-        description="Chati zote ulizotengeneza kwa dataset hii  unaweza kuzijumuisha kwenye ripoti."
+        description="Chati zote ulizotengeneza kwa dataset hii unaweza kuzijumuisha kwenye ripoti."
+        icon="layers"
       >
         {saved.length === 0 ? (
-          <EmptyState title="Hakuna chati iliyohifadhiwa" />
+          <EmptyState
+            title="Hakuna chati iliyohifadhiwa"
+            description="Chagua columns hapa juu kisha bonyeza Tengeneza chati. Chati zote zinabaki na toleo la data ulizotumia."
+            icon="chart"
+          />
         ) : (
           <ul className="grid gap-3 lg:grid-cols-2">
             {saved.map((record) => (
-              <li key={record.chart_id} className="rounded border border-neutral-200 p-3">
+              <li
+                key={record.chart_id}
+                className="rounded-md border border-surface-border p-3"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="flex items-center gap-2">
-                    <Badge tone="primary">{record.chart_type}</Badge>
-                    <span className="text-caption text-neutral-600">
-                      x: {record.config.x}
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Badge tone="primary" icon="chart">
+                      {record.chart_type}
+                    </Badge>
+                    <span className="text-caption text-ink-muted">
+                      <span className="font-mono font-medium text-ink">
+                        v{record.dataset_version}
+                      </span>{" "}
+                      · x: {record.config.x}
                       {record.config.y ? ` · y: ${record.config.y}` : ""}
                       {record.config.group_by
                         ? ` · group: ${record.config.group_by}`
@@ -226,8 +246,9 @@ export default function ChartsPage() {
                     </span>
                   </span>
                   <Button
-                    variant="ghost"
+                    variant="secondary"
                     size="small"
+                    icon="table"
                     onClick={() => setCurrent(record)}
                   >
                     Onyesha
@@ -241,7 +262,6 @@ export default function ChartsPage() {
           </ul>
         )}
       </Card>
-
     </AppShell>
   );
 }
