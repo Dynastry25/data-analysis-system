@@ -216,6 +216,7 @@ export default function DashboardPage() {
       {/* Quick actions */}
       <Card
         title="Vitendo vya haraka"
+        icon="target"
         description="Chagua hatua inayofuata kwenye mtiririko wa kazi."
       >
         <QuickActions actions={quickActions} />
@@ -224,6 +225,7 @@ export default function DashboardPage() {
       {/* Recent datasets */}
       <Card
         title="Datasets za hivi karibuni"
+        icon="database"
         description="Endelea na kazi uliyoiacha."
         actions={
           <Link href="/datasets">
@@ -253,7 +255,7 @@ export default function DashboardPage() {
             }
           />
         ) : (
-          <ul className="divide-y divide-neutral-100">
+          <ul className="divide-y divide-surface-border">
             {datasets.slice(0, 4).map((dataset) => {
               const itemActivity = activity.get(dataset.id);
               const done = completedStageCount({
@@ -265,17 +267,17 @@ export default function DashboardPage() {
               return (
                 <li
                   key={dataset.id}
-                  className="flex flex-wrap items-center justify-between gap-3 py-3"
+                  className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
                 >
-                  <div className="flex min-w-[220px] items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
+                  <div className="flex min-w-[220px] flex-1 items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600">
                       <Icon name="database" size={20} />
                     </span>
                     <div className="min-w-0">
-                      <p className="truncate text-body-lg text-neutral-900">
+                      <p className="truncate text-body-lg font-medium text-ink">
                         {dataset.original_filename}
                       </p>
-                      <p className="text-caption text-neutral-600">
+                      <p className="text-caption text-ink-muted">
                         Safu {dataset.row_count.toLocaleString()} · Columns{" "}
                         {dataset.column_count} · {dataset.file_type.toUpperCase()} ·{" "}
                         {formatDate(dataset.uploaded_at)}
@@ -284,7 +286,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="hidden flex-col items-end gap-1 sm:flex">
-                      <span className="text-caption text-neutral-600">
+                      <span className="text-caption text-ink-muted">
                         Hatua {done}/6
                       </span>
                       <StageDots done={done} />
@@ -314,7 +316,8 @@ export default function DashboardPage() {
       {/* Pipeline guide */}
       <Card
         title="Mtiririko wa kazi"
-        description="Hatua 6 kutoka kwenye faili hadi ripoti  kila hatua inafungua ukurasa wake."
+        icon="layers"
+        description="Hatua 6 kutoka kwenye faili hadi ripoti. Kila hatua inafungua ukurasa wake."
       >
         <ol className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {PIPELINE_STAGES.map((stage) => {
@@ -327,18 +330,18 @@ export default function DashboardPage() {
               <li key={stage.key}>
                 <Link
                   href={href}
-                  className="flex h-full flex-col rounded border border-neutral-200 p-4 transition-colors duration-200 hover:border-primary-300 hover:bg-primary-50/40"
+                  className="group flex h-full flex-col rounded-lg border border-surface-border bg-surface-panel p-4 shadow-card transition-all duration-150 ease-standard hover:border-primary-300 hover:shadow-raised"
                 >
                   <span className="flex items-center gap-3">
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-600 text-body font-medium text-white">
                       {stage.step}
                     </span>
-                    <span className="text-body-lg text-neutral-900">{stage.label}</span>
-                    <span className="ml-auto text-neutral-300">
+                    <span className="text-body-lg font-medium text-ink">{stage.label}</span>
+                    <span className="ml-auto text-neutral-400 transition-transform duration-150 ease-standard group-hover:translate-x-0.5 group-hover:text-primary-600">
                       <Icon name="arrow-right" size={16} />
                     </span>
                   </span>
-                  <p className="mt-2 text-caption text-neutral-600">
+                  <p className="mt-2 text-caption text-ink-secondary">
                     {stage.description}
                   </p>
                 </Link>

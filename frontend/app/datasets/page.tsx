@@ -46,6 +46,8 @@ export default function DatasetsPage() {
   const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
   const [meId, setMeId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingDelete, setPendingDelete] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,13 +72,16 @@ export default function DatasetsPage() {
   }, []);
 
   async function handleDelete(dataset: DatasetSummary) {
-    if (!window.confirm(`Futa dataset "${dataset.original_filename}"?`)) return;
+    setDeleting(true);
     try {
       await api.datasets.remove(dataset.id);
       showToast("Dataset imefutwa", "success");
+      setPendingDelete(null);
       load();
     } catch (caught) {
       showToast(apiErrorMessage(caught), "danger");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -136,13 +141,22 @@ export default function DatasetsPage() {
         />
       </div>
 
-      <Card>
+      <Card
+        title="Datasets zako"
+        icon="database"
+        description={
+          datasets.length > 0
+            ? `${datasets.length} datasets · jumla ya ${totalRows.toLocaleString()} safu`
+            : "Faili ulizopakia na data iliyoshirikishwa na wanachama wa mashirika yako."
+        }
+      >
         {loading ? (
           <TableSkeleton rows={5} columns={5} />
         ) : datasets.length === 0 ? (
           <EmptyState
             title="Hakuna dataset bado"
             description="Anza kwa kupakia faili la CSV au Excel."
+            icon="database"
             action={
               <Link href="/upload">
                 <Button size="large">
@@ -153,23 +167,25 @@ export default function DatasetsPage() {
             }
           />
         ) : (
-          <div className="space-y-3">
+          <ul className="space-y-3">
             {datasets.map((dataset) => {
               const done = completedStageCount({ status: dataset.status });
+              const confirming = pendingDelete === dataset.id;
+              const canDelete = meId === null || dataset.user_id === meId;
               return (
-                <article
+                <li
                   key={dataset.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded border border-neutral-200 p-4 transition-colors duration-150 hover:border-neutral-300"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-surface-border bg-surface-panel p-4 shadow-card transition-shadow duration-150 ease-standard hover:shadow-raised"
                 >
-                  <div className="flex min-w-[240px] items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
+                  <div className="flex min-w-[240px] flex-1 items-center gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600">
                       <Icon name="database" size={20} />
                     </span>
                     <div className="min-w-0">
-                      <p className="truncate text-body-lg text-neutral-900">
+                      <p className="truncate text-body-lg font-medium text-ink">
                         {dataset.original_filename}
                       </p>
-                      <p className="mt-0.5 text-caption text-neutral-600">
+                      <p className="mt-0.5 text-caption text-ink-muted">
                         Safu {dataset.row_count.toLocaleString()} · Columns{" "}
                         {dataset.column_count} · {dataset.file_type.toUpperCase()} ·{" "}
                         {formatDate(dataset.uploaded_at)}
@@ -196,45 +212,93 @@ export default function DatasetsPage() {
                       {dataset.status}
                     </Badge>
                     {dataset.project_id ? (
-                      <Badge tone="primary">
+                      <Badge tone="primary" icon="folder">
                         {dataset.project_name ?? "Mradi"}
                       </Badge>
                     ) : (
-                      <Badge tone="neutral">Binafsi</Badge>
+                      <Badge tone="neutral" icon="lock">
+                        Binafsi
+                      </Badge>
                     )}
                     <Link href={`/datasets/${dataset.id}`}>
-                      <Button size="small">Angalia</Button>
-                    </Link>
-                    <Link href={`/datasets/${dataset.id}/statistics`}>
-                      <Button variant="secondary" size="small">
-                        Chambua
+                      <Button size="small">
+                        <Icon name="eye" size={14} />
+                        Fungua
                       </Button>
                     </Link>
-                    <Link href={`/datasets/${dataset.id}/charts`}>
-                      <Button variant="secondary" size="small">
-                        Chati
-                      </Button>
-                    </Link>
-                    <Link href={`/datasets/${dataset.id}/export`}>
-                      <Button variant="secondary" size="small">
-                        Ripoti
-                      </Button>
-                    </Link>
-                    {meId === null || dataset.user_id === meId ? (
-                      <Button
-                        variant="danger"
-                        size="small"
-                        onClick={() => handleDelete(dataset)}
-                      >
-                        <Icon name="trash" size={14} />
-                        Futa
-                      </Button>
-                    ) : null}
+                    <div className="flex items-center gap-1">
+                      <Link href={`/datasets/${dataset.id}/statistics`}>
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          aria-label={`Chambua ${dataset.original_filename}`}
+                        >
+                          <Icon name="calculator" size={16} />
+                        </Button>
+                      </Link>
+                      <Link href={`/datasets/${dataset.id}/charts`}>
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          aria-label={`Chati za ${dataset.original_filename}`}
+                        >
+                          <Icon name="chart" size={16} />
+                        </Button>
+                      </Link>
+                      <Link href={`/datasets/${dataset.id}/ask`}>
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          aria-label={`Msaidizi wa AI kwa ${dataset.original_filename}`}
+                        >
+                          <Icon name="sparkles" size={16} />
+                        </Button>
+                      </Link>
+                      <Link href={`/datasets/${dataset.id}/export`}>
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          aria-label={`Ripoti za ${dataset.original_filename}`}
+                        >
+                          <Icon name="file-text" size={16} />
+                        </Button>
+                      </Link>
+                    </div>
+                    {canDelete &&
+                      (confirming ? (
+                        <span className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger-bg px-2 py-1">
+                          <span className="text-caption text-danger-700">Futa?</span>
+                          <Button
+                            variant="danger"
+                            size="small"
+                            loading={deleting}
+                            onClick={() => handleDelete(dataset)}
+                          >
+                            Ndiyo
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="small"
+                            onClick={() => setPendingDelete(null)}
+                          >
+                            Ghairi
+                          </Button>
+                        </span>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="small"
+                          aria-label={`Futa ${dataset.original_filename}`}
+                          onClick={() => setPendingDelete(dataset.id)}
+                        >
+                          <Icon name="trash" size={16} />
+                        </Button>
+                      ))}
                   </div>
-                </article>
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
       </Card>
     </AppShell>

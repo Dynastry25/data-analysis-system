@@ -19,16 +19,16 @@ export function QuickActions({ actions }: { actions: QuickAction[] }) {
         <Link
           key={action.label}
           href={action.href}
-          className="group flex h-full flex-col rounded border border-neutral-200 bg-white p-4 transition-colors duration-200 hover:border-primary-300 hover:bg-primary-50/40"
+          className="group flex h-full flex-col rounded-lg border border-surface-border bg-surface-panel p-4 shadow-card transition-all duration-150 ease-standard hover:border-primary-300 hover:shadow-raised"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded bg-primary-50 text-primary-600">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-50 text-primary-600 transition-colors duration-150 ease-standard group-hover:bg-primary-100">
             <Icon name={action.icon} size={18} />
           </span>
-          <p className="mt-3 text-body-lg text-neutral-900">{action.label}</p>
-          <p className="mt-0.5 flex-1 text-caption text-neutral-600">
+          <p className="mt-3 text-body-lg font-medium text-ink">{action.label}</p>
+          <p className="mt-0.5 flex-1 text-caption text-ink-secondary">
             {action.description}
           </p>
-          <span className="mt-3 inline-flex items-center gap-1 text-caption font-medium text-primary-600 transition-all duration-200 group-hover:gap-2">
+          <span className="mt-3 inline-flex items-center gap-1 text-caption font-medium text-primary-600 transition-all duration-150 ease-standard group-hover:gap-2">
             Fungua
             <Icon name="arrow-right" size={14} />
           </span>

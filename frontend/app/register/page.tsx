@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 import { Button } from "@/components/Button";
+import { TextInput } from "@/components/Field";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, setToken } from "@/lib/api";
@@ -39,10 +40,10 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="flex min-h-screen bg-neutral-50">
-      <aside className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-primary-900 p-10 text-white lg:flex">
+    <main className="flex min-h-screen bg-surface-canvas">
+      <aside className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-neutral-900 p-10 text-white lg:flex">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10">
+          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-600">
             <Icon name="chart-line" size={20} />
           </span>
           <span className="text-h3">StatFlow</span>
@@ -50,9 +51,9 @@ export default function RegisterPage() {
 
         <div className="max-w-md">
           <h2 className="text-display text-white">Anza kuchambua data sasa</h2>
-          <p className="mt-3 text-body-lg text-primary-100">
+          <p className="mt-3 text-body-lg text-neutral-300">
             Kuhusu muhula mmoja, na una njia nzima ya uchambuzi mikononi mwako:
-            pakia → safisha → chambua → chati → ripoti.
+            pakia, safisha, chambua, chati, ripoti.
           </p>
           <ol className="mt-8 space-y-4">
             {[
@@ -62,19 +63,19 @@ export default function RegisterPage() {
               { label: "Ripoti", description: "PDF au Excel kwa kubonyeza moja" },
             ].map((step, index) => (
               <li key={step.label} className="flex items-center gap-3">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-body font-medium">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-body font-medium text-primary-300">
                   {index + 1}
                 </span>
                 <div>
                   <p className="text-body-lg font-medium text-white">{step.label}</p>
-                  <p className="text-body text-primary-100">{step.description}</p>
+                  <p className="text-body text-neutral-400">{step.description}</p>
                 </div>
               </li>
             ))}
           </ol>
         </div>
 
-        <p className="text-caption text-primary-100">
+        <p className="text-caption text-neutral-500">
           Data yako imelindwa · kila mtumiaji anaona datasets zake tu
         </p>
       </aside>
@@ -82,73 +83,57 @@ export default function RegisterPage() {
       <div className="flex flex-1 items-center justify-center px-4 py-12">
         <div className="w-full max-w-md">
           <div className="mb-8 flex flex-col items-center text-center lg:items-start lg:text-left">
-            <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-600 text-white lg:hidden">
+            <span className="flex h-11 w-11 items-center justify-center rounded-md bg-primary-600 text-white lg:hidden">
               <Icon name="chart-line" size={22} />
             </span>
-            <h1 className="mt-4 text-h1 text-primary-900 lg:mt-0">Sajili akaunti</h1>
-            <p className="mt-1 text-body text-neutral-600">
+            <h1 className="mt-4 text-h1 text-ink lg:mt-0">Sajili akaunti</h1>
+            <p className="mt-1 text-body text-ink-secondary">
               Muhula mmoja (dakika moja) na unaanza kuchambua data
             </p>
           </div>
 
           <form
             onSubmit={handleSubmit}
-            className="space-y-4 rounded border border-neutral-200 bg-white p-6"
+            className="space-y-4 rounded-lg border border-surface-border bg-surface-panel p-6 shadow-card"
           >
-            <div>
-              <label htmlFor="full_name" className="block text-body text-neutral-900">
-                Jina kamili
-              </label>
-              <input
-                id="full_name"
-                required
-                minLength={2}
-                value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
-                className="mt-1 h-10 w-full rounded border border-neutral-200 px-3 text-body outline-none focus:border-primary-500"
-                placeholder="Asha Mwangi"
-              />
-            </div>
+            <TextInput
+              label="Jina kamili"
+              required
+              minLength={2}
+              autoComplete="name"
+              value={fullName}
+              onChange={(event) => setFullName(event.target.value)}
+              placeholder="Asha Mwangi"
+            />
 
-            <div>
-              <label htmlFor="email" className="block text-body text-neutral-900">
-                Barua pepe (email)
-              </label>
-              <input
-                id="email"
-                type="email"
-                required
-                autoComplete="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className="mt-1 h-10 w-full rounded border border-neutral-200 px-3 text-body outline-none focus:border-primary-500"
-                placeholder="jina@example.com"
-              />
-            </div>
+            <TextInput
+              label="Barua pepe (email)"
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="jina@example.com"
+            />
 
-            <div>
-              <label htmlFor="password" className="block text-body text-neutral-900">
-                Neno la siri (angalau herufi 6)
-              </label>
-              <input
-                id="password"
-                type="password"
-                required
-                minLength={6}
-                autoComplete="new-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="mt-1 h-10 w-full rounded border border-neutral-200 px-3 text-body outline-none focus:border-primary-500"
-                placeholder="••••••••"
-              />
-            </div>
+            <TextInput
+              label="Neno la siri"
+              hint="Angalau herufi 6"
+              type="password"
+              required
+              minLength={6}
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="••••••••"
+            />
 
             {error && (
               <p
                 role="alert"
-                className="flex items-center gap-2 rounded bg-danger-bg px-3 py-2 text-body text-danger"
+                className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger-bg px-3 py-2.5 text-body text-danger-700"
               >
-                <Icon name="close" size={16} />
+                <Icon name="alert-circle" size={16} className="mt-0.5 shrink-0" />
                 {error}
               </p>
             )}
@@ -157,9 +142,12 @@ export default function RegisterPage() {
               Sajili na uingie
             </Button>
 
-            <p className="text-center text-body text-neutral-600">
+            <p className="text-center text-body text-ink-secondary">
               Una akaunti tayari?{" "}
-              <Link href="/login" className="text-primary-600 hover:underline">
+              <Link
+                href="/login"
+                className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
+              >
                 Ingia
               </Link>
             </p>
