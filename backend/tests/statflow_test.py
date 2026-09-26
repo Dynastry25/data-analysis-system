@@ -430,6 +430,33 @@ def main() -> int:
             "age mean matches an independent recomputation",
         )
 
+        local_values = local["age"].to_numpy(dtype=float)
+        local_values = local_values[np.isfinite(local_values)]
+        expected_mode, expected_mode_count, expected_unique = stats_engine.mode_of(
+            local_values
+        )
+        check("mode" in age_stats, "descriptive reports a mode (MVP spec section 4)")
+        check(
+            age_stats["mode"] == expected_mode
+            and age_stats["mode_count"] == expected_mode_count
+            and bool(age_stats["mode_unique"]) == expected_unique,
+            f"age mode matches an independent recomputation "
+            f"({age_stats['mode']}, count {age_stats['mode_count']}, "
+            f"unique {age_stats['mode_unique']})",
+        )
+        check(
+            stats_engine.mode_of(np.array([])) == (None, 0, False),
+            "mode of an empty sample is None rather than an error",
+        )
+        check(
+            stats_engine.mode_of(np.array([1.0, 1.0, 2.0, 2.0])) == (None, 2, False),
+            "bimodal data reports no single mode instead of picking one",
+        )
+        check(
+            stats_engine.descriptives(np.array([])) == {"count": 0},
+            "descriptives of an empty sample stays a bare count",
+        )
+
         frequency = run_analysis("frequency", {"columns": ["region"]})
         percentages = sum(
             float(row["percentage"])

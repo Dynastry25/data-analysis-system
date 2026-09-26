@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/Badge";
-import { DataTable } from "@/components/DataTable";
+import { DataTable, formatCell } from "@/components/DataTable";
 import { Icon } from "@/components/Icon";
 import { StandardResult } from "@/lib/api";
 import { colorForIndex } from "@/lib/constants";
@@ -109,7 +109,9 @@ function pointEstimate(result: StandardResult): number | null {
 
 /** Render a flat record as a small key/value table. */
 function EstimateTable({ record }: { record: Record<string, unknown> }) {
-  const entries = Object.entries(record);
+  const entries = Object.entries(record).filter(
+    ([key, value]) => !(key === "variables" && isPlainObject(value)),
+  );
   if (entries.length === 0) return null;
   return (
     <table className="w-full text-left text-body">
@@ -117,13 +119,17 @@ function EstimateTable({ record }: { record: Record<string, unknown> }) {
         {entries.map(([key, value]) => (
           <tr key={key} className="border-b border-surface-border last:border-0">
             <th scope="row" className="py-1.5 pr-4 font-medium text-ink-secondary">
-              {key}
+              {ESTIMATE_LABELS[key] ?? key}
             </th>
             <td className="py-1.5 text-ink">
               {value !== null && typeof value === "object" ? (
                 <pre className="whitespace-pre-wrap font-mono text-caption">
                   {JSON.stringify(value, null, 2)}
                 </pre>
+              ) : typeof value === "boolean" ? (
+                <Badge tone={value ? "primary" : "neutral"}>
+                  {value ? "ndio" : "hapana"}
+                </Badge>
               ) : (
                 fmt(value)
               )}
@@ -132,6 +138,73 @@ function EstimateTable({ record }: { record: Record<string, unknown> }) {
         ))}
       </tbody>
     </table>
+  );
+}
+
+/** One row per variable, transposed descriptive statistics, with an honest mode column. */
+function DescriptivesTable({ variables }: { variables: Record<string, unknown> }) {
+  const names = Object.keys(variables);
+  const stats = names
+    .map((name) => variables[name])
+    .filter(isPlainObject) as Record<string, unknown>[];
+
+  const preferred = [
+    "count",
+    "missing",
+    "mean",
+    "median",
+    "mode",
+    "sd",
+    "min",
+    "q1",
+    "q3",
+    "max",
+  ];
+  const available = preferred.filter((key) =>
+    stats.some((entry) => key in entry),
+  );
+  const columns = ["variable", ...available];
+  const rows = names.map((name) => ({
+    variable: name,
+    ...(isPlainObject(variables[name]) ? variables[name] : {}),
+  }));
+  const multimodal = stats.filter((entry) => entry.mode_unique === false);
+
+  return (
+    <div>
+      <DataTable
+        caption="Takwimu za maelezo za kila variable"
+        columns={columns}
+        columnLabels={{ variable: "Variable", ...COLUMN_LABELS }}
+        rows={rows}
+        numericColumns={available}
+        renderCell={(column, value, row) => {
+          if (column === "variable") {
+            return <span className="font-mono text-caption">{String(value)}</span>;
+          }
+          if (column === "mode") {
+            return row.mode_unique === false ? (
+              <span
+                className="text-ink-muted"
+                title={`Thamani ${row.mode_count} zilizofikwa mara ${row.mode_count}`}
+              >
+                hakuna mode moja
+              </span>
+            ) : (
+              formatCell(value)
+            );
+          }
+          return formatCell(value);
+        }}
+      />
+      {multimodal.length > 0 && (
+        <p className="mt-1.5 text-caption text-ink-muted">
+          Mode haijaonyeshwa kwa baadhi ya variables kwa kuwa thamani nyingi zimefika
+          mara zinazofanana (bimodal au zaidi) — kumbuka kuwa mode haina maana pale
+          data ni symetrischi.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -150,6 +223,10 @@ const COLUMN_LABELS: Record<string, string> = {
   percentage: "Asilimia",
   mean: "Wastani",
   median: "Mediani",
+  mode: "Mode",
+  mode_count: "Idadi ya mode",
+  mode_unique: "Mode moja",
+  missing: "Zilizokosekana",
   sd: "Mabadiliko ya kawaida",
   variance: "Mabadiliko",
   std_error: "Kosa la kawaida",
@@ -166,6 +243,69 @@ const COLUMN_LABELS: Record<string, string> = {
   p_value: "Thamani ya p",
   ci_lower: "CI ya chini",
   ci_upper: "CI ya juu",
+};
+
+/** Swahili labels for the engine's estimate / test / diagnostic keys. */
+const ESTIMATE_LABELS: Record<string, string> = {
+  adjusted_r_squared: "R² iliyobadilishwa",
+  alpha: "Alfa (α)",
+  alternative: "Mbadala",
+  cells_with_expected_below_5: "Seli zilizotarajiwa < 5",
+  column_variable: "Column ya kujumbilisha",
+  columns: "Columns",
+  complete_pairs: "Kuoze hamshi kamili",
+  contingency: "Mgongano",
+  contingency_table: "Jedwali la mgongano",
+  correlation: "Uhusiano (r)",
+  df: "Degrees za uhuru (df)",
+  direction: "Mwelekeo",
+  equation: "Fomula",
+  expected: "Ilyotarajiwa",
+  features: "Vigezo vinavyotumika",
+  fisher_exact_p_value: "p ya Fisher's exact",
+  group: "Kundi",
+  group_means: "Wastani za makundi",
+  group_sd: "Mabadiliko ya makundi",
+  group_sizes: "Ukubwa wa makundi",
+  grouping: "Kikundi",
+  index: "Index",
+  intercept: "Mkatizo (intercept)",
+  interpretation: "Tafsiri",
+  levene: "Jaribio la Levene",
+  level: "Kiwango cha uaminifu",
+  lower: "Chini",
+  mean_difference: "Tofauti ya wastani",
+  median_by_group: "Mediani kwa kundi",
+  median_difference: "Tofauti ya mediani",
+  median_group_a: "Mediani ya kundi A",
+  median_group_b: "Mediani ya kundi B",
+  method: "Mbinu",
+  minimum_expected: "Ikio cha chini kilichotarajiwa",
+  missing_pairs: "Kuoze hamshi zilizokosekana",
+  name: "Jina",
+  normality: "Usambamba wa kawaida",
+  normality_x: "Usambamba wa X",
+  normality_y: "Usambamba wa Y",
+  observed: "Iliyozibiwa",
+  outliers_percentage: "Asilimia ya vith outliers",
+  outliers_x_percentage: "Asilimia ya outliers X",
+  outliers_y_percentage: "Asilimia ya outliers Y",
+  p_value: "Thamani ya p",
+  pearson_p_value: "p ya Pearson",
+  pearson_statistic: "Takwimu ya Pearson",
+  r_squared: "R²",
+  row_percentages: "Asilimia za rows",
+  row_variable: "Row ya kujumbilisha",
+  rows: "Rows",
+  significant: "Muhimu kiotakwimu",
+  statistic: "Takwimu",
+  strength: "Nguvu ya uhusiano",
+  target: "Lengo",
+  unequal_variances: "Mabadiliko si sawa",
+  upper: "Juu",
+  value: "Thamani",
+  variables: "Variables",
+  variance_ratio: "Kipimo cha mabadiliko",
 };
 
 /** Render the generic tables block (frequency tables, group descriptives, coefficients). */
@@ -218,6 +358,12 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Keys the engine emits for its own bookkeeping; the summary layers explain these better. */
+const INTERNAL_COLUMN_KEYS = new Set([
+  "mode_unique",
+  "confidence_interval_95",
+]);
+
 function TableBlock({
   title,
   caption,
@@ -227,7 +373,9 @@ function TableBlock({
   caption: string;
   rows: Record<string, unknown>[];
 }) {
-  const columns = Object.keys(rows[0]);
+  const columns = Object.keys(rows[0]).filter(
+    (column) => !INTERNAL_COLUMN_KEYS.has(column),
+  );
   const labels = Object.fromEntries(
     columns.map((column) => [column, COLUMN_LABELS[column] ?? column]),
   );
@@ -574,6 +722,12 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
             <p className="mb-1.5 text-overline uppercase tracking-wide text-ink-muted">
               Makadirio (estimate)
             </p>
+            {isPlainObject(result.estimate.variables) &&
+            Object.keys(result.estimate.variables).length > 0 ? (
+              <DescriptivesTable
+                variables={result.estimate.variables as Record<string, unknown>}
+              />
+            ) : null}
             <EstimateTable record={result.estimate} />
           </div>
           <div className="space-y-3">

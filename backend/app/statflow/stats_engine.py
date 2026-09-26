@@ -167,8 +167,24 @@ def group_samples(
     return samples
 
 
+def mode_of(array: np.ndarray) -> Tuple[Optional[float], int, bool]:
+    """Most frequent value, its frequency, and whether the mode is unique.
+
+    Bimodal (and wider) data has no single mode, so ``mode`` is ``None`` and
+    ``unique`` is ``False`` rather than silently picking the smallest tied value.
+    """
+    if array.size == 0:
+        return None, 0, False
+    values, counts = np.unique(array, return_counts=True)
+    top = int(counts.max())
+    winners = values[counts == top]
+    if winners.size == 1:
+        return float(winners[0]), top, True
+    return None, top, False
+
+
 def descriptives(values: np.ndarray) -> Dict[str, Any]:
-    """Mean, median, SD, variance, min/max, Q1/Q3 (+ skewness/kurtosis)."""
+    """Mean, median, mode, SD, variance, min/max, Q1/Q3 (+ skewness/kurtosis)."""
     array = np.asarray(values, dtype=float)
     array = array[np.isfinite(array)]
     count = int(array.size)
@@ -176,10 +192,14 @@ def descriptives(values: np.ndarray) -> Dict[str, Any]:
         return {"count": 0}
     mean = float(array.mean())
     sd = float(array.std(ddof=1)) if count > 1 else 0.0
+    mode, mode_count, mode_unique = mode_of(array)
     result: Dict[str, Any] = {
         "count": count,
         "mean": _round(mean),
         "median": _round(np.median(array)),
+        "mode": _round(mode) if mode is not None else None,
+        "mode_count": mode_count,
+        "mode_unique": mode_unique,
         "sd": _round(sd),
         "variance": _round(sd**2),
         "std_error": _round(sd / np.sqrt(count)) if count > 0 and sd > 0 else 0.0,
