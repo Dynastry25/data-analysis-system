@@ -45,6 +45,7 @@ ANALYSIS_DESCRIPTIONS = {
     "frequency": "Counts and percentages per category",
     "pearson": "Pearson correlation (r + p-value + CI)",
     "spearman": "Spearman rank correlation (rho + p-value)",
+    "correlation_matrix": "Correlation matrix across all numeric columns (r for every pair)",
     "welch_t_test": "Welch t-test for two independent groups (difference, p, CI, Cohen's d)",
     "mann_whitney": "Mann-Whitney U (non-parametric two-group test)",
     "chi_square": "Chi-square test of independence (chi2, p, df, Cramer's V)",
@@ -827,6 +828,164 @@ def correlation_analysis_v2(
     )
 
 
+def correlation_matrix_analysis(
+    frame: pd.DataFrame, parameters: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Pairwise correlation matrix across every selected numeric column.
+
+    The MVP spec asks for a correlation matrix, which pairwise pearson/spearman
+    runs cannot express: this reports every pair at once so a user can spot the
+    relationships worth investigating in one pass.
+    """
+    method = str(parameters.get("method") or "pearson").lower()
+    if method not in {"pearson", "spearman"}:
+        raise AnalysisError("method must be 'pearson' or 'spearman'")
+
+    requested = parameters.get("columns") or parameters.get("variables") or []
+    if requested:
+        columns = [str(column) for column in requested]
+        missing = [column for column in columns if column not in frame.columns]
+        if missing:
+            raise AnalysisError("Columns not found: " + ", ".join(missing))
+    else:
+        columns = [
+            str(column)
+            for column in frame.columns
+            if pd.api.types.is_numeric_dtype(frame[column])
+            and not pd.api.types.is_bool_dtype(frame[column])
+        ]
+    if len(columns) < 2:
+        raise AnalysisError("A correlation matrix needs at least 2 numeric columns")
+
+    # One pairwise-complete pass per column keeps the semantics identical to the
+    # two-variable analysis, which drops rows missing either side.
+    usable: Dict[str, np.ndarray] = {}
+    for column in columns:
+        series = pd.to_numeric(frame[column], errors="coerce")
+        if int(series.notna().sum()) < 3:
+            usable[column] = np.array([], dtype=float)
+            continue
+        usable[column] = series.to_numpy(dtype=float)
+
+    included = [column for column in columns if usable[column].size >= 3]
+    if len(included) < 2:
+        raise AnalysisError(
+            "Need at least 2 columns with 3 or more numeric values for a matrix"
+        )
+
+    matrix: List[List[Optional[float]]] = []
+    p_matrix: List[List[Optional[float]]] = []
+    pairs: List[Dict[str, Any]] = []
+    warnings_out: List[str] = []
+    best: Optional[Dict[str, Any]] = None
+
+    for i, row_column in enumerate(included):
+        row_values: List[Optional[float]] = []
+        row_p: List[Optional[float]] = []
+        for j, col_column in enumerate(included):
+            if i == j:
+                row_values.append(1.0)
+                row_p.append(None)
+                continue
+            if j < i:
+                row_values.append(matrix[j][i])
+                row_p.append(p_matrix[j][i])
+                continue
+            left, right = usable[row_column], usable[col_column]
+            mask = np.isfinite(left) & np.isfinite(right)
+            x_values, y_values = left[mask], right[mask]
+            if x_values.size < 3:
+                row_values.append(None)
+                row_p.append(None)
+                continue
+            try:
+                result = correlation_test(x_values, y_values, method)
+            except AnalysisError:
+                row_values.append(None)
+                row_p.append(None)
+                continue
+            r_value = float(result["r"])
+            p_value = float(result["p_value"])
+            row_values.append(_round(r_value))
+            row_p.append(_round(p_value))
+            pairs.append(
+                {
+                    "x": row_column,
+                    "y": col_column,
+                    "r": _round(r_value),
+                    "n": int(result["n"]),
+                    "p_value": _round(p_value),
+                    "significant": bool(p_value < 0.05),
+                }
+            )
+            if best is None or abs(r_value) > abs(float(best["r"])):
+                best = {
+                    "x": row_column,
+                    "y": col_column,
+                    "r": _round(r_value),
+                    "p_value": _round(p_value),
+                }
+        matrix.append(row_values)
+        p_matrix.append(row_p)
+
+    for column in columns:
+        if column not in included:
+            warnings_out.append(
+                f"'{column}' has fewer than 3 numeric values, excluded from the matrix"
+            )
+
+    matrix_rows = [
+        {"variable": column, **{other: matrix[i][j] for j, other in enumerate(included)}}
+        for i, column in enumerate(included)
+    ]
+    significant_pairs = [pair for pair in pairs if pair["significant"]]
+    significant_pairs.sort(key=lambda pair: abs(float(pair["r"])), reverse=True)
+
+    strongest = significant_pairs[0] if significant_pairs else None
+    if strongest is None:
+        summary = "Hakuna jozi yenye uhusiano muhimu kiotakwimu (p >= 0.05)."
+    else:
+        direction = "chanya" if float(strongest["r"]) >= 0 else "hasi"
+        summary = (
+            f"Uhusiano mkubwa zaidi ni {direction} kati ya {strongest['x']} na "
+            f"{strongest['y']} (r = {strongest['r']}, p = {strongest['p_value']})."
+        )
+
+    return standard_result(
+        "correlation_matrix",
+        sample_size=int(frame.shape[0]),
+        estimate={
+            "method": method,
+            "columns": included,
+            "excluded_columns": [c for c in columns if c not in included],
+            "pair_count": len(pairs),
+            "significant_pairs": len(significant_pairs),
+            "strongest": strongest,
+            "variables": {
+                column: descriptives(usable[column][np.isfinite(usable[column])])
+                for column in included
+            },
+        },
+        test={
+            "method": "Pearson r" if method == "pearson" else "Spearman rho",
+            "alpha": 0.05,
+            "significant": bool(significant_pairs),
+            "p_value": strongest["p_value"] if strongest else None,
+            "statistic": strongest["r"] if strongest else None,
+        },
+        diagnostics={
+            "matrix_size": len(included),
+            "pairs_tested": len(pairs),
+            "method": method,
+        },
+        warnings=warnings_out,
+        tables={
+            "matrix": matrix_rows,
+            "pairs": sorted(pairs, key=lambda pair: abs(float(pair["r"])), reverse=True),
+        },
+    )
+
+
 def _missing_group_rows(frame: pd.DataFrame, parameters: Dict[str, Any]) -> int:
     group_column = parameters.get("group_column") or parameters.get("group")
     if not group_column or group_column not in frame.columns:
@@ -1472,6 +1631,7 @@ ANALYSIS_HANDLERS: Dict[str, Any] = {
     "spearman": lambda frame, parameters: correlation_analysis_v2(
         frame, {**parameters, "method": "spearman"}
     ),
+    "correlation_matrix": correlation_matrix_analysis,
     "welch_t_test": welch_t_test_analysis,
     "mann_whitney": mann_whitney_analysis,
     "chi_square": chi_square_analysis,
@@ -1486,6 +1646,7 @@ REQUIRED_PARAMETERS = {
     "frequency": ["columns or column (optional)"],
     "pearson": ["x", "y"],
     "spearman": ["x", "y"],
+    "correlation_matrix": ["columns (optional, all numeric by default)"],
     "welch_t_test": ["value_column", "group_column"],
     "mann_whitney": ["value_column", "group_column"],
     "chi_square": ["row_column", "column_column"],

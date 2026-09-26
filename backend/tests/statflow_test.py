@@ -442,7 +442,10 @@ def main() -> int:
         )
         print(f"  [info] type inference for 4 x 100k columns: {infer_seconds:.2f}s")
 
+        expected_runs = 0
+
         def run_analysis(analysis_type, parameters):
+            nonlocal expected_runs
             response = client.post(
                 f"/api/v1/datasets/{dataset_id}/analysis",
                 json={
@@ -453,13 +456,17 @@ def main() -> int:
                 headers=headers,
             )
             check(response.status_code == 200, f"{analysis_type} returns 200")
+            expected_runs += 1
             result = response.json()["result"]
             for key in STANDARD_KEYS:
                 check(key in result, f"{analysis_type}: standard key '{key}' present")
             return result
 
         types_response = client.get("/api/v1/analysis/types", headers=headers)
-        check(len(types_response.json()) == 11, "11 analyses in the v1 catalog")
+        check(
+            len(types_response.json()) == 12,
+            "12 analyses in the v1 catalog",
+        )
 
         descriptive = run_analysis("descriptive", {"columns": ["age", "income"]})
         check(descriptive["status"] == "success", "descriptive status is success")
@@ -521,6 +528,143 @@ def main() -> int:
         )
         spearman = run_analysis("spearman", {"x": "age", "y": "income"})
         check(spearman["analysis_type"] == "spearman", "spearman keeps its own type")
+
+        # The MVP spec asks for a correlation matrix, not just pairwise runs.
+        matrix = run_analysis("correlation_matrix", {})
+        check(
+            matrix["analysis_type"] == "correlation_matrix",
+            "correlation matrix reports its own type",
+        )
+        matrix_columns = matrix["estimate"]["columns"]
+        check(
+            "age" in matrix_columns and "income" in matrix_columns,
+            "the matrix picks up the numeric columns automatically",
+        )
+        check(
+            "region" not in matrix_columns,
+            "the matrix excludes non-numeric columns",
+        )
+        matrix_rows = matrix["tables"]["matrix"]
+        check(
+            all(
+                abs(float(row[column]) - 1.0) < 1e-9
+                for row in matrix_rows
+                for column in matrix["estimate"]["columns"]
+                if row["variable"] == column
+            ),
+            "the matrix diagonal is exactly 1",
+        )
+        by_variable = {row["variable"]: row for row in matrix_rows}
+        check(
+            all(
+                abs(
+                    float(by_variable[left][right]) - float(by_variable[right][left])
+                )
+                < 1e-9
+                for i, left in enumerate(matrix_columns)
+                for right in matrix_columns[i + 1 :]
+            ),
+            "the matrix is symmetric",
+        )
+        check(
+            abs(
+                float(by_variable["age"]["income"])
+                - float(pearson["estimate"]["correlation"])
+            )
+            < 0.01,
+            "the matrix agrees with the pairwise pearson result",
+        )
+        check(
+            matrix["estimate"]["pair_count"]
+            == len(matrix_columns) * (len(matrix_columns) - 1) // 2,
+            "the matrix reports every unordered pair exactly once",
+        )
+        pairs = matrix["tables"]["pairs"]
+        check(
+            all(pair["p_value"] is not None for pair in pairs),
+            "every matrix pair carries a p-value",
+        )
+        check(
+            all(
+                abs(float(pair["r"])) <= 1.0 for pair in pairs
+            ),
+            "every correlation coefficient is within [-1, 1]",
+        )
+        significant_pairs = [pair for pair in pairs if pair["significant"]]
+        strongest = matrix["estimate"]["strongest"]
+        check(
+            (strongest is None) == (not significant_pairs),
+            "a strongest pair is reported exactly when some pair is significant",
+        )
+        if significant_pairs:
+            check(
+                abs(
+                    float(strongest["r"])
+                    - max(abs(float(pair["r"])) for pair in significant_pairs)
+                )
+                < 1e-9,
+                "the strongest pair is the largest significant coefficient",
+            )
+            check(
+                strongest["p_value"] < 0.05,
+                "the strongest pair is statistically significant",
+            )
+        check(
+            all(pair["p_value"] >= 0.0 and pair["p_value"] <= 1.0 for pair in pairs),
+            "every p-value is a probability",
+        )
+        check(
+            len(significant_pairs) == matrix["estimate"]["significant_pairs"],
+            "the significant pair count matches the pairs table",
+        )
+        spearman_matrix = run_analysis(
+            "correlation_matrix", {"method": "spearman"}
+        )
+        check(
+            spearman_matrix["estimate"]["method"] == "spearman",
+            "the matrix honours the spearman method",
+        )
+        explicit_matrix = run_analysis(
+            "correlation_matrix", {"columns": ["age", "income"]}
+        )
+        check(
+            explicit_matrix["estimate"]["columns"] == ["age", "income"],
+            "the matrix honours an explicit column selection",
+        )
+        def post_analysis(analysis_type, parameters):
+            return client.post(
+                f"/api/v1/datasets/{dataset_id}/analysis",
+                json={
+                    "analysis_type": analysis_type,
+                    "parameters": parameters,
+                    "dataset_version": latest_version,
+                },
+                headers=headers,
+            )
+
+        too_few = post_analysis("correlation_matrix", {"columns": ["age"]})
+        check(
+            too_few.status_code == 400,
+            "a one-column matrix is rejected with 400",
+        )
+        check(
+            "at least 2" in too_few.text,
+            "a one-column matrix explains that it needs at least 2 columns",
+        )
+        bad_method = post_analysis("correlation_matrix", {"method": "kendall"})
+        check(
+            bad_method.status_code == 400,
+            "an unknown correlation method is rejected with 400",
+        )
+        check(
+            "pearson" in bad_method.text,
+            "an unknown correlation method names the allowed methods",
+        )
+        unknown_column = post_analysis("correlation_matrix", {"columns": ["nope"]})
+        check(
+            unknown_column.status_code == 400,
+            "an unknown column is rejected with 400",
+        )
 
         correlation_numpy = float(
             np.corrcoef(
@@ -684,7 +828,10 @@ def main() -> int:
         )
 
         runs = client.get(f"/api/v1/datasets/{dataset_id}/analysis", headers=headers)
-        check(len(runs.json()) == 10, "10 analysis runs stored")
+        check(
+            len(runs.json()) == expected_runs,
+            f"all {expected_runs} analysis runs stored",
+        )
         one = client.get(
             f"/api/v1/analysis/{runs.json()[0]['analysis_id']}", headers=headers
         )

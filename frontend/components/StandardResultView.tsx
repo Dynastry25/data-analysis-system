@@ -221,6 +221,7 @@ const COLUMN_LABELS: Record<string, string> = {
   category: "Kategoria",
   count: "Idadi",
   percentage: "Asilimia",
+  n: "Idadi (n)",
   mean: "Wastani",
   median: "Mediani",
   mode: "Mode",
@@ -243,6 +244,10 @@ const COLUMN_LABELS: Record<string, string> = {
   p_value: "Thamani ya p",
   ci_lower: "CI ya chini",
   ci_upper: "CI ya juu",
+  r: "r (madarakora)",
+  x: "Variable A",
+  y: "Variable B",
+  significant: "Muhimu",
 };
 
 /** Swahili labels for the engine's estimate / test / diagnostic keys. */
@@ -312,7 +317,8 @@ const ESTIMATE_LABELS: Record<string, string> = {
 function TablesBlock({ tables }: { tables: Record<string, unknown> }) {
   const rendered: JSX.Element[] = [];
   for (const [key, value] of Object.entries(tables)) {
-    if (key === "scatter") continue;
+    // The heatmap layer renders these; repeating them as tables would duplicate.
+    if (key === "scatter" || key === "matrix" || key === "pairs") continue;
 
     if (key === "frequency" && !Array.isArray(value) && isPlainObject(value)) {
       for (const [column, columnRows] of Object.entries(value)) {
@@ -654,6 +660,174 @@ function ProvenanceStrip({ result }: { result: StandardResult }) {
  * 5. plain-language interpretation
  * 6. next-step actions
  */
+/** Diverging fill for a correlation coefficient: warm for negative, cool for positive. */
+function correlationFill(r: number): string {
+  const intensity = Math.min(Math.abs(r), 1);
+  if (intensity < 0.05) return "rgb(248 250 252)";
+  return r > 0
+    ? `rgba(37, 99, 235, ${(intensity * 0.82).toFixed(3)})`
+    : `rgba(225, 29, 72, ${(intensity * 0.82).toFixed(3)})`;
+}
+
+/** Layer 3c — correlation matrix heatmap, the reason the matrix analysis exists. */
+function CorrelationMatrixGrid({
+  columns,
+  lookup,
+  significant,
+}: {
+  columns: string[];
+  lookup: (a: string, b: string) => number | null;
+  significant: (a: string, b: string) => boolean;
+}) {
+  return (
+    <div>
+      <div className="overflow-x-auto">
+        <table className="border-separate border-spacing-0.5 text-caption">
+          <caption className="sr-only">
+            Jedwali la uhusiano (r) kati ya kila jozi ya variables
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col" className="sticky left-0 z-10 bg-surface-sunken" />
+              {columns.map((column) => (
+                <th
+                  key={column}
+                  scope="col"
+                  className="max-w-[7rem] truncate bg-surface-sunken px-1.5 py-1 text-overline uppercase tracking-wide text-ink-muted"
+                  title={column}
+                >
+                  {column}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {columns.map((rowColumn) => (
+              <tr key={rowColumn}>
+                <th
+                  scope="row"
+                  className="sticky left-0 z-10 max-w-[7rem] truncate bg-surface-sunken px-1.5 py-1 text-left font-medium text-ink-secondary"
+                  title={rowColumn}
+                >
+                  {rowColumn}
+                </th>
+                {columns.map((colColumn) => {
+                  const isDiagonal = rowColumn === colColumn;
+                  const value = lookup(rowColumn, colColumn);
+                  const isSignificant = !isDiagonal && significant(rowColumn, colColumn);
+                  if (value === null) {
+                    return (
+                      <td
+                        key={colColumn}
+                        className="bg-surface-sunken px-1.5 py-1 text-center text-ink-muted"
+                      >
+                        <span aria-label="hakuna data">—</span>
+                      </td>
+                    );
+                  }
+                  return (
+                    <td
+                      key={colColumn}
+                      style={{ backgroundColor: correlationFill(value) }}
+                      className={`px-1.5 py-1 text-center font-mono tabular-nums ${
+                        Math.abs(value) > 0.55 ? "text-white" : "text-ink"
+                      } ${isDiagonal ? "opacity-60" : ""}`}
+                    >
+                      <span
+                        aria-label={`${rowColumn} na ${colColumn}: r ${value.toFixed(2)}${
+                          isSignificant ? ", muhimu kiotakwimu" : ""
+                        }`}
+                      >
+                        {value.toFixed(2)}
+                      </span>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-3 text-caption text-ink-muted">
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-6 rounded-sm bg-[rgba(225,29,72,0.82)]" />
+          hasi
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-6 rounded-sm bg-surface-canvas ring-1 ring-surface-border" />
+          hakuna uhusiano
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-6 rounded-sm bg-[rgba(37,99,235,0.82)]" />
+          chanya
+        </span>
+        <span>
+          Thamani zilizoandikwa nzuri zina p &lt; 0.05; diagonali ni 1.00 kwa kila
+          variable chenyewe.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Layer 3c wrapper: reads the matrix and ranked pairs out of the result payload. */
+function CorrelationMatrixView({ result }: { result: StandardResult }) {
+  const tables = result.tables as Record<string, unknown> | undefined;
+  const matrixRows = Array.isArray(tables?.matrix)
+    ? (tables.matrix as Record<string, unknown>[])
+    : [];
+  const pairs = Array.isArray(tables?.pairs)
+    ? (tables.pairs as Record<string, unknown>[])
+    : [];
+
+  const columns = Array.isArray(result.estimate.columns)
+    ? (result.estimate.columns as string[])
+    : [];
+  if (matrixRows.length === 0 || columns.length < 2) return null;
+
+  const rowByVariable = new Map(
+    matrixRows.map((row) => [String(row.variable), row]),
+  );
+  const pairKey = new Map(
+    pairs.map((pair) => [
+      `${String(pair.x)}|${String(pair.y)}`,
+      pair,
+    ]),
+  );
+  const lookup = (a: string, b: string): number | null => {
+    if (a === b) return 1;
+    const row = rowByVariable.get(a);
+    const value = row?.[b];
+    return typeof value === "number" ? value : null;
+  };
+  const significant = (a: string, b: string): boolean => {
+    const forward = pairKey.get(`${a}|${b}`);
+    const backward = pairKey.get(`${b}|${a}`);
+    const pair = (forward ?? backward) as Record<string, unknown> | undefined;
+    return pair?.significant === true;
+  };
+
+  return (
+    <div className="space-y-4 rounded-md border border-surface-border bg-surface-sunken p-4">
+      <p className="text-overline uppercase tracking-wide text-ink-muted">
+        Jedwali la uhusiano ({String(result.estimate.method ?? "pearson")})
+      </p>
+      <CorrelationMatrixGrid
+        columns={columns}
+        lookup={lookup}
+        significant={significant}
+      />
+      {pairs.length > 0 && (
+        <TableBlock
+          title="Jozi zilizopangwa kwa nguvu"
+          caption="Jozi za uhusiano zilizopangwa kwa ukubwa wa r"
+          rows={pairs.slice(0, 25)}
+        />
+      )}
+    </div>
+  );
+}
+
 export function StandardResultView({ result, actions }: StandardResultViewProps) {
   const pValue = result.test?.p_value;
   const significant = result.test?.significant ?? null;
@@ -708,11 +882,15 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
       <MetricCards result={result} />
 
       {/* Layer 3 — Taswira */}
-      {hasVisual && (
-        <div className="space-y-4 rounded-md border border-surface-border bg-surface-sunken p-4">
-          <CiChart result={result} />
-          {groupValues && <GroupBars values={groupValues} />}
-        </div>
+      {result.analysis_type === "correlation_matrix" ? (
+        <CorrelationMatrixView result={result} />
+      ) : (
+        hasVisual && (
+          <div className="space-y-4 rounded-md border border-surface-border bg-surface-sunken p-4">
+            <CiChart result={result} />
+            {groupValues && <GroupBars values={groupValues} />}
+          </div>
+        )
       )}
 
       {/* Layer 4 — Angalia zaidi (undani wa kitakwimu) */}
