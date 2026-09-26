@@ -4,6 +4,7 @@ Everything that touches the dataset files lives here so the routers stay thin.
 """
 
 import math
+import re
 import shutil
 from datetime import date, datetime
 from pathlib import Path
@@ -18,8 +19,33 @@ from app.config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE_BYTES, STORAGE_DIR
 CHUNK_SIZE = 1024 * 1024  # 1MB
 PREVIEW_ROWS = 20
 
+# ``pd.to_datetime(..., format="mixed")`` infers a format per element, so it costs
+# seconds on a wide text column (measured: 9.8s for 100k email-like values). The
+# parser only ever sees this many values, which keeps type inference well under a
+# second while still classifying real date columns.
+DATE_PARSE_SAMPLE = 2000
+_HAS_DIGIT = re.compile(r"\d")
+
 TRUTHY_STRINGS = {"true", "t", "yes", "y", "1", "ndiyo", "sawa"}
 FALSY_STRINGS = {"false", "f", "no", "n", "0", "hapana"}
+
+
+def looks_like_dates(values: pd.Series, threshold: float = 1.0) -> bool:
+    """True when at least ``threshold`` of the values parse as dates.
+
+    Cheap digit check first: every plausible date contains a digit, so text
+    columns like emails or identifiers never reach the expensive parser. The
+    check is threshold-aware so a mostly-dates column is still recognised.
+    """
+    sample = values.head(DATE_PARSE_SAMPLE)
+    if sample.empty:
+        return False
+    digit_share = float(sample.astype(str).str.contains(_HAS_DIGIT, regex=True).mean())
+    if digit_share < threshold:
+        return False
+    parsed = pd.to_datetime(sample, errors="coerce", format="mixed")
+    return float(parsed.notna().mean()) >= threshold
+
 
 
 # ------------------------------------------------------------------ uploads
@@ -267,10 +293,8 @@ def infer_column_type(series: pd.Series) -> str:
     if lowered.isin(TRUTHY_STRINGS | FALSY_STRINGS).mean() == 1.0:
         return "boolean"
 
-    if sample.astype(str).str.len().max() <= 32:
-        dates = pd.to_datetime(sample, errors="coerce", format="mixed")
-        if dates.notna().mean() == 1.0:
-            return "date"
+    if sample.astype(str).str.len().max() <= 32 and looks_like_dates(sample):
+        return "date"
 
     return "text"
 

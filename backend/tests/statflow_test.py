@@ -9,6 +9,7 @@ Run it with:  python tests/statflow_test.py
 import os
 import sys
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -27,8 +28,9 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.database import SessionLocal
 from app.main import app  # noqa: E402
-from app.models import Dataset, DatasetOperation, DatasetVersion
-from app.statflow import assistant, distributions, planning, stats_engine, version_store
+from app.models import Dataset, DatasetOperation, DatasetVersion  # noqa: E402
+from app.services import data_service  # noqa: E402
+from app.statflow import assistant, distributions, planning, stats_engine, version_store  # noqa: E402
 
 PASSED = 0
 STANDARD_KEYS = {
@@ -392,6 +394,53 @@ def main() -> int:
         )
 
         print("\n2) MVP-19: unified statistics engine")
+
+        # Type inference runs on the upload path, so the date probe must stay
+        # bounded: format="mixed" costs seconds per 100k rows otherwise.
+        wide = pd.DataFrame(
+            {
+                "email": [f"user{i}@example.com" for i in range(100_000)],
+                "row_id": np.arange(100_000),
+                "signup": pd.date_range("2024-01-01", periods=100_000, freq="min").astype(str),
+                "amount": np.random.default_rng(3).normal(50, 20, 100_000),
+            }
+        )
+        infer_start = time.perf_counter()
+        inferred = {name: data_service.infer_column_type(wide[name]) for name in wide.columns}
+        infer_seconds = time.perf_counter() - infer_start
+        check(inferred["email"] == "text", "a 100k email column is text, not a date")
+        check(inferred["signup"] == "date", "a 100k ISO date column is still a date")
+        check(inferred["row_id"] == "numeric", "a 100k integer column is numeric")
+        check(
+            data_service.looks_like_dates(pd.Series([], dtype=object)) is False,
+            "an empty column is never a date",
+        )
+        check(
+            data_service.looks_like_dates(
+                pd.Series(["2024-01-01", "not-a-date"]), threshold=0.5
+            )
+            is True,
+            "the threshold argument is honoured",
+        )
+        check(
+            data_service.looks_like_dates(pd.Series(["2024-01-01", "not-a-date"]))
+            is False,
+            "a single non-date makes a fully-dates column fail a 1.0 threshold",
+        )
+        mostly_dates = pd.Series(["2024-01-01"] * 95 + ["unknown"] * 5)
+        check(
+            data_service.looks_like_dates(mostly_dates, threshold=0.9) is True,
+            "a 95% dates column is still recognised despite digitless junk",
+        )
+        check(
+            planning.semantic_type(wide["signup"]) == planning.SEMANTIC_DATETIME,
+            "planning agrees that the date column is a datetime",
+        )
+        check(
+            infer_seconds < 5.0,
+            f"profiling 4 x 100k columns takes {infer_seconds:.2f}s (under the 5s budget)",
+        )
+        print(f"  [info] type inference for 4 x 100k columns: {infer_seconds:.2f}s")
 
         def run_analysis(analysis_type, parameters):
             response = client.post(

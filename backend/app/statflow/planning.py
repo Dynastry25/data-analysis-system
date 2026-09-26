@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from app.statflow import stats_engine
-from app.services.data_service import to_jsonable
+from app.services.data_service import looks_like_dates, to_jsonable
 
 SEMANTIC_NUMERIC = "numeric"
 SEMANTIC_CATEGORICAL = "categorical"
@@ -56,10 +56,8 @@ def semantic_type(series: pd.Series) -> str:
     if set(lowered.unique()) <= boolean_like:
         return SEMANTIC_BOOLEAN
 
-    if text.str.len().max() <= 32:
-        parsed = pd.to_datetime(non_null, errors="coerce", format="mixed")
-        if parsed.notna().mean() >= 0.9:
-            return SEMANTIC_DATETIME
+    if text.str.len().max() <= 32 and looks_like_dates(non_null, threshold=0.9):
+        return SEMANTIC_DATETIME
 
     unique = int(non_null.nunique())
     if unique <= max(20, int(non_null.size * 0.05)):
