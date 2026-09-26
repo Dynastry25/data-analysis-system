@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/Badge";
-import { DataTable, formatCell } from "@/components/DataTable";
+import { DataTable, MissingBadge, formatCell, isMissingValue } from "@/components/DataTable";
 import { Icon } from "@/components/Icon";
 import { StandardResult } from "@/lib/api";
 import { colorForIndex } from "@/lib/constants";
@@ -190,11 +190,13 @@ function DescriptivesTable({ variables }: { variables: Record<string, unknown> }
               >
                 hakuna mode moja
               </span>
+            ) : isMissingValue(value) ? (
+              <MissingBadge />
             ) : (
               formatCell(value)
             );
           }
-          return formatCell(value);
+          return isMissingValue(value) ? <MissingBadge /> : formatCell(value);
         }}
       />
       {multimodal.length > 0 && (

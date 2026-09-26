@@ -21,11 +21,20 @@ import {
 } from "@/lib/api";
 
 const CHART_TYPE_OPTIONS: { value: ChartType; label: string; use: string }[] = [
-  { value: "bar", label: "Bar chart", use: "Kulinganisha makundi" },
-  { value: "line", label: "Line chart", use: "Mwenendo kwa muda" },
-  { value: "scatter", label: "Scatter plot", use: "Uhusiano wa variables mbili" },
-  { value: "histogram", label: "Histogram", use: "Mgawanyo wa data" },
+  { value: "bar", label: "Chati ya mistari", use: "Kulinganisha makundi" },
+  { value: "line", label: "Chati ya mstari", use: "Mwenendo kwa muda" },
+  { value: "scatter", label: "Chati ya alama", use: "Uhusiano wa variables mbili" },
+  { value: "histogram", label: "Histograma", use: "Mgawanyo wa data" },
 ];
+
+const AGGREGATION_LABELS: Record<string, string> = {
+  sum: "Jumla",
+  mean: "Wastani",
+  count: "Idadi",
+  min: "Chini kabisa",
+  max: "Juu kabisa",
+  median: "Mediani",
+};
 
 const AGGREGATIONS = ["sum", "mean", "count", "min", "max", "median"] as const;
 
@@ -164,7 +173,10 @@ export default function ChartsPage() {
             <SelectInput
               label="Hesabu (aggregate)"
               value={aggregate}
-              options={AGGREGATIONS.map((item) => ({ value: item, label: item }))}
+              options={AGGREGATIONS.map((item) => ({
+                value: item,
+                label: AGGREGATION_LABELS[item] ?? item,
+              }))}
               onChange={(event) =>
                 setAggregate(event.target.value as (typeof AGGREGATIONS)[number])
               }
