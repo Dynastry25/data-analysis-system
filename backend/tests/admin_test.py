@@ -119,9 +119,22 @@ def main() -> int:
         check(r.status_code == 200, "a platform admin reads the overview")
         r = client.get("/api/v1/admin/me", headers=h_viewer)
         check(r.status_code == 200, "an admin viewer can confirm its own access")
+        check(r.json().get("system_role") == "admin_viewer",
+              "the role is a structured field, not prose to be parsed")
+        check(r.json().get("status") == "active",
+              "the shell also reports the account status")
         r = client.get("/api/v1/admin/me", headers=h_org)
         check(r.status_code == 403,
               "a non-staff member cannot even open the admin shell")
+
+        print("\n1b) The profile tells the UI whether to offer the admin link")
+        r = client.get("/api/auth/me", headers=h_org)
+        check(r.status_code == 200, "a signed-in user reads its own profile")
+        check(r.json().get("system_role") is None,
+              "an ordinary member reports no platform role, so no admin link")
+        r = client.get("/api/auth/me", headers=h_viewer)
+        check(r.json().get("system_role") == "admin_viewer",
+              "staff see their role on the profile without a 403 probe")
 
         print("\n2) Every admin route requires a platform role")
         for path in (

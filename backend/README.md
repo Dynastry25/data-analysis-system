@@ -66,6 +66,49 @@ $env:DATABASE_URL = "postgresql+psycopg2://user:pass@host:5432/data_analysis"
 `migrations/env.py` wires the app's engine + metadata, so model changes are captured
 automatically. The initial migration `5215fbda1c26` creates every table (MVP + Phase 1).
 
+### 3c. Bringing an older local database onto the chain
+
+`create_all` on startup only creates tables that are **missing**. It never alters a table
+that already exists, and it never writes an `alembic_version` row. So a `app.db` created
+before a new migration still looks healthy to the app while missing every new column, and
+the failure shows up as a query error rather than a migration message:
+
+```
+sqlite3.OperationalError: no such column: users.system_role
+```
+
+Do not "fix" this with `create_all`, and do not run `upgrade head` on an unstamped
+database, because Alembic would try to create tables that already exist. Inspect first,
+then adopt the database:
+
+```powershell
+# report only: revision, row counts, which columns are missing
+.\venv\Scripts\python.exe -m tools.adopt_existing_db --db app.db --verify
+
+# adopt, with a backup, then verify the result
+.\venv\Scripts\python.exe -m tools.adopt_existing_db --db app.db --stamp 7c3d9f2a41b8 --apply
+```
+
+The stamp revision is the last one whose schema the data **actually** matches, not simply
+the previous one in the chain. The tool refuses to stamp when the answer would be wrong,
+and it refuses a `--db` that is not the database the app is configured to use, so a report
+and the migration cannot describe different files. It writes `app.db.<stamp>.bak` first.
+
+`app.database` binds its engine when it is imported, so `DATABASE_URL` has to be set
+**before** any `app.*` import. `migrations/env.py` reads that engine too, which is why
+`alembic.ini`'s `sqlalchemy.url` is empty and ignored.
+
+`backend/tests/migration_test.py` covers the admin migration on three histories: a
+database built only by migrations, a database whose `create_all` added `audit_logs` while
+the older tables stayed as they were, and an upgrade/downgrade/upgrade round trip. Run it
+with `.\venv\Scripts\python.exe tests\migration_test.py`.
+
+Known limitation: revision `b6e1f0a9c743` cannot run against a `dataset_versions` table
+that was built by `create_all` from a *current* model, because the self-referencing
+`parent_version` foreign key makes Alembic's batch copy fail with a circular dependency.
+No real database has that history, since `create_all` never rebuilds an existing table,
+but a hand-built scratch database might.
+
 ---
 
 ## 4. Configuration (environment variables)

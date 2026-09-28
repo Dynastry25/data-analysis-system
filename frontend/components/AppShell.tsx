@@ -257,6 +257,15 @@ export function AppShell({ title, description, actions, children }: AppShellProp
         </nav>
 
         <div className="border-t border-neutral-800 p-3">
+          {user?.system_role && (
+            <Link
+              href="/admin"
+              className="mb-1 flex min-h-[40px] items-center gap-3 rounded-md px-2 text-caption text-neutral-300 transition-colors duration-150 ease-standard hover:bg-neutral-800 hover:text-white"
+            >
+              <Icon name="shield" size={18} />
+              Admin portal
+            </Link>
+          )}
           <div className="flex items-center gap-3 px-1 py-2">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-600 text-white">
               <Icon name="user" size={18} />

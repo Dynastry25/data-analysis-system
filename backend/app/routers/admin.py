@@ -57,6 +57,7 @@ from app.schemas import (
     AdminAuditListResponse,
     AdminDatasetListItem,
     AdminDatasetListResponse,
+    AdminMeResponse,
     AdminOrganizationListItem,
     AdminOrganizationListResponse,
     AdminOverviewAlerts,
@@ -295,19 +296,23 @@ def admin_overview_alerts(
     return AdminOverviewAlerts(alerts=alerts)
 
 
-@router.get("/me", response_model=AdminActionResponse)
+@router.get("/me", response_model=AdminMeResponse)
 def admin_me(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> AdminActionResponse:
+) -> AdminMeResponse:
     """Which platform role the caller holds, so the UI can shape itself.
 
     Returns 403 for non-staff, which the frontend uses to hide the admin nav
-    entirely rather than showing a link that would fail.
+    entirely rather than showing a link that would fail. The role is a
+    structured field so a client never has to parse it out of prose.
     """
     require_platform_role(db, user, PLATFORM_ROLE_VIEWER)
-    return AdminActionResponse(
-        message=f"Platform role: {user.system_role}",
+    return AdminMeResponse(
+        id=user.id,
+        email=user.email,
+        system_role=user.system_role,
+        status=user.status,
     )
 
 

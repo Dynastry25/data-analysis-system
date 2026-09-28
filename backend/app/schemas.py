@@ -37,6 +37,10 @@ class UserResponse(BaseModel):
     full_name: str
     email: str
     created_at: Optional[str] = None
+    # Lets the UI decide whether to offer an admin link, without an extra
+    # request that would 403 for every ordinary user on every page. The server
+    # still enforces every admin action independently of this field.
+    system_role: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -481,3 +485,16 @@ class AdminAuditListResponse(BaseModel):
 class AdminActionResponse(BaseModel):
     ok: bool = True
     message: str
+
+
+class AdminMeResponse(BaseModel):
+    """The caller's own platform identity.
+
+    Deliberately a field rather than prose: a client that has to read the role
+    out of a message string will eventually get it wrong.
+    """
+
+    id: int
+    email: str
+    system_role: str
+    status: str

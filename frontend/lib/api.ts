@@ -75,6 +75,8 @@ export interface UserProfile {
   full_name: string;
   email: string;
   created_at: string | null;
+  /** Present so the UI can offer the admin link without a 403 probe. */
+  system_role?: PlatformRole | null;
 }
 
 export interface LoginPayload {
@@ -623,7 +625,6 @@ export interface PlanningProfileResponse {
 }
 
 export type AssumptionStatus = "pass" | "warn" | "fail" | "not_applicable";
-
 export interface AssumptionCheck {
   name: string;
   status: AssumptionStatus;
@@ -781,3 +782,168 @@ export const statflowApi = {
 
 export default api;
 
+
+// ---------------------------------------------------------------- Admin portal
+
+/** Platform-wide roles. Deliberately not the same set as organization roles. */
+export type PlatformRole = "super_admin" | "platform_admin" | "admin_viewer";
+export type AccountStatus = "active" | "suspended";
+export type AlertLevel = "danger" | "warning" | "info";
+
+export interface AdminUser {
+  id: number;
+  full_name: string;
+  email: string;
+  system_role: PlatformRole | null;
+  status: AccountStatus;
+  is_suspended: boolean;
+  created_at: string | null;
+  last_active_at: string | null;
+  suspended_reason: string | null;
+  organization_count: number;
+  dataset_count: number;
+  analysis_count: number;
+}
+
+export interface AdminUserList {
+  items: AdminUser[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface AdminOverview {
+  total_users: number;
+  active_users: number;
+  suspended_users: number;
+  active_last_7_days: number;
+  platform_staff: number;
+  organizations: number;
+  datasets: number;
+  analyses: number;
+  total_rows_profiled: number;
+  storage_bytes: number;
+  pending_reports: number;
+  failed_reports: number;
+  audit_events_last_24h: number;
+  denied_last_24h: number;
+}
+
+export interface AdminAlert {
+  level: AlertLevel;
+  title: string;
+  detail: string;
+  action: string | null;
+}
+
+export interface AdminOrganization {
+  id: number;
+  name: string;
+  slug: string;
+  created_at: string | null;
+  member_count: number;
+  project_count: number;
+  dataset_count: number;
+  analysis_count: number;
+}
+
+export interface AdminOrganizationList {
+  items: AdminOrganization[];
+  total: number;
+}
+
+export interface AdminDataset {
+  id: number;
+  original_filename: string;
+  file_type: string;
+  status: string;
+  row_count: number;
+  column_count: number;
+  created_at: string | null;
+  owner_email: string | null;
+  owner_id: number | null;
+  organization_id: number | null;
+  organization_name: string | null;
+  latest_version: number | null;
+}
+
+export interface AdminDatasetList {
+  items: AdminDataset[];
+  total: number;
+}
+
+export interface AdminAuditEntry {
+  id: number;
+  user_id: number | null;
+  actor_email: string | null;
+  organization_id: number | null;
+  action: string;
+  resource: string | null;
+  resource_id: string | null;
+  result: "success" | "failure" | "denied";
+  ip_address: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string | null;
+}
+
+export interface AdminAuditList {
+  items: AdminAuditEntry[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface AdminUserUpdate {
+  full_name?: string;
+  /** `null` revokes the role, which is different from leaving it alone. */
+  system_role?: PlatformRole | null;
+  status?: AccountStatus;
+  suspended_reason?: string;
+}
+
+/** The caller's own platform identity, straight from the server. */
+export interface AdminMe {
+  id: number;
+  email: string;
+  system_role: PlatformRole;
+  status: AccountStatus;
+}
+
+export const adminApi = {
+  me: () => http.get<AdminMe>("/v1/admin/me").then((r) => r.data),
+  overview: () => http.get<AdminOverview>("/v1/admin/overview").then((r) => r.data),
+  alerts: () =>
+    http.get<{ alerts: AdminAlert[] }>("/v1/admin/overview/alerts").then((r) => r.data.alerts),
+  users: (params: {
+    search?: string;
+    status?: AccountStatus;
+    system_role?: PlatformRole;
+    page?: number;
+    page_size?: number;
+  }) =>
+    http.get<AdminUserList>("/v1/admin/users", { params }).then((r) => r.data),
+  user: (id: number) => http.get<AdminUser>(`/v1/admin/users/${id}`).then((r) => r.data),
+  updateUser: (id: number, payload: AdminUserUpdate) =>
+    http.patch<AdminUser>(`/v1/admin/users/${id}`, payload).then((r) => r.data),
+  suspendUser: (id: number, reason?: string) =>
+    http
+      .post<AdminUser>(`/v1/admin/users/${id}/suspend`, null, {
+        params: reason ? { reason } : undefined,
+      })
+      .then((r) => r.data),
+  reactivateUser: (id: number) =>
+    http.post<AdminUser>(`/v1/admin/users/${id}/reactivate`).then((r) => r.data),
+  organizations: (params: { search?: string; page?: number; page_size?: number }) =>
+    http.get<AdminOrganizationList>("/v1/admin/organizations", { params }).then((r) => r.data),
+  datasets: (params: { search?: string; status?: string; page?: number; page_size?: number }) =>
+    http.get<AdminDatasetList>("/v1/admin/datasets", { params }).then((r) => r.data),
+  audit: (params: {
+    action?: string;
+    result?: "success" | "failure" | "denied";
+    user_id?: number;
+    resource?: string;
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }) => http.get<AdminAuditList>("/v1/admin/audit", { params }).then((r) => r.data),
+};

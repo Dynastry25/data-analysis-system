@@ -92,4 +92,4 @@ def login(
 @router.get("/me", response_model=UserResponse)
 def me(user: User = Depends(get_current_user)) -> dict:
     """Return the signed-in user (used by the frontend to restore a session)."""
-    return user.to_dict()
+    return {**user.to_dict(), "system_role": user.system_role}
