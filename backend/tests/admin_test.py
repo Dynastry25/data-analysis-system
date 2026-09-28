@@ -39,6 +39,7 @@ from app.models import (  # noqa: E402
     PLATFORM_ROLE_SUPER_ADMIN,
     PLATFORM_ROLE_VIEWER,
     AuditLog,
+    Dataset,
     User,
 )
 
@@ -346,8 +347,43 @@ def main() -> int:
             db.close()
 
         print("\n9) Operational views expose metadata, never dataset contents")
+        # A real row has to exist here. Asserting only the status code of a list
+        # endpoint proves nothing about the serializer, which is how a wrong
+        # column name survives a green suite and only fails in the browser.
+        db = SessionLocal()
+        try:
+            owner_id = db.query(User.id).filter(User.email == "plain@example.com").scalar()
+            db.add(
+                Dataset(
+                    user_id=owner_id,
+                    original_filename="admin_visible.csv",
+                    storage_path="data/admin_visible.csv",
+                    file_type="csv",
+                    row_count=42,
+                    column_count=3,
+                    status="analyzed",
+                )
+            )
+            db.commit()
+        finally:
+            db.close()
+
         r = client.get("/api/v1/admin/datasets", headers=h_super)
         check(r.status_code == 200, "the dataset admin view loads")
+        rows = r.json()["items"]
+        check(len(rows) >= 1, "the dataset admin view returns at least one row")
+        item = next(
+            (d for d in rows if d["original_filename"] == "admin_visible.csv"), None
+        )
+        check(item is not None, "the dataset appears in the admin view")
+        check(item["created_at"] is not None,
+              "a dataset reports when it was uploaded")
+        check(item["row_count"] == 42, "the row count is serialized")
+        check(item["column_count"] == 3, "the column count is serialized")
+        check(item["status"] == "analyzed", "the status is serialized")
+        check("storage_path" not in item,
+              "the dataset view exposes no filesystem path")
+
         r = client.get("/api/v1/admin/organizations", headers=h_super)
         check(r.status_code == 200, "the organization admin view loads")
         check(any(o["id"] == org_id for o in r.json()["items"]),

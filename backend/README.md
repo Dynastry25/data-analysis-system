@@ -109,6 +109,22 @@ that was built by `create_all` from a *current* model, because the self-referenc
 No real database has that history, since `create_all` never rebuilds an existing table,
 but a hand-built scratch database might.
 
+### 3d. Checking the running server
+
+`tests/live_admin_check.py` logs in over HTTP and walks every admin endpoint against a
+real database. It is here because a `TestClient` suite cannot see a wrong column name in
+a list serializer if the fixture list happens to be empty, and that is exactly the kind of
+bug that otherwise reaches the browser. It refuses to run without `--confirm` or against a
+non-localhost URL, and it deletes the super admin it promotes.
+
+```powershell
+# terminal 1
+.\venv\Scripts\python.exe -m uvicorn app.main:app --port 8123
+# terminal 2
+$env:PYTHONPATH = "."
+.\venv\Scripts\python.exe tests\live_admin_check.py --confirm
+```
+
 ---
 
 ## 4. Configuration (environment variables)

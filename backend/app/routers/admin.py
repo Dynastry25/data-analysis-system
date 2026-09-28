@@ -708,7 +708,8 @@ def admin_list_datasets(
                 row_count=dataset.row_count or 0,
                 column_count=dataset.column_count or 0,
                 created_at=(
-                    dataset.created_at.isoformat() if dataset.created_at else None
+                    # ``Dataset`` records when the file arrived as uploaded_at.
+                    dataset.uploaded_at.isoformat() if dataset.uploaded_at else None
                 ),
                 owner_email=owner.email if owner is not None else None,
                 owner_id=dataset.user_id,
