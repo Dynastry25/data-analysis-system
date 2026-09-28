@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -44,6 +44,13 @@ const TYPE_OPTIONS = ["numeric", "integer", "text", "date", "boolean"].map((valu
 const OPERATOR_OPTIONS = ["eq", "ne", "gt", "gte", "lt", "lte", "contains"].map(
   (value) => ({ value, label: value })
 );
+
+/** Profiling min/max arrive as `any`, so render them rather than trusting the type. */
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "number" || typeof value === "string") return String(value);
+  return String(value);
+}
 
 function isBlankValue(value: string | string[] | undefined): boolean {
   if (value === undefined || value === "") return true;
@@ -103,10 +110,42 @@ const OPERATION_FIELDS: Record<string, FieldDef[]> = {
   ],
 };
 
+/**
+ * The studio hosts three of the journey's stages.
+ *
+ * Profile, Clean and Transform are separate pieces of work with separate
+ * results, so they get separate deep links and the section you asked for opens
+ * on load. They are not separate screens, and the page says so, because
+ * pretending otherwise would mean three URLs that show the same thing.
+ */
+const STUDIO_SECTIONS = [
+  { key: "profile", label: "Profile", hint: "Muundo na tabia za kila column" },
+  { key: "clean", label: "Safisha", hint: "Ondoa au kaza missing values na safisha rows" },
+  { key: "transform", label: "Badilisha", hint: "Tengeneza dataset version mpya" },
+] as const;
+
+type StudioSection = (typeof STUDIO_SECTIONS)[number]["key"];
+
+function isStudioSection(value: string | null): value is StudioSection {
+  return STUDIO_SECTIONS.some((section) => section.key === value);
+}
+
 export default function StudioPage() {
   const params = useParams<{ id: string }>();
   const datasetId = Number(params?.id);
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
+
+  const requested = searchParams.get("stage");
+  const [section, setSection] = useState<StudioSection>(
+    isStudioSection(requested) ? requested : "profile"
+  );
+
+  // A deep link such as ?stage=clean must win over the remembered tab, or the
+  // journey would send the user to a section the page then hides.
+  useEffect(() => {
+    if (isStudioSection(requested)) setSection(requested);
+  }, [requested]);
 
   const [columns, setColumns] = useState<ColumnProfile[]>([]);
   const [catalog, setCatalog] = useState<OperationCatalogEntry[]>([]);
@@ -325,16 +364,85 @@ export default function StudioPage() {
   );
   const operations = history?.operations ?? [];
 
+  const sectionHint = STUDIO_SECTIONS.find((entry) => entry.key === section)?.hint ?? "";
+
   return (
     <AppShell
       title="Data studio"
-      description="Tumia operations (clean/transform) — kila operation hutengeneza version mpya isiyobadilishwa."
+      description="Profile, safisha na badilisha zinaishi kwenye ukurasa mmoja — kila hatua ina kazi na matokeo yake mwenyewe."
       actions={
         <Link href={`/datasets/${datasetId}`}>
           <Button variant="secondary">Rudi kwenye dataset</Button>
         </Link>
       }
     >
+      <div className="mb-6">
+        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Hatua za studio">
+          {STUDIO_SECTIONS.map((entry) => (
+            <Link
+              key={entry.key}
+              href={`/datasets/${datasetId}/studio?stage=${entry.key}`}
+              role="tab"
+              aria-selected={section === entry.key}
+              className={`rounded-md px-3.5 py-2 text-body transition-colors duration-150 ease-standard ${
+                section === entry.key
+                  ? "bg-primary-50 font-medium text-primary-800"
+                  : "text-ink-secondary hover:bg-surface-sunken"
+              }`}
+            >
+              {entry.label}
+            </Link>
+          ))}
+        </div>
+        <p className="mt-2 text-caption text-ink-muted">{sectionHint}</p>
+      </div>
+
+      {section === "profile" && (
+        <Card
+          title="Profile ya kila column"
+          icon="table"
+          description="Hapa ndani hakuna kitu cha kubadilisha: kuangalia tu. Mabadiliko yafanyaywe chini katika Safisha au Badilisha."
+        >
+          {columns.length === 0 ? (
+            <EmptyState
+              title="Hakuna columns"
+              description="Dataset hili hana columns za kuonyesha."
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-body">
+                <thead>
+                  <tr className="border-b border-surface-border text-overline uppercase tracking-wide text-ink-muted">
+                    <th className="py-2 pr-4 font-medium">Column</th>
+                    <th className="py-2 pr-4 font-medium">Aina</th>
+                    <th className="py-2 pr-4 font-medium">Hazina thamani</th>
+                    <th className="py-2 pr-4 font-medium">Tofauti</th>
+                    <th className="py-2 font-medium">Min → Max</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {columns.map((column) => (
+                    <tr key={column.name} className="border-b border-surface-border last:border-0">
+                      <td className="py-2.5 pr-4 font-medium text-ink">{column.name}</td>
+                      <td className="py-2.5 pr-4 text-ink-secondary">{column.data_type ?? "—"}</td>
+                      <td className="py-2.5 pr-4 text-ink-secondary">
+                        {column.missing_count}
+                      </td>
+                      <td className="py-2.5 pr-4 text-ink-secondary">
+                        {column.unique_count ?? "—"}
+                      </td>
+                      <td className="py-2.5 font-mono text-caption text-ink-secondary">
+                        {formatCell(column.min)} → {formatCell(column.max)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
       {loading ? (
         <Card>
           <TableSkeleton rows={6} columns={4} />
@@ -345,11 +453,16 @@ export default function StudioPage() {
         </Card>
       ) : (
         <>
-          <Card
-            title="Tumia operation mpya"
-            icon="sliders"
-            description="Chagua operation, jaza parameters, kisha tumia. Version mpya itatengenezwa."
-          >
+          {(section === "clean" || section === "transform") && (
+            <Card
+              title={
+                section === "clean"
+                  ? "Safisha data"
+                  : "Badilisha data"
+              }
+              icon="sliders"
+              description="Chagua operation, jaza parameters, kisha tumia. Version mpya itatengenezwa na asili hubaki kubadilika."
+            >
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label htmlFor="op-type" className="mb-1.5 block text-body font-medium text-ink">
@@ -424,6 +537,7 @@ export default function StudioPage() {
               Tumia operation (tengeneza version mpya)
             </Button>
           </Card>
+          )}
 
           <Card
             title="Version lineage"

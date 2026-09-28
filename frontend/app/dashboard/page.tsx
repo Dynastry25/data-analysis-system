@@ -262,7 +262,7 @@ export default function DashboardPage() {
                 status: dataset.status,
                 analysisRunCount: itemActivity?.analyses,
                 chartCount: itemActivity?.charts,
-                reportCount: itemActivity?.reports,
+                exportCount: itemActivity?.reports,
               });
               return (
                 <li

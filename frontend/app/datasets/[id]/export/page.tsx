@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
+import { Icon } from "@/components/Icon";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import {
@@ -23,10 +24,43 @@ import {
 const POLL_DELAY_MS = 1200;
 const POLL_ATTEMPTS = 25;
 
+/**
+ * Composing a report and handing it over are different acts, so they are
+ * different stages on one page rather than one stage that claims to do both.
+ */
+const EXPORT_SECTIONS = [
+  {
+    key: "report",
+    label: "Ripoti",
+    hint: "Chagua takwimu na chati, kisha tengeneza ripoti.",
+  },
+  {
+    key: "export",
+    label: "Hamisha",
+    hint: "Pakua ripoti au mpe mtu mwingine ruhusa ya kuiona.",
+  },
+] as const;
+
+type ExportSection = (typeof EXPORT_SECTIONS)[number]["key"];
+
+function isExportSection(value: string | null): value is ExportSection {
+  return EXPORT_SECTIONS.some((entry) => entry.key === value);
+}
+
 export default function ExportPage() {
   const params = useParams<{ id: string }>();
   const datasetId = Number(params?.id);
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
+
+  const requested = searchParams.get("stage");
+  const [section, setSection] = useState<ExportSection>(
+    isExportSection(requested) ? requested : "report"
+  );
+
+  useEffect(() => {
+    if (isExportSection(requested)) setSection(requested);
+  }, [requested]);
 
   const [analyses, setAnalyses] = useState<AnalysisRunRecord[]>([]);
   const [charts, setCharts] = useState<ChartRecord[]>([]);
@@ -147,8 +181,8 @@ export default function ExportPage() {
 
   return (
     <AppShell
-      title="Pakua ripoti"
-      description="Chagua takwimu na chati za kujumuisha, kisha pakua PDF au Excel."
+      title="Ripoti na hamisho"
+      description="Panga ripoti kutoka matokeo uliyochagua, kisha pakua au isambele."
       actions={
         <>
           <Link href={`/datasets/${datasetId}/analyze`}>
@@ -164,6 +198,30 @@ export default function ExportPage() {
         </>
       }
     >
+      <div className="mb-6">
+        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Hatua za ripoti">
+          {EXPORT_SECTIONS.map((entry) => (
+            <Link
+              key={entry.key}
+              href={`/datasets/${datasetId}/export?stage=${entry.key}`}
+              role="tab"
+              aria-selected={section === entry.key}
+              className={`rounded-md px-3.5 py-2 text-body transition-colors duration-150 ease-standard ${
+                section === entry.key
+                  ? "bg-primary-50 font-medium text-primary-800"
+                  : "text-ink-secondary hover:bg-surface-sunken"
+              }`}
+            >
+              {entry.label}
+            </Link>
+          ))}
+        </div>
+        <p className="mt-2 text-caption text-ink-muted">
+          {EXPORT_SECTIONS.find((entry) => entry.key === section)?.hint}
+        </p>
+      </div>
+
+      {section === "report" && (
       <Card
         title="Chagua maudhui ya ripoti"
         description={`Ripoti itatengenezwa kutoka toleo la data v${datasetVersion ?? "—"} ili matokeo yaweze kufuatilia data iliyotumika.`}
@@ -379,6 +437,7 @@ export default function ExportPage() {
           </div>
         )}
       </Card>
+      )}
 
       <Card
         title="Ripoti zilizotengenezwa"
@@ -432,6 +491,72 @@ export default function ExportPage() {
           </ul>
         )}
       </Card>
+
+      {section === "export" && (
+        <Card
+          title="Hamisha kwa mtu mwingine"
+          icon="users"
+          description="Ripoti inaweza kukopishwa, lakini mtu anayepokea atahitaji akaunti ya StatFlow na ruhusa ya dataset."
+        >
+          <div className="space-y-4">
+            <div>
+              <p className="text-body font-medium text-ink">Hatua za kushiriki</p>
+              <ol className="mt-2 space-y-2">
+                {[
+                  "Tengeneza ripoti kwanza ukitaka kuwa na kitu cha kusambaza.",
+                  "Msaidie mtumiaji apate ruhusa ya kuona dataset (jumla ya role ya organization).",
+                  "Mtu huyo anaweza kupakua ripoti hiyo kutoka akaunti yake mwenyewe.",
+                ].map((line, index) => (
+                  <li key={line} className="flex items-start gap-2 text-body text-ink-secondary">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-caption text-ink-secondary">
+                      {index + 1}
+                    </span>
+                    {line}
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            <div className="rounded-md border border-surface-border bg-surface-sunken px-3.5 py-3">
+              <p className="flex items-start gap-2 text-body text-ink-secondary">
+                <Icon name="info" size={16} className="mt-0.5 shrink-0 text-ink-muted" />
+                <span>
+                  Kiungo cha kushiriki kwa moja kwa moja bado haujatengenezwa. Kipendekezo
+                  ni link yenye muda wa ukomoja (expiring link) iliyotengenezwa na
+                  msimamizi wa dataset, ili isambele bila kupa kila mtu ruhusa ya
+                  kuona data nzima.
+                </span>
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                icon="copy"
+                disabled={reports.length === 0}
+                onClick={() => {
+                  const origin = window.location.origin;
+                  void navigator.clipboard?.writeText(
+                    `${origin}/datasets/${datasetId}/export`
+                  );
+                }}
+              >
+                Nakili kiungo cha dataset
+              </Button>
+              <Link href={`/organizations`}>
+                <Button variant="ghost" icon="users">
+                  Simamia washiriki
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <p className="text-caption text-ink-muted">
+        Hatua ya Ripoti haiandishi rekodi; hatua ya Hamisha ndiyo inayorekodi ripoti
+        iliyokamilika. Kwa hiyo &ldquo;Ripoti&rdquo; inabaki kuwa hatua ya kusoma.
+      </p>
     </AppShell>
   );
 }

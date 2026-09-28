@@ -6,9 +6,14 @@ import { useEffect, useState } from "react";
 
 import { useAuthGuard, useLogout } from "@/lib/useAuth";
 import { api, UserProfile } from "@/lib/api";
-import { pipelineStageFromPathname, PIPELINE_STAGES } from "@/lib/pipeline";
+import {
+  StageProgressInput,
+  pipelineStageFromPathname,
+  PIPELINE_STAGES,
+} from "@/lib/pipeline";
 import { Button } from "./Button";
 import { Icon, IconName } from "./Icon";
+import { JourneyRail } from "./JourneyRail";
 import { PipelineStepper } from "./PipelineStepper";
 
 const PRIMARY_NAV: { href: string; label: string; icon: IconName }[] = [
@@ -48,7 +53,12 @@ function Brand() {
 
 function Breadcrumbs({ datasetId, pathname }: { datasetId: number; pathname: string }) {
   const section = pathname.split("/")[3] ?? null;
-  const stage = PIPELINE_STAGES.find((entry) => entry.hrefFor(datasetId) === pathname);
+  // Stage links carry a query string, so match on the path and fall back to the
+  // section name rather than comparing full hrefs.
+  const stage = PIPELINE_STAGES.find((entry) => {
+    const href = entry.hrefFor(datasetId);
+    return href === pathname || href.split("?")[0] === pathname;
+  });
   return (
     <nav aria-label="Njia" className="mb-2">
       <ol className="flex flex-wrap items-center gap-1.5 text-caption text-ink-muted">
@@ -89,12 +99,49 @@ export function AppShell({ title, description, actions, children }: AppShellProp
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [journeyProgress, setJourneyProgress] = useState<StageProgressInput | null>(
+    null
+  );
 
   const pipeline = pipelineStageFromPathname(pathname);
 
   useEffect(() => {
     setDrawerOpen(false);
   }, [pathname]);
+
+  // The journey rail lives in the shell so all 11 stages are visible from every
+  // dataset page, not just the one that happens to render a stepper.
+  useEffect(() => {
+    const datasetId = pipelineStageFromPathname(pathname).datasetId;
+    if (datasetId === null || !ready) {
+      setJourneyProgress(null);
+      return;
+    }
+    let cancelled = false;
+    api.datasets
+      .journey(datasetId)
+      .then((response) => {
+        if (cancelled) return;
+        const stage = (key: string) =>
+          response.stages.find((entry) => entry.key === key);
+        setJourneyProgress({
+          status: response.dataset_status,
+          profiledColumnCount: stage("profile")?.record_count ?? 0,
+          cleanOperationCount: stage("clean")?.record_count ?? 0,
+          transformOperationCount: stage("transform")?.record_count ?? 0,
+          analysisRunCount: stage("analyze")?.record_count ?? 0,
+          chartCount: stage("visualize")?.record_count ?? 0,
+          exportCount: stage("export")?.record_count ?? 0,
+        });
+      })
+      .catch(() => {
+        // A journey that cannot load must not break the page it decorates.
+        if (!cancelled) setJourneyProgress(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, ready]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -241,17 +288,6 @@ export function AppShell({ title, description, actions, children }: AppShellProp
                   );
                 })}
               </ul>
-              {pipeline.datasetId !== null && (
-                <Link
-                  href={`/datasets/${pipeline.datasetId}/ask`}
-                  className="mt-2 flex min-h-[40px] items-center gap-3 rounded-md px-3 text-body text-neutral-400 transition-colors duration-150 ease-standard hover:bg-neutral-800 hover:text-neutral-100"
-                >
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-neutral-500">
-                    <Icon name="sparkles" size={12} />
-                  </span>
-                  Eleza (AI)
-                </Link>
-              )}
             </>
           )}
         </nav>
@@ -313,6 +349,14 @@ export function AppShell({ title, description, actions, children }: AppShellProp
             <PipelineStepper
               datasetId={pipeline.datasetId}
               currentStage={pipeline.stage}
+            />
+          )}
+
+          {pipeline.datasetId !== null && journeyProgress && (
+            <JourneyRail
+              datasetId={pipeline.datasetId}
+              currentStage={pipeline.stage}
+              progress={journeyProgress}
             />
           )}
 

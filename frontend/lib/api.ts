@@ -137,6 +137,86 @@ export interface ProfileResponse {
   columns: ColumnProfile[];
 }
 
+export interface ValidationIssue {
+  code: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  column: string | null;
+  detail: Record<string, unknown>;
+}
+
+/** Data-quality findings, all computed in the backend. */
+export interface ValidationResponse {
+  dataset_id: number;
+  dataset_version: number;
+  row_count: number;
+  column_count: number;
+  verdict: "clean" | "warnings" | "blocked";
+  error_count: number;
+  warning_count: number;
+  info_count: number;
+  summary: string;
+  issues: ValidationIssue[];
+}
+
+export interface ExploreColumn {
+  name: string;
+  data_type: string | null;
+  kind: "numeric" | "categorical" | "datetime" | "text" | "boolean";
+  missing_count: number;
+  missing_ratio: number;
+  unique_count: number | null;
+  min?: number | null;
+  max?: number | null;
+  mean?: number | null;
+  median?: number | null;
+  std?: number | null;
+  quantiles?: Record<string, number>;
+  top_values?: { value: unknown; count: number }[];
+  histogram?: { start: number; end: number; count: number }[];
+}
+
+export interface ExplorePair {
+  x: string;
+  y: string;
+  method: "pearson" | "spearman";
+  coefficient: number;
+  strength: "weak" | "moderate" | "strong";
+  interpretation: string;
+}
+
+/** The shape of the data, before choosing a statistical method. */
+export interface ExploreResponse {
+  dataset_id: number;
+  dataset_version: number;
+  row_count: number;
+  column_count: number;
+  columns: ExploreColumn[];
+  correlations: ExplorePair[];
+  warnings: string[];
+}
+
+/**
+ * One stage of the 11-stage journey, as the backend can prove it.
+ *
+ * `record_count` is null for a stage that leaves no record (validate, explore,
+ * explain, report). Those can never be `done`, and the UI labels them as a read
+ * rather than as pending work.
+ */
+export interface JourneyStage {
+  key: string;
+  step: number;
+  done: boolean;
+  record_count: number | null;
+  reason: string;
+}
+
+export interface JourneyResponse {
+  dataset_id: number;
+  dataset_status: string;
+  stages: JourneyStage[];
+}
+
 export type AnalysisType = string;
 
 export interface AnalyzePayload {
@@ -314,7 +394,13 @@ export const api = {
         .patch<DatasetSummary>(`/datasets/${id}/project`, { project_id: projectId })
         .then((r) => r.data),
     profile: (id: number) =>
-      http.get<ProfileResponse>(`/datasets/${id}/profile`).then((r) => r.data),
+    http.get<ProfileResponse>(`/datasets/${id}/profile`).then((r) => r.data),
+    journey: (id: number) =>
+      http.get<JourneyResponse>(`/datasets/${id}/journey`).then((r) => r.data),
+    validate: (id: number) =>
+      http.get<ValidationResponse>(`/datasets/${id}/validate`).then((r) => r.data),
+    explore: (id: number) =>
+      http.get<ExploreResponse>(`/datasets/${id}/explore`).then((r) => r.data),
     remove: (id: number) => http.delete(`/datasets/${id}`).then((r) => r.data),
   },
   charts: {

@@ -119,6 +119,101 @@ class MessageResponse(BaseModel):
     detail: str
 
 
+# --------------------------------------------------------------- Journey
+
+
+# --------------------------------------------------------------- Validation
+
+
+class ValidationIssue(BaseModel):
+    code: str
+    severity: Literal["error", "warning", "info"]
+    message: str
+    column: Optional[str] = None
+    detail: Dict[str, Any] = {}
+
+
+class ValidationResponse(BaseModel):
+    """Deterministic data-quality findings for the Validate stage."""
+
+    dataset_id: int
+    dataset_version: int
+    row_count: int
+    column_count: int
+    verdict: Literal["clean", "warnings", "blocked"]
+    error_count: int
+    warning_count: int
+    info_count: int
+    summary: str
+    issues: List[ValidationIssue]
+
+
+# --------------------------------------------------------------- Explore
+
+
+class ExploreColumn(BaseModel):
+    name: str
+    data_type: Optional[str] = None
+    kind: Literal["numeric", "categorical", "datetime", "text", "boolean"]
+    missing_count: int
+    missing_ratio: float
+    unique_count: Optional[int] = None
+    # Numeric only.
+    min: Any = None
+    max: Any = None
+    mean: Any = None
+    median: Any = None
+    std: Any = None
+    quantiles: Dict[str, Any] = {}
+    # Categorical only.
+    top_values: List[Dict[str, Any]] = []
+    histogram: List[Dict[str, Any]] = []
+
+
+class ExplorePair(BaseModel):
+    x: str
+    y: str
+    method: Literal["pearson", "spearman"]
+    coefficient: float
+    strength: Literal["weak", "moderate", "strong"]
+    interpretation: str
+
+
+class ExploreResponse(BaseModel):
+    """Shape of the data before choosing a statistical method."""
+
+    dataset_id: int
+    dataset_version: int
+    row_count: int
+    column_count: int
+    columns: List[ExploreColumn]
+    correlations: List[ExplorePair]
+    warnings: List[str] = []
+
+
+class JourneyStageResponse(BaseModel):
+    """One stage's honest completion state, computed from stored records."""
+
+    key: str
+    step: int
+    done: bool
+    # None for a stage that leaves no record at all, so it can never be done.
+    record_count: Optional[int] = None
+    reason: str
+
+
+class JourneyResponse(BaseModel):
+    """Progress for the 11-stage journey, used by the shell on every page."""
+
+    dataset_id: int
+    dataset_status: str
+    stages: List[JourneyStageResponse]
+
+    @property
+    def done_count(self) -> int:  # pragma: no cover - convenience only
+        return sum(1 for stage in self.stages if stage.done)
+
+
 # --------------------------------------------------------------- Charts
 
 ChartType = Literal["bar", "line", "scatter", "histogram"]

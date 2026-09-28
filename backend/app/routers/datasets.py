@@ -1,7 +1,7 @@
 """Dataset endpoints: upload, list, detail + preview, profile, delete."""
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import and_, or_, select
@@ -9,15 +9,29 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
-from app.models import Dataset, DatasetColumn, OrganizationMember, Project, User
+from app.models import (
+    AnalysisRun,
+    Chart,
+    Dataset,
+    DatasetColumn,
+    DatasetOperation,
+    ExportedReport,
+    OrganizationMember,
+    Project,
+    User,
+)
 from app.rbac import ORG_ROLE_ANALYST, ORG_ROLE_VIEWER, require_org_role
 from app.schemas import (
     DatasetDetailResponse,
     DatasetProjectRequest,
     DatasetSummary,
+    ExploreResponse,
+    JourneyResponse,
+    JourneyStageResponse,
     MessageResponse,
     ProfileResponse,
     UploadResponse,
+    ValidationResponse,
 )
 from app.services.data_service import (
     PREVIEW_ROWS,
@@ -28,6 +42,8 @@ from app.services.data_service import (
     store_upload_file,
     validate_extension,
 )
+from app.services.explore_service import explore_frame
+from app.services.validation_service import validate_frame
 from app.statflow import version_store
 from app.statflow.version_store import VersionError
 
@@ -228,6 +244,147 @@ def profile_dataset(
         "row_count": int(frame.shape[0]),
         "column_count": int(frame.shape[1]),
         "columns": profiles,
+    }
+
+
+@router.get("/{dataset_id}/validate", response_model=ValidationResponse)
+def validate_dataset(
+    dataset_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Deterministic data-quality findings for the Validate stage.
+
+    The checks run in the backend so a reviewer can recompute every number from
+    the same file. A blocked verdict means the file cannot be analysed yet, and
+    the UI says that rather than letting the user discover it later.
+    """
+    dataset = get_owned_dataset(dataset_id, db, user, min_role=ORG_ROLE_VIEWER)
+    version_record, frame = _load_current_frame(db, dataset)
+    report = validate_frame(frame)
+    return {
+        "dataset_id": dataset.id,
+        "dataset_version": int(version_record.version),
+        **report,
+    }
+
+
+@router.get("/{dataset_id}/explore", response_model=ExploreResponse)
+def explore_dataset(
+    dataset_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Distributions, summary statistics and correlations, computed here.
+
+    Nothing in the assistant is involved: a p-value, a correlation or a
+    distribution must come from the engine, or it is not trustworthy.
+    """
+    dataset = get_owned_dataset(dataset_id, db, user, min_role=ORG_ROLE_VIEWER)
+    version_record, frame = _load_current_frame(db, dataset)
+    return {
+        "dataset_id": dataset.id,
+        "dataset_version": int(version_record.version),
+        **explore_frame(frame),
+    }
+
+
+@router.get("/{dataset_id}/journey", response_model=JourneyResponse)
+def get_journey(
+    dataset_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Progress for the 11-stage journey, counted from stored records only.
+
+    The frontend owns the stage list; this endpoint only supplies the counts, so
+    the two cannot drift into disagreeing about which stages exist.
+
+    A stage is reported done only when a record proves it. Reading a validation
+    report, exploring a distribution or asking the assistant writes nothing, so
+    those stages can never report done, and neither can composing a report. The
+    UI says so rather than showing a green tick the user cannot trust.
+    """
+    dataset = get_owned_dataset(dataset_id, db, user, min_role=ORG_ROLE_VIEWER)
+
+    def count(model: Any, *extra: Any) -> int:
+        query = db.query(model).filter(model.dataset_id == dataset.id)
+        for clause in extra:
+            query = query.filter(clause)
+        return int(query.count())
+
+    profiled_columns = count(DatasetColumn)
+    clean_operations = count(DatasetOperation, DatasetOperation.operation_group == "clean")
+    transform_operations = count(
+        DatasetOperation, DatasetOperation.operation_group == "transform"
+    )
+    analysis_runs = count(AnalysisRun)
+    charts = count(Chart)
+    exports = count(ExportedReport, ExportedReport.status == "completed")
+
+    # Record count per stage key. `None` means the stage leaves no record at all.
+    records: Dict[str, Optional[int]] = {
+        "upload": 1,
+        "validate": None,
+        "profile": profiled_columns,
+        "clean": clean_operations,
+        "transform": transform_operations,
+        "explore": None,
+        "analyze": analysis_runs,
+        "visualize": charts,
+        "explain": None,
+        "report": None,
+        "export": exports,
+    }
+
+    status = dataset.status
+    done: Dict[str, bool] = {
+        "upload": True,
+        "validate": False,
+        "profile": profiled_columns > 0,
+        "clean": clean_operations > 0 or status == "cleaned",
+        "transform": transform_operations > 0,
+        "explore": False,
+        "analyze": analysis_runs > 0 or status == "analyzed",
+        "visualize": charts > 0,
+        "explain": False,
+        "report": False,
+        "export": exports > 0,
+    }
+
+    reasons: Dict[str, str] = {
+        "upload": "Faili imepakiwa",
+        "validate": "Kagua matokeo ya schema na data quality",
+        "profile": f"{profiled_columns} columns zimeprofile",
+        "clean": f"{clean_operations} safisho zimewekwa",
+        "transform": f"{transform_operations} mabadiliko yamewekwa",
+        "explore": "Chunguza distributions na correlations",
+        "analyze": f"{analysis_runs} uchambuzi umefanywa",
+        "visualize": f"{charts} grafu zimeundwa",
+        "explain": "Uliza swali kuhusu matokeo",
+        "report": "Panga ripoti kutoka matokeo",
+        "export": f"{exports} ripoti zimehamishwa",
+    }
+
+    # No stage is reported blocked. The product does not enforce an order, so
+    # calling a later stage "blocked" would be a gate that does not exist. The
+    # frontend decides what is "current" from the URL it is rendering; this
+    # endpoint only reports what a stored record can prove.
+    stages = [
+        JourneyStageResponse(
+            key=key,
+            step=index + 1,
+            done=done[key],
+            record_count=records[key],
+            reason=reasons[key],
+        )
+        for index, key in enumerate(records)
+    ]
+
+    return {
+        "dataset_id": dataset.id,
+        "dataset_status": status,
+        "stages": stages,
     }
 
 
