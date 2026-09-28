@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models import (
     ORG_ROLE_ANALYST,
     ORG_ROLE_LEVEL,
+    USER_STATUS_SUSPENDED,
     Dataset,
     Organization,
     Project,
@@ -45,6 +46,13 @@ def get_current_user(
     user = db.get(User, user_id)
     if user is None:
         raise _credentials_exception()
+    # A suspension takes effect immediately, not at the next token expiry: an
+    # administrator who suspends an account expects it to stop working now.
+    if user.status == USER_STATUS_SUSPENDED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been suspended. Contact an administrator.",
+        )
     return user
 
 

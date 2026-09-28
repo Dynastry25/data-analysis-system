@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.security import is_valid_email
 
@@ -320,3 +320,164 @@ class TeamMemberResponse(BaseModel):
     email: Optional[str] = None
     joined_at: Optional[str] = None
 
+
+
+# ---------------------------------------------------------------- Admin portal
+
+
+class AdminUserListItem(BaseModel):
+    id: int
+    full_name: str
+    email: str
+    system_role: Optional[str] = None
+    status: str
+    is_suspended: bool
+    created_at: Optional[str] = None
+    last_active_at: Optional[str] = None
+    suspended_reason: Optional[str] = None
+    organization_count: int = 0
+    dataset_count: int = 0
+    analysis_count: int = 0
+
+
+class AdminUserListResponse(BaseModel):
+    items: List[AdminUserListItem]
+    total: int
+    page: int
+    page_size: int
+
+
+class AdminUserUpdateRequest(BaseModel):
+    """Admin edit of an account. Every field is optional; send only what changes."""
+
+    full_name: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    system_role: Optional[Literal["super_admin", "platform_admin", "admin_viewer"]] = None
+    status: Optional[Literal["active", "suspended"]] = None
+    suspended_reason: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("full_name")
+    @classmethod
+    def _name_stripped(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("Full name cannot be empty")
+        return value
+
+    @model_validator(mode="after")
+    def _null_only_where_allowed(self) -> "AdminUserUpdateRequest":
+        """Distinguish "not supplied" from "supplied as null".
+
+        Revoking a platform role is a real operation and arrives as an explicit
+        null, so null cannot simply be dropped. Only ``system_role`` accepts it;
+        every other field would violate its column constraint, so an explicit
+        null is rejected here instead of failing later as a database error.
+        """
+        provided = self.model_fields_set
+        for name in ("full_name", "status", "suspended_reason"):
+            if name in provided and getattr(self, name) is None:
+                raise ValueError(f"'{name}' cannot be set to null")
+        return self
+
+    def changes(self) -> Dict[str, Any]:
+        """Only the fields actually present in the request body.
+
+        ``exclude_unset`` is what makes an explicit null survive, which is how a
+        role is revoked rather than merely left alone.
+        """
+        return dict(self.model_dump(exclude_unset=True))
+
+
+class AdminOverviewResponse(BaseModel):
+    """Headline numbers for the admin dashboard (F.2 / spec 26)."""
+
+    total_users: int
+    active_users: int
+    suspended_users: int
+    active_last_7_days: int
+    platform_staff: int
+    organizations: int
+    datasets: int
+    analyses: int
+    total_rows_profiled: int
+    storage_bytes: int
+    pending_reports: int
+    failed_reports: int
+    audit_events_last_24h: int
+    denied_last_24h: int
+
+
+class AdminAlert(BaseModel):
+    """Right-side operational alerts on the admin dashboard (spec 26)."""
+
+    level: Literal["danger", "warning", "info"]
+    title: str
+    detail: str
+    action: Optional[str] = None
+
+
+class AdminOverviewAlerts(BaseModel):
+    alerts: List[AdminAlert]
+
+
+class AdminOrganizationListItem(BaseModel):
+    id: int
+    name: str
+    slug: str
+    created_at: Optional[str] = None
+    member_count: int = 0
+    project_count: int = 0
+    dataset_count: int = 0
+    analysis_count: int = 0
+
+
+class AdminOrganizationListResponse(BaseModel):
+    items: List[AdminOrganizationListItem]
+    total: int
+
+
+class AdminDatasetListItem(BaseModel):
+    id: int
+    original_filename: str
+    file_type: str
+    status: str
+    row_count: int
+    column_count: int
+    created_at: Optional[str] = None
+    owner_email: Optional[str] = None
+    owner_id: Optional[int] = None
+    organization_id: Optional[int] = None
+    organization_name: Optional[str] = None
+    latest_version: Optional[int] = None
+
+
+class AdminDatasetListResponse(BaseModel):
+    items: List[AdminDatasetListItem]
+    total: int
+
+
+class AdminAuditListItem(BaseModel):
+    id: int
+    user_id: Optional[int] = None
+    actor_email: Optional[str] = None
+    organization_id: Optional[int] = None
+    action: str
+    resource: Optional[str] = None
+    resource_id: Optional[str] = None
+    result: str
+    ip_address: Optional[str] = None
+    metadata: Dict[str, Any] = {}
+    created_at: Optional[str] = None
+
+
+class AdminAuditListResponse(BaseModel):
+    items: List[AdminAuditListItem]
+    total: int
+    page: int
+    page_size: int
+
+
+class AdminActionResponse(BaseModel):
+    ok: bool = True
+    message: str

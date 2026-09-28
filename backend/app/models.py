@@ -45,6 +45,34 @@ ORG_ROLES = (ORG_ROLE_OWNER, ORG_ROLE_ADMIN, ORG_ROLE_ANALYST, ORG_ROLE_VIEWER)
 ORG_ROLE_LEVEL = {ORG_ROLE_OWNER: 4, ORG_ROLE_ADMIN: 3, ORG_ROLE_ANALYST: 2, ORG_ROLE_VIEWER: 1}
 
 
+# --------------------------------------------------------- Platform RBAC
+
+# A separate ladder from the org roles above: these answer "what may this
+# person do across every organization?". An org ``admin`` is NOT a platform
+# admin, so the two ladders never share a constant or a lookup table.
+
+PLATFORM_ROLE_SUPER_ADMIN = "super_admin"
+PLATFORM_ROLE_ADMIN = "platform_admin"
+PLATFORM_ROLE_VIEWER = "admin_viewer"
+
+# super_admin > platform_admin > admin_viewer. Higher wins; comparisons use ``>=``.
+PLATFORM_ROLES = (
+    PLATFORM_ROLE_SUPER_ADMIN,
+    PLATFORM_ROLE_ADMIN,
+    PLATFORM_ROLE_VIEWER,
+)
+PLATFORM_ROLE_LEVEL = {
+    PLATFORM_ROLE_SUPER_ADMIN: 4,
+    PLATFORM_ROLE_ADMIN: 3,
+    PLATFORM_ROLE_VIEWER: 1,
+}
+
+# Account lifecycle, independent of the organization role a member holds.
+USER_STATUS_ACTIVE = "active"
+USER_STATUS_SUSPENDED = "suspended"
+USER_STATUSES = (USER_STATUS_ACTIVE, USER_STATUS_SUSPENDED)
+
+
 class Organization(Base):
     __tablename__ = "organizations"
 
@@ -247,6 +275,14 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=utcnow)
 
+    # Admin portal. ``system_role`` is platform-wide authority and is NULL for
+    # ordinary users, so membership of an org admin role never grants it.
+    system_role = Column(String(20), nullable=True, index=True)
+    status = Column(String(20), nullable=False, default=USER_STATUS_ACTIVE, index=True)
+    suspended_at = Column(DateTime, nullable=True)
+    suspended_reason = Column(String(500), nullable=True)
+    last_active_at = Column(DateTime, nullable=True)
+
     datasets = relationship(
         "Dataset", back_populates="user", cascade="all, delete-orphan"
     )
@@ -254,12 +290,30 @@ class User(Base):
         "ExportedReport", back_populates="user", cascade="all, delete-orphan"
     )
 
+    @property
+    def is_suspended(self) -> bool:
+        return self.status == USER_STATUS_SUSPENDED
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
             "full_name": self.full_name,
             "email": self.email,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+    def to_admin_dict(self) -> dict:
+        """Wider view for the admin portal only; never expose the password hash."""
+        return {
+            **self.to_dict(),
+            "system_role": self.system_role,
+            "status": self.status,
+            "is_suspended": self.is_suspended,
+            "suspended_at": self.suspended_at.isoformat() if self.suspended_at else None,
+            "suspended_reason": self.suspended_reason,
+            "last_active_at": (
+                self.last_active_at.isoformat() if self.last_active_at else None
+            ),
         }
 
 
@@ -598,3 +652,63 @@ class ExportedReport(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
+
+
+# ---------------------------------------------------------------- Audit log
+
+
+class AuditLog(Base):
+    """Immutable record of a security-relevant action (master prompt 29 / F.10).
+
+    Separate from ``data_operations``, which tracks dataset cleaning steps: this
+    table answers "who touched whose account and what did it change", including
+    the platform admin actions that have no dataset behind them.
+
+    Rows are written append-only. There is no update helper and the admin API
+    exposes reads only, so an entry cannot be edited from the normal UI.
+    """
+
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True)
+
+    # NULL actor: a failed login belongs to someone who is not authenticated,
+    # and the record of the attempt is exactly the thing worth keeping.
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    organization_id = Column(
+        Integer,
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    actor_email = Column(String(150), nullable=True)
+
+    action = Column(String(60), nullable=False, index=True)
+    resource = Column(String(60), nullable=True, index=True)
+    resource_id = Column(String(80), nullable=True)
+    result = Column(String(20), nullable=False, default="success", index=True)
+    ip_address = Column(String(45), nullable=True)
+    metadata_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+
+    user = relationship("User")
+    organization = relationship("Organization")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "actor_email": self.actor_email or (
+                self.user.email if self.user is not None else None
+            ),
+            "organization_id": self.organization_id,
+            "action": self.action,
+            "resource": self.resource,
+            "resource_id": self.resource_id,
+            "result": self.result,
+            "ip_address": self.ip_address,
+            "metadata": self.metadata_json or {},
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
