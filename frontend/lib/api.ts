@@ -622,6 +622,15 @@ export interface PlanningProfileResponse {
   meta: Record<string, unknown> & { dataset_id?: number; dataset_version?: number };
 }
 
+export type AssumptionStatus = "pass" | "warn" | "fail" | "not_applicable";
+
+export interface AssumptionCheck {
+  name: string;
+  status: AssumptionStatus;
+  detail: string;
+  evidence?: string;
+}
+
 export interface Recommendation {
   question: string | null;
   intent: string | null;
@@ -638,6 +647,7 @@ export interface Recommendation {
     parameters: Record<string, unknown>;
     why: string;
     assumptions: string[];
+    assumption_checks: AssumptionCheck[];
     output: string;
     alternatives: { analysis_type: string; label: string; reason: string }[];
   };

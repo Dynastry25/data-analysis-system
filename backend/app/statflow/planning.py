@@ -564,6 +564,263 @@ def pair_diagnostics(
     return diagnostics
 
 
+# ------------------------------------------------------------- assumptions
+
+ASSUMPTION_PASS = "pass"
+ASSUMPTION_WARN = "warn"
+ASSUMPTION_FAIL = "fail"
+ASSUMPTION_NA = "not_applicable"
+
+# Only assumptions we can actually evidence from pair_diagnostics are reported.
+# A check is never claimed as passing on the strength of the method's prose
+# description alone, because the UI presents these as engine verdicts.
+NORMALITY_SENSITIVE = {"pearson", "linear_regression", "welch_t_test", "one_way_anova"}
+OUTLIER_SENSITIVE = {"pearson", "linear_regression"}
+EQUAL_VARIANCE_REQUIRED = {"one_way_anova"}
+GROUPED_METHODS = {"welch_t_test", "mann_whitney", "one_way_anova", "kruskal_wallis"}
+
+
+def _check(
+    name: str,
+    status: str,
+    detail: str,
+    evidence: Optional[str] = None,
+) -> Dict[str, Any]:
+    item: Dict[str, Any] = {"name": name, "status": status, "detail": detail}
+    if evidence:
+        item["evidence"] = evidence
+    return item
+
+
+def assumption_checks(
+    analysis_type: str, diagnostics: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Evidence-backed PASS/WARN checks for the recommended method.
+
+    The Analysis Studio shows these next to the method, so the verdicts are
+    computed here rather than in the UI: the statistical engine stays the only
+    place that judges whether data satisfies an assumption.
+    """
+    checks: List[Dict[str, Any]] = []
+
+    sample_size = int(diagnostics.get("sample_size") or 0)
+    if sample_size < 3:
+        checks.append(
+            _check(
+                "Sample size",
+                ASSUMPTION_FAIL,
+                f"Only {sample_size} valid observation(s); this test needs at least 3.",
+            )
+        )
+    elif sample_size < 30:
+        checks.append(
+            _check(
+                "Sample size",
+                ASSUMPTION_WARN,
+                f"{sample_size} observations: estimates will be unstable below 30.",
+            )
+        )
+    else:
+        checks.append(
+            _check(
+                "Sample size",
+                ASSUMPTION_PASS,
+                f"{sample_size} observations is enough for a stable estimate.",
+            )
+        )
+
+    missing = max(
+        float(diagnostics.get("outcome_missing_percentage") or 0.0),
+        float(diagnostics.get("predictor_missing_percentage") or 0.0),
+    )
+    if missing > 20:
+        checks.append(
+            _check(
+                "Missing values",
+                ASSUMPTION_WARN,
+                f"{missing}% of rows are missing in at least one variable.",
+            )
+        )
+    else:
+        checks.append(
+            _check(
+                "Missing values",
+                ASSUMPTION_PASS,
+                f"At most {missing}% missing, so the analysed subset stays representative.",
+            )
+        )
+
+    if analysis_type in NORMALITY_SENSITIVE:
+        normality = diagnostics.get("normality") or {}
+        group_normality = diagnostics.get("group_normality") or {}
+        failed = [
+            label
+            for label, item in group_normality.items()
+            if item.get("flag") == "non_normal"
+        ]
+        if failed:
+            checks.append(
+                _check(
+                    "Normality",
+                    ASSUMPTION_WARN,
+                    "At least one group looks non-normal: a rank based test is safer.",
+                    ", ".join(failed),
+                )
+            )
+        elif normality and normality.get("flag") == "non_normal":
+            checks.append(
+                _check(
+                    "Normality",
+                    ASSUMPTION_WARN,
+                    "The outcome looks non-normal: a rank based test may fit better.",
+                    f"Jarque-Bera p = {normality.get('p_value')}",
+                )
+            )
+        elif normality:
+            checks.append(
+                _check(
+                    "Normality",
+                    ASSUMPTION_PASS,
+                    "The outcome is consistent with a normal distribution.",
+                    f"Jarque-Bera p = {normality.get('p_value')}",
+                )
+            )
+        else:
+            checks.append(
+                _check(
+                    "Normality",
+                    ASSUMPTION_NA,
+                    "This test does not assume a normal outcome.",
+                )
+            )
+    else:
+        checks.append(
+            _check(
+                "Normality",
+                ASSUMPTION_NA,
+                "This method does not require a normal outcome.",
+            )
+        )
+
+    if analysis_type in OUTLIER_SENSITIVE:
+        outliers = diagnostics.get("outliers") or {}
+        count = int(outliers.get("count") or 0)
+        percentage = float(outliers.get("percentage") or 0.0)
+        if percentage > 5:
+            checks.append(
+                _check(
+                    "Outliers",
+                    ASSUMPTION_WARN,
+                    f"{count} potential outliers ({percentage}%) may distort the result.",
+                    "1.5 x IQR rule",
+                )
+            )
+        else:
+            checks.append(
+                _check(
+                    "Outliers",
+                    ASSUMPTION_PASS,
+                    f"Only {count} potential outlier(s) ({percentage}%).",
+                    "1.5 x IQR rule",
+                )
+            )
+    else:
+        checks.append(
+            _check(
+                "Outliers",
+                ASSUMPTION_NA,
+                "This method is not sensitive to extreme values.",
+            )
+        )
+
+    if analysis_type in EQUAL_VARIANCE_REQUIRED:
+        levene = diagnostics.get("levene") or {}
+        if levene.get("flag") == "unequal_variances":
+            checks.append(
+                _check(
+                    "Equal variance",
+                    ASSUMPTION_WARN,
+                    "Group variances differ; Welch's t-test is the safe alternative.",
+                    f"Levene p = {levene.get('p_value')}",
+                )
+            )
+        else:
+            checks.append(
+                _check(
+                    "Equal variance",
+                    ASSUMPTION_PASS,
+                    "Group variances look comparable.",
+                    f"Levene p = {levene.get('p_value')}",
+                )
+            )
+    elif analysis_type == "welch_t_test":
+        checks.append(
+            _check(
+                "Equal variance",
+                ASSUMPTION_NA,
+                "Welch's t-test does not assume equal variances.",
+            )
+        )
+    else:
+        checks.append(
+            _check(
+                "Equal variance",
+                ASSUMPTION_NA,
+                "This comparison does not rest on equal group variances.",
+            )
+        )
+
+    if analysis_type in GROUPED_METHODS and diagnostics.get("group_sizes"):
+        sizes = diagnostics["group_sizes"]
+        smallest = min(sizes.values())
+        if smallest < 5:
+            checks.append(
+                _check(
+                    "Group sizes",
+                    ASSUMPTION_FAIL,
+                    f"The smallest group has only {smallest} observation(s); at least 5 are needed.",
+                    ", ".join(f"{label}: {size}" for label, size in sizes.items()),
+                )
+            )
+        else:
+            checks.append(
+                _check(
+                    "Group sizes",
+                    ASSUMPTION_PASS,
+                    f"All {len(sizes)} groups have at least {smallest} observations.",
+                )
+            )
+
+    if analysis_type == "chi_square":
+        below = int(diagnostics.get("cells_with_expected_below_5") or 0)
+        if below:
+            checks.append(
+                _check(
+                    "Expected counts",
+                    ASSUMPTION_WARN,
+                    f"{below} cell(s) have an expected count below 5: prefer Fisher's exact test.",
+                )
+            )
+        else:
+            checks.append(
+                _check(
+                    "Expected counts",
+                    ASSUMPTION_PASS,
+                    "Every cell has an expected count of at least 5.",
+                )
+            )
+    elif analysis_type == "fisher_exact":
+        checks.append(
+            _check(
+                "Expected counts",
+                ASSUMPTION_NA,
+                "An exact test needs no minimum expected count.",
+            )
+        )
+
+    return checks
+
+
 ANALYSIS_PARAMETER_MAP = {
     "welch_t_test": lambda outcome, predictor: {
         "value_column": outcome,
@@ -782,6 +1039,9 @@ def recommend(
             "why": reason,
             "assumptions": recommended["assumes"],
             "output": recommended["output"],
+            "assumption_checks": assumption_checks(
+                recommended["analysis_type"], diagnostics
+            ),
             "alternatives": [
                 {
                     "analysis_type": candidate["analysis_type"],

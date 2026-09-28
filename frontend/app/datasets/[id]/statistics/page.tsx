@@ -9,6 +9,7 @@ import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
 import { CheckboxGroup, SelectInput, TextInput } from "@/components/Field";
+import { RecommendationPanel } from "@/components/RecommendationPanel";
 import { TableSkeleton } from "@/components/Skeleton";
 import { StandardResultView } from "@/components/StandardResultView";
 import { useToast } from "@/components/Toast";
@@ -17,6 +18,7 @@ import {
   AnalysisTypeInfo,
   apiErrorMessage,
   PlanningProfileResponse,
+  Recommendation,
   StandardResult,
   statflowApi,
 } from "@/lib/api";
@@ -88,6 +90,54 @@ function parameterChips(
     }));
 }
 
+/**
+ * Which form fields hold the outcome and the predictor, per method.
+ *
+ * Mirrors the engine's ANALYSIS_PARAMETER_MAP so the live recommendation can be
+ * derived from whatever the user has already chosen in the configure form.
+ */
+const PAIR_PARAMS: Record<string, { outcome: string[]; predictor: string[] }> = {
+  welch_t_test: { outcome: ["value_column"], predictor: ["group_column"] },
+  mann_whitney: { outcome: ["value_column"], predictor: ["group_column"] },
+  one_way_anova: { outcome: ["value_column"], predictor: ["group_column"] },
+  kruskal_wallis: { outcome: ["value_column"], predictor: ["group_column"] },
+  pearson: { outcome: ["y"], predictor: ["x"] },
+  spearman: { outcome: ["y"], predictor: ["x"] },
+  linear_regression: { outcome: ["target"], predictor: ["features"] },
+  chi_square: { outcome: ["row_column"], predictor: ["column_column"] },
+  fisher_exact: { outcome: ["row_column"], predictor: ["column_column"] },
+  descriptive: { outcome: ["columns"], predictor: [] },
+  frequency: { outcome: ["columns"], predictor: [] },
+};
+
+function firstValue(
+  values: Record<string, string | string[]>,
+  names: string[]
+): string | null {
+  for (const name of names) {
+    const raw = values[name];
+    if (Array.isArray(raw)) {
+      if (raw.length > 0) return raw[0];
+    } else if (raw) {
+      return raw;
+    }
+  }
+  return null;
+}
+
+/** The variable pair currently described by the form, for live recommendations. */
+function resolvePair(
+  analysisType: string,
+  values: Record<string, string | string[]>
+): { outcome: string | null; predictor: string | null } {
+  const spec = PAIR_PARAMS[analysisType];
+  if (!spec) return { outcome: null, predictor: null };
+  return {
+    outcome: firstValue(values, spec.outcome),
+    predictor: spec.predictor.length > 0 ? firstValue(values, spec.predictor) : null,
+  };
+}
+
 export default function StatisticsPage() {
   const params = useParams<{ id: string }>();
   const datasetId = Number(params?.id);
@@ -142,6 +192,7 @@ export default function StatisticsPage() {
   const numericColumns = (profile?.variables_by_type?.numeric ?? []) as string[];
   const allColumns = (profile?.variables ?? []).map((variable) => variable.name);
   const datasetVersion = profile?.meta.dataset_version ?? null;
+  const pair = resolvePair(analysisType, paramValues);
 
   const missingRequired = requirements.filter(
     (requirement) => !requirement.optional && isBlank(paramValues[requirement.name])
@@ -183,6 +234,18 @@ export default function StatisticsPage() {
     } finally {
       setRunning(false);
     }
+  }
+
+  /**
+   * Adopt the engine's recommendation verbatim, including its parameters, so the
+   * form never drifts from the method the diagnostics were computed for.
+   */
+  function applyRecommendation(recommendation: Recommendation["recommendation"]) {
+    setAnalysisType(recommendation.analysis_type);
+    setParamValues(parametersToFormValues(recommendation.parameters));
+    setAttempted(false);
+    setResult(null);
+    showToast(`Njia imebadilishwa kuwa ${recommendation.label}.`, "success");
   }
 
   function downloadResultJson() {
@@ -356,6 +419,15 @@ export default function StatisticsPage() {
               )}
             </div>
           </Card>
+
+          <RecommendationPanel
+            datasetId={datasetId}
+            datasetVersion={datasetVersion}
+            outcome={pair.outcome}
+            predictor={pair.predictor}
+            selectedAnalysisType={analysisType || null}
+            onApply={applyRecommendation}
+          />
 
           <Card
             title="Matokeo"

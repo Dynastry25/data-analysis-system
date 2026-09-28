@@ -1034,6 +1034,148 @@ def main() -> int:
             rec_three_by_two["recommendation"]["analysis_type"] == "chi_square",
             "3x2 categorical table does not recommend Fisher's exact test",
         )
+
+        print("\n3b) MVP-20: assumption checks are evidence-backed and method-aware")
+        allowed = {"pass", "warn", "fail", "not_applicable"}
+
+        def statuses(payload):
+            data = recommend(payload)
+            checks = data["recommendation"]["assumption_checks"]
+            check(bool(checks), f"{payload['outcome']}/{payload['predictor']} exposes checks")
+            for item in checks:
+                check(
+                    item["status"] in allowed,
+                    f"'{item['name']}' status '{item['status']}' is a known verdict",
+                )
+                check(
+                    bool(item["detail"].strip()),
+                    f"'{item['name']}' explains itself in prose",
+                )
+            return {item["name"]: item for item in checks}
+
+        welch = statuses(
+            {
+                "dataset_id": dataset_id,
+                "dataset_version": latest_version,
+                "outcome": "income",
+                "predictor": "gender",
+            }
+        )
+        check(
+            welch["Equal variance"]["status"] == "not_applicable",
+            "Welch does not claim an equal-variance verdict it cannot need",
+        )
+        check(
+            "Welch's t-test does not assume equal variances"
+            in welch["Equal variance"]["detail"],
+            "the N/A verdict explains why, instead of looking like a failure",
+        )
+        check(
+            welch["Sample size"]["status"] == "pass",
+            "a large clean sample passes the size check",
+        )
+        check(
+            "evidence" in welch["Normality"],
+            "passing checks still cite the test that decided them",
+        )
+
+        anova = statuses(
+            {
+                "dataset_id": dataset_id,
+                "dataset_version": latest_version,
+                "outcome": "income",
+                "predictor": "region",
+            }
+        )
+        check(
+            anova["Equal variance"]["status"] in {"pass", "warn"},
+            "ANOVA actually evaluates equal variance instead of skipping it",
+        )
+        check(
+            "Levene" in anova["Equal variance"].get("evidence", ""),
+            "the variance verdict cites Levene's test",
+        )
+        check(
+            "Group sizes" in anova,
+            "grouped methods report the group-size assumption",
+        )
+
+        chi = statuses(
+            {
+                "dataset_id": dataset_id,
+                "dataset_version": latest_version,
+                "outcome": "region",
+                "predictor": "education",
+            }
+        )
+        check(
+            "Expected counts" in chi,
+            "chi-square reports the expected-count assumption",
+        )
+        check(
+            "Normality" in chi and chi["Normality"]["status"] == "not_applicable",
+            "a categorical test does not dress up a normality verdict",
+        )
+
+        corr = statuses(
+            {
+                "dataset_id": dataset_id,
+                "dataset_version": latest_version,
+                "outcome": "income",
+                "predictor": "age",
+            }
+        )
+        check(
+            "Outliers" in corr and corr["Outliers"]["status"] in {"pass", "warn"},
+            "Pearson reports the outlier assumption it is sensitive to",
+        )
+        check(
+            "Group sizes" not in corr,
+            "a non-grouped method does not invent a group-size check",
+        )
+
+        # Guards the honesty rule: a check is only ever a verdict the engine
+        # can back with a computed diagnostic, never a hopeful "pass".
+        synthetic = planning.assumption_checks(
+            "one_way_anova",
+            {
+                "sample_size": 8,
+                "outcome_missing_percentage": 35.0,
+                "predictor_missing_percentage": 0.0,
+                "normality": {"flag": "non_normal", "p_value": 0.001},
+                "group_sizes": {"a": 6, "b": 2},
+                "levene": {"flag": "unequal_variances", "p_value": 0.004},
+            },
+        )
+        by_name = {item["name"]: item for item in synthetic}
+        check(by_name["Sample size"]["status"] == "warn", "n=8 warns rather than passes")
+        check(
+            by_name["Missing values"]["status"] == "warn",
+            "35% missing is surfaced as a warning",
+        )
+        check(
+            by_name["Normality"]["status"] == "warn",
+            "a non-normal outcome warns instead of silently passing",
+        )
+        check(
+            by_name["Equal variance"]["status"] == "warn",
+            "unequal variances warn and point at the safe alternative",
+        )
+        check(
+            by_name["Group sizes"]["status"] == "fail",
+            "a 2-observation group fails the group-size assumption",
+        )
+        check(
+            all(item["status"] != planning.ASSUMPTION_PASS or item.get("detail")
+                for item in synthetic),
+            "no check is reported without an explanation",
+        )
+        no_evidence = planning.assumption_checks("welch_t_test", {"sample_size": 0})
+        check(
+            any(item["name"] == "Sample size" and item["status"] == "fail"
+                for item in no_evidence),
+            "an empty sample fails loudly instead of returning an empty verdict",
+        )
         rec_bad = client.post(
             "/api/v1/planning/recommend",
             json={
