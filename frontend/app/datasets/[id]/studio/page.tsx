@@ -368,7 +368,7 @@ export default function StudioPage() {
 
   return (
     <AppShell
-      title="Data studio"
+      title="Data Preparation Studio"
       description="Profile, safisha na badilisha zinaishi kwenye ukurasa mmoja — kila hatua ina kazi na matokeo yake mwenyewe."
       actions={
         <Link href={`/datasets/${datasetId}`}>
@@ -377,7 +377,10 @@ export default function StudioPage() {
       }
     >
       <div className="mb-6">
-        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Hatua za studio">
+        <p className="text-overline uppercase tracking-wide text-ink-muted">
+          Operations
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1" role="tablist" aria-label="Hatua za studio">
           {STUDIO_SECTIONS.map((entry) => (
             <Link
               key={entry.key}
@@ -454,6 +457,7 @@ export default function StudioPage() {
       ) : (
         <>
           {(section === "clean" || section === "transform") && (
+          <div className="grid gap-4 lg:grid-cols-3">
             <Card
               title={
                 section === "clean"
@@ -462,6 +466,7 @@ export default function StudioPage() {
               }
               icon="sliders"
               description="Chagua operation, jaza parameters, kisha tumia. Version mpya itatengenezwa na asili hubaki kubadilika."
+              className="lg:col-span-2"
             >
             <div className="grid gap-4 md:grid-cols-2">
               <div>
@@ -536,7 +541,45 @@ export default function StudioPage() {
             >
               Tumia operation (tengeneza version mpya)
             </Button>
-          </Card>
+            </Card>
+
+            <div className="flex flex-col gap-4">
+              <Card
+                title="Version history"
+                icon="history"
+                description="Kila version ina operesheni, muda na mtumiaji."
+              >
+                {versions.length === 0 ? (
+                  <p className="text-body text-ink-muted">
+                    Hakuna versions bado — tumia operation kutengeneza v2.
+                  </p>
+                ) : (
+                  <ol className="space-y-2">
+                    {versions.slice(0, 3).map((version) => (
+                      <li key={version.version} className="flex items-center justify-between gap-2 text-body">
+                        <span className="font-mono font-medium text-ink">
+                          v{version.version}
+                        </span>
+                        <span className="truncate text-caption text-ink-muted">
+                          {version.label || version.operation?.type || "original"}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </Card>
+              <Card
+                title="Transformation pipeline"
+                icon="layers"
+                description="Import → Filter → Impute → Normalize → Encode"
+              >
+                <p className="text-caption text-ink-muted">
+                  Pipeline inaonyesha hatua zilizotekelezwa kwenye version ya
+                  sasa.
+                </p>
+              </Card>
+            </div>
+          </div>
           )}
 
           <Card

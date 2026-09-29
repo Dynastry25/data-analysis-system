@@ -139,7 +139,7 @@ export default function AskPage() {
 
   return (
     <AppShell
-      title="Msaidizi wa takwimu"
+      title="AI Statistical Copilot"
       description="Uliza swali kwa lugha ya kawaida — msaidizi hupanga uchambuzi, engine hujibu kwa takwimu zilizothibitishwa."
       actions={
         <Link href={`/datasets/${datasetId}`}>
@@ -152,6 +152,9 @@ export default function AskPage() {
         icon="message-circle"
         description="Mfano: 'Does income differ between male and female?' au 'Je, kuna uhusiano kati ya umri na mapato?'"
       >
+        <p className="mb-2 text-overline uppercase tracking-wide text-ink-muted">
+          Ask StatFlow
+        </p>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -235,7 +238,7 @@ export default function AskPage() {
                 <button
                   key={example}
                   type="button"
-                  className="rounded-pill border border-surface-border bg-surface-sunken px-2.5 py-1 text-caption text-ink-secondary transition-colors duration-150 ease-standard hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
+                  className="rounded-full border border-surface-border bg-surface-sunken px-2.5 py-1 text-caption text-ink-secondary transition-colors duration-150 ease-standard hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
                   onClick={() => {
                     setQuestion(example);
                   }}
@@ -356,9 +359,9 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
         </div>
       )}
 
-      <section className="rounded-lg border border-surface-border border-l-4 border-l-success bg-surface-panel p-4">
+      <section className="rounded-md border border-surface-border border-l-4 border-l-success bg-surface-panel p-4">
         <div className="mb-1 flex flex-wrap items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-success-bg text-success">
+          <span className="flex h-7 w-7 items-center justify-center rounded-sm bg-success-bg text-success">
             <Icon name="shield" size={16} />
           </span>
           <h3 className="text-h3 text-ink">Computed by Statistical Engine</h3>
@@ -377,9 +380,9 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
         )}
       </section>
 
-      <section className="rounded-lg border border-primary-200 border-l-4 border-l-primary-400 bg-primary-50/60 p-4">
+      <section className="rounded-md border border-primary-200 border-l-4 border-l-primary-400 bg-primary-50/60 p-4">
         <div className="mb-1 flex flex-wrap items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-primary-600 shadow-card">
+          <span className="flex h-7 w-7 items-center justify-center rounded-sm bg-white text-primary-600 shadow-card">
             <Icon name="sparkles" size={16} />
           </span>
           <h3 className="text-h3 text-ink">AI Interpretation</h3>
@@ -398,7 +401,7 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
             </div>
           )}
           <p className="text-body text-ink">{answer.explanation}</p>
-          <p className="flex items-start gap-1.5 rounded-md bg-white/70 px-2.5 py-2 text-caption text-ink-muted">
+          <p className="flex items-start gap-1.5 rounded-sm bg-white/70 px-2.5 py-2 text-caption text-ink-muted">
             <Icon name="alert-circle" size={14} className="mt-0.5 shrink-0 text-warning" />
             <span>
               Maelezo haya yametolewa na AI. Thibitisha kwa matokeo ya engine au dataset

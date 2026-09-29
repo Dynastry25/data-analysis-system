@@ -181,8 +181,8 @@ export default function ExportPage() {
 
   return (
     <AppShell
-      title="Ripoti na hamisho"
-      description="Panga ripoti kutoka matokeo uliyochagua, kisha pakua au isambele."
+      title="Reports & Workspace"
+      description="Panga ripoti kutoka matokeo uliyochagua, kisha pakua au isambaze."
       actions={
         <>
           <Link href={`/datasets/${datasetId}/analyze`}>
@@ -222,11 +222,13 @@ export default function ExportPage() {
       </div>
 
       {section === "report" && (
-      <Card
-        title="Chagua maudhui ya ripoti"
-        description={`Ripoti itatengenezwa kutoka toleo la data v${datasetVersion ?? "—"} ili matokeo yaweze kufuatilia data iliyotumika.`}
-        icon="clipboard"
-      >
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card
+          title="Chagua maudhui ya ripoti"
+          description={`Ripoti itatengenezwa kutoka toleo la data v${datasetVersion ?? "—"} ili matokeo yaweze kufuatilia data iliyotumika.`}
+          icon="clipboard"
+          className="lg:col-span-2"
+        >
         {loading ? (
           <div className="space-y-2">
             <Skeleton className="h-6 w-40" />
@@ -437,6 +439,25 @@ export default function ExportPage() {
           </div>
         )}
       </Card>
+
+        <div className="flex flex-col gap-4">
+          <Card title="Report outline" icon="clipboard">
+            <ul className="space-y-1.5 text-body text-ink-secondary">
+              <li>Executive Summary — Key finding · Recommendations</li>
+              <li>Methodology — Sample &amp; variables · Model specification</li>
+              <li>Results — Coefficients · Diagnostics</li>
+              <li>Appendix</li>
+            </ul>
+          </Card>
+          <Card title="Workspace" icon="users">
+            <ul className="space-y-1.5 text-body text-ink-secondary">
+              <li>Notifications — ON</li>
+              <li>Comment access — TEAM</li>
+              <li>Version locking — ON</li>
+            </ul>
+          </Card>
+        </div>
+      </div>
       )}
 
       <Card

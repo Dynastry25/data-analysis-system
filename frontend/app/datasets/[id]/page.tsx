@@ -10,9 +10,19 @@ import { Button } from "@/components/Button";
 import { Card, EmptyState, Stat } from "@/components/Card";
 import { DataTable, formatCell } from "@/components/DataTable";
 import { SelectInput } from "@/components/Field";
+import { MetricCard } from "@/components/MetricCard";
+import { ProfileSummary } from "@/components/ProfileSummary";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, DatasetDetailResponse, OrgProject } from "@/lib/api";
+
+function formatDate(value: string | null): string {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+}
 
 export default function DatasetDetailPage() {
   const params = useParams<{ id: string }>();
@@ -90,20 +100,25 @@ export default function DatasetDetailPage() {
 
   return (
     <AppShell
-      title={detail?.dataset.original_filename ?? "Dataset"}
-      description="Angalia muundo wa data, safisha kasoro, kisha chambua."
-      actions={
-        <>
-          <Link href="/datasets">
-            <Button variant="ghost" icon="arrow-right">
-              Orodha
-            </Button>
-          </Link>
-          <Link href={`/datasets/${datasetId}/studio`}>
-            <Button variant="secondary" icon="sliders">
-              Data studio
-            </Button>
-          </Link>
+      title={`${detail?.dataset.original_filename ?? "Dataset"} · v${detail?.dataset_version ?? 1}`}
+      description={`Updated ${formatDate(detail?.dataset.uploaded_at ?? null)}`}
+            actions={
+              <>
+                <Link href="/datasets">
+                  <Button variant="ghost" icon="arrow-right">
+                    Orodha
+                  </Button>
+                </Link>
+                <Link href={`/datasets/${datasetId}/validate`}>
+                  <Button variant="secondary" icon="check">
+                    Validate
+                  </Button>
+                </Link>
+                <Link href={`/datasets/${datasetId}/studio`}>
+                  <Button variant="secondary" icon="sliders">
+                    Data studio
+                  </Button>
+                </Link>
           <Link href={`/datasets/${datasetId}/ask`}>
             <Button variant="secondary" icon="sparkles">
               Msaidizi
@@ -153,11 +168,7 @@ export default function DatasetDetailPage() {
               </div>
               <div className="flex items-center gap-1.5">
                 <dt className="text-ink-muted">Imepakiwa</dt>
-                <dd className="text-ink">
-                  {detail.dataset.uploaded_at
-                    ? new Date(detail.dataset.uploaded_at).toLocaleString()
-                    : "—"}
-                </dd>
+                <dd className="text-ink">{formatDate(detail.dataset.uploaded_at)}</dd>
               </div>
               <div className="flex items-center gap-1.5">
                 <dt className="text-ink-muted">Hali</dt>
@@ -183,9 +194,25 @@ export default function DatasetDetailPage() {
           )}
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Safu (rows)" value={detail?.dataset.row_count.toLocaleString()} />
-            <Stat label="Columns" value={detail?.dataset.column_count} />
-            <Stat
+            <MetricCard
+              icon="layers"
+              tone="primary"
+              label="Safu (rows)"
+              value={(detail?.dataset.row_count ?? 0).toLocaleString()}
+              hint="Rows zilizopo kwenye toleo la sasa"
+            />
+            <MetricCard
+              icon="grid"
+              tone="info"
+              label="Columns"
+              value={detail?.dataset.column_count ?? 0}
+              hint={`${numericColumns.length} za namba · ${
+                columns.length - numericColumns.length
+              } nyingine`}
+            />
+            <MetricCard
+              icon={totalMissing === 0 ? "check" : "alert-triangle"}
+              tone={totalMissing === 0 ? "success" : "warning"}
               label="Missing values"
               value={totalMissing.toLocaleString()}
               hint={
@@ -194,12 +221,68 @@ export default function DatasetDetailPage() {
                   : `Katika columns ${columnsWithMissing.length}`
               }
             />
-            <Stat
+            <MetricCard
+              icon="calculator"
+              tone="primary"
               label="Columns za namba"
               value={numericColumns.length}
-              hint={numericColumns.slice(0, 3).join(", ") || "Hakuna"}
+              hint={
+                numericColumns.length === 0
+                  ? "Hakuna column ya namba"
+                  : `${numericColumns.slice(0, 3).join(", ")}${
+                      numericColumns.length > 3
+                        ? ` +${numericColumns.length - 3}`
+                        : ""
+                    }`
+              }
             />
           </div>
+
+          <Card
+            title="Dataset Health"
+            icon="chart"
+            description="Ukamilifu, missing cells na wastani — kutoka kwenye profile halisi."
+          >
+            <div className="grid gap-3 sm:grid-cols-4">
+              <Stat
+                label="Completeness"
+                value={`${detail && detail.dataset.row_count > 0 ? Math.max(0, Math.round((1 - totalMissing / (detail.dataset.row_count * Math.max(columns.length, 1))) * 100)) : 100}%`}
+              />
+              <Stat label="Missing cells" value={totalMissing.toLocaleString()} />
+              <Stat
+                label="Rows"
+                value={(detail?.dataset.row_count ?? 0).toLocaleString()}
+              />
+              <Stat label="Columns" value={detail?.dataset.column_count ?? 0} />
+            </div>
+          </Card>
+
+          <Card
+            title="Muhtasari wa data"
+            description="Ukamilifu, aina za columns na thamani unique — zote zikitoka kwenye profile halisi ya dataset hii."
+            icon="chart"
+            actions={
+              <>
+                {totalMissing > 0 && (
+                  <Link href={`/datasets/${datasetId}/studio`}>
+                    <Button variant="secondary" size="small" icon="sliders">
+                      Safisha missing
+                    </Button>
+                  </Link>
+                )}
+                <Link href={`/datasets/${datasetId}/explore`}>
+                  <Button variant="secondary" size="small" icon="chart-line">
+                    Chunguza zaidi
+                  </Button>
+                </Link>
+              </>
+            }
+          >
+            <ProfileSummary
+              columns={columns}
+              rowCount={detail?.dataset.row_count ?? 0}
+            />
+          </Card>
 
           <Card
             title="Ufikiaji wa data"
@@ -245,33 +328,6 @@ export default function DatasetDetailPage() {
               </div>
             )}
           </Card>
-
-          {columnsWithMissing.length > 0 && (
-            <Card
-              title="Tahadhari: missing values"
-              icon="alert-triangle"
-              tone="warning"
-              actions={
-                <Link href={`/datasets/${datasetId}/studio`}>
-                  <Button variant="secondary" size="small" icon="sliders">
-                    Safisha
-                  </Button>
-                </Link>
-              }
-            >
-              <p className="mb-3 text-body text-ink-secondary">
-                Columns zifuata zina thamani zilizo-kosekana. Safisha katika data studio
-                kabla ya kuchambua ili matokeo yaweze sahihi.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {columnsWithMissing.map((column) => (
-                  <Badge key={column.name} tone="warning">
-                    {column.name}: {column.missing_count}
-                  </Badge>
-                ))}
-              </div>
-            </Card>
-          )}
 
           <Card
             title="Muundo wa columns"
