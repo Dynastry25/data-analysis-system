@@ -10,6 +10,12 @@ import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
 import { CheckboxGroup, SelectInput, TextInput } from "@/components/Field";
 import { Icon } from "@/components/Icon";
+import {
+  LivePreview,
+  OperationRail,
+  PreparationPipeline,
+  VersionHistory,
+} from "@/components/PreparationStudio";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import {
@@ -148,6 +154,8 @@ export default function StudioPage() {
   }, [requested]);
 
   const [columns, setColumns] = useState<ColumnProfile[]>([]);
+  const [previewRows, setPreviewRows] = useState<Record<string, unknown>[]>([]);
+  const [rowCount, setRowCount] = useState(0);
   const [catalog, setCatalog] = useState<OperationCatalogEntry[]>([]);
   const [history, setHistory] = useState<OperationsHistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -173,6 +181,8 @@ export default function StudioPage() {
         statflowApi.operationsHistory(datasetId),
       ]);
       setColumns(detail.columns);
+      setPreviewRows(detail.preview_rows);
+      setRowCount(detail.dataset.row_count);
       setCatalog(operationsCatalog);
       setHistory(operationsHistory);
     } catch (caught) {
@@ -453,151 +463,100 @@ export default function StudioPage() {
         </Card>
       ) : (
         <>
-          {(section === "clean" || section === "transform") && (
-            <Card
-              title={
-                section === "clean"
-                  ? "Safisha data"
-                  : "Badilisha data"
-              }
-              icon="sliders"
-              description="Chagua operation, jaza parameters, kisha tumia. Version mpya itatengenezwa na asili hubaki kubadilika."
-            >
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <label htmlFor="op-type" className="mb-1.5 block text-body font-medium text-ink">
-                  Operation
-                </label>
-                <select
-                  id="op-type"
-                  className="control cursor-pointer"
-                  value={selectedOp}
-                  onChange={(event) => {
-                    setSelectedOp(event.target.value);
+            {(section === "clean" || section === "transform") && (
+              <div className="grid gap-4 lg:grid-cols-[15rem_1fr]">
+                <OperationRail
+                  catalog={catalog}
+                  selected={selectedOp}
+                  onSelect={(type) => {
+                    setSelectedOp(type);
                     setFieldValues({});
                     setAttempted(false);
                   }}
-                >
-                  <optgroup label="Clean">
-                    {catalog
-                      .filter((entry) => entry.group === "clean")
-                      .map((entry) => (
-                        <option key={entry.type} value={entry.type}>
-                          {entry.label}
-                        </option>
-                      ))}
-                  </optgroup>
-                  <optgroup label="Transform">
-                    {catalog
-                      .filter((entry) => entry.group === "transform")
-                      .map((entry) => (
-                        <option key={entry.type} value={entry.type}>
-                          {entry.label}
-                        </option>
-                      ))}
-                  </optgroup>
-                </select>
-                {currentOperation && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Badge
-                      tone={currentOperation.group === "clean" ? "primary" : "neutral"}
-                    >
-                      {currentOperation.group}
-                    </Badge>
-                    <span className="text-caption text-ink-muted">
-                      {currentOperation.parameters.join(", ")}
-                    </span>
-                  </div>
-                )}
-              </div>
-              <TextInput
-                label="Label ya version"
-                optionalLabel="hiari"
-                value={label}
-                onChange={(event) => setLabel(event.target.value)}
-                placeholder="mf. Baada ya kusafisha missing values"
-              />
-            </div>
+                />
 
-            {fields.length > 0 && (
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                {fields.map((field) => (
-                  <div key={field.key}>{renderField(field)}</div>
-                ))}
-              </div>
-            )}
-
-            <Button
-              className="mt-4"
-              size="large"
-              loading={applying}
-              onClick={applyOperation}
-              icon="check"
-            >
-              Tumia operation (tengeneza version mpya)
-            </Button>
-          </Card>
-          )}
-
-          <Card
-            title="Version lineage"
-            description={`v${history?.current_version ?? 1} ndiyo version ya sasa. Kila version haiharibiki — uchambuzi wowote unaweza kurudiwa.`}
-            icon="layers"
-          >
-            {versions.length === 0 ? (
-              <EmptyState
-                title="Hakuna versions bado"
-                description="Tumia operation ya juu kutengeneza version v2 — version ya kwanza haina harakati."
-                icon="layers"
-              />
-            ) : (
-              <ol className="space-y-2">
-                {versions.map((version) => (
-                  <li
-                    key={version.version}
-                    className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2.5 ${
-                      version.is_current
-                        ? "border-success/30 bg-success-bg"
-                        : "border-surface-border"
-                    }`}
-                  >
-                    <span className="flex flex-wrap items-center gap-3">
-                      <Badge tone={version.is_current ? "success" : "neutral"} icon={version.is_current ? "check" : undefined}>
-                        v{version.version}
-                        {version.is_current ? " · sasa" : ""}
+                <Card
+                  title={currentOperation?.label ?? "Chagua operation"}
+                  icon="sliders"
+                  description="Jaza parameters, kisha tumia. Version mpya itatengenezwa na asili hubaki kubadilika."
+                  actions={
+                    currentOperation && (
+                      <Badge
+                        tone={currentOperation.group === "clean" ? "primary" : "neutral"}
+                      >
+                        {currentOperation.group === "clean" ? "Safisha" : "Badilisha"}
                       </Badge>
-                      {version.operation ? (
-                        <Badge tone="primary">{version.operation.type}</Badge>
-                      ) : (
-                        <Badge tone="neutral">original (upload)</Badge>
+                    )
+                  }
+                >
+                  {currentOperation && (
+                    <>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <TextInput
+                          label="Label ya version"
+                          optionalLabel="hiari"
+                          value={label}
+                          onChange={(event) => setLabel(event.target.value)}
+                          placeholder="mf. Baada ya kusafisha missing values"
+                        />
+                        <div>
+                          <p className="text-overline uppercase tracking-wide text-ink-muted">
+                            Parameters zinazohitajika
+                          </p>
+                          <ul className="mt-1.5 space-y-1">
+                            {currentOperation.parameters.map((parameter) => (
+                              <li
+                                key={parameter}
+                                className="font-mono text-caption text-ink-secondary"
+                              >
+                                {parameter}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+
+                      {fields.length > 0 && (
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          {fields.map((field) => (
+                            <div key={field.key}>{renderField(field)}</div>
+                          ))}
+                        </div>
                       )}
-                      {version.label && (
-                        <span className="text-body text-ink">{version.label}</span>
-                      )}
-                      <span className="text-caption text-ink-muted">
-                        {version.row_count} rows × {version.column_count} columns
-                        {version.parent_version
-                          ? ` · kutoka v${version.parent_version}`
-                          : ""}
-                        {version.created_at
-                          ? ` · ${new Date(version.created_at).toLocaleString()}`
-                          : ""}
-                      </span>
-                    </span>
-                    <Button
-                      variant="secondary"
-                      size="small"
-                      icon="download"
-                      loading={downloading === version.version}
-                      onClick={() => downloadVersion(version.version)}
-                    >
-                      Pakua
-                    </Button>
-                  </li>
-                ))}
-              </ol>
+
+                      <Button
+                        className="mt-4"
+                        size="large"
+                        loading={applying}
+                        onClick={applyOperation}
+                        icon="check"
+                      >
+                        Tumia operation (tengeneza version mpya)
+                      </Button>
+                    </>
+                  )}
+                </Card>
+              </div>
             )}
-          </Card>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <VersionHistory
+                versions={versions}
+                onDownload={downloadVersion}
+                downloading={downloading}
+              />
+              <div className="space-y-4">
+                <LivePreview
+                  rows={previewRows}
+                  rowCount={rowCount}
+                  version={history?.current_version ?? 1}
+                />
+                <PreparationPipeline
+                  history={versions}
+                  currentVersion={history?.current_version ?? 1}
+                />
+              </div>
+            </div>
 
           <Card
             title="Historia ya operations (audit trail)"

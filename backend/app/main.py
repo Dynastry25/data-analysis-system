@@ -10,7 +10,7 @@ from app.database import Base, engine
 
 # `app.routers.*` imports the SQLAlchemy models, which registers every table from
 # schema.sql on ``Base.metadata`` before the lifespan below creates them.
-from app.routers import admin, auth, charts, datasets, organizations, reports
+from app.routers import admin, auth, charts, dashboards, datasets, organizations, reports
 from app.statflow.routers import analysis as v1_analysis
 from app.statflow.routers import assistant as v1_assistant
 from app.statflow.routers import planning as v1_planning
@@ -48,6 +48,7 @@ for router in (
     auth.router,
     datasets.router,
     charts.router,
+    dashboards.router,
     reports.router,
 ):
     app.include_router(router, prefix=API_PREFIX)

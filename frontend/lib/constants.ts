@@ -16,6 +16,31 @@ export const CHART_PALETTE: string[] = [
   "#999999",
 ];
 
+// Visualization Studio palettes. "default" must stay the Okabe-Ito palette so
+// every existing chart renders unchanged.
+export const CHART_PALETTES: Record<string, { label: string; colors: string[] }> = {
+  default: {
+    label: "Default (Okabe-Ito)",
+    colors: CHART_PALETTE,
+  },
+  ocean: {
+    label: "Ocean",
+    colors: ["#0369A1", "#0EA5E9", "#38BDF8", "#7DD3FC", "#BAE6FD", "#0C4A6E"],
+  },
+  sunset: {
+    label: "Sunset",
+    colors: ["#EA580C", "#F97316", "#FB923C", "#FDBA74", "#431407", "#9A3412"],
+  },
+  forest: {
+    label: "Forest",
+    colors: ["#166534", "#22C55E", "#4ADE80", "#86EFAC", "#14532D", "#15803D"],
+  },
+};
+
+export function paletteFor(name?: string | null): string[] {
+  return CHART_PALETTES[name ?? "default"]?.colors ?? CHART_PALETTE;
+}
+
 export const SPACING = {
   xs: 4,
   sm: 8,

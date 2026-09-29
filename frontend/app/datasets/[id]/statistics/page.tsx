@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
 import { CheckboxGroup, SelectInput, TextInput } from "@/components/Field";
+import { ResearchBrief } from "@/components/AnalysisStudio";
 import { RecommendationPanel } from "@/components/RecommendationPanel";
 import { TableSkeleton } from "@/components/Skeleton";
 import { StandardResultView } from "@/components/StandardResultView";
@@ -154,6 +155,9 @@ export default function StatisticsPage() {
   const [running, setRunning] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [result, setResult] = useState<StandardResult | null>(null);
+  const [question, setQuestion] = useState("");
+  const [confidenceLevel, setConfidenceLevel] = useState("0.95");
+  const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(datasetId)) return;
@@ -187,12 +191,55 @@ export default function StatisticsPage() {
     }
   }, [types, analysisType]);
 
+  // The brief reads the engine's variable read-out, and load() already fetches
+  // it, so there is deliberately no second planningProfile() call here: one
+  // request, one profile, and the brief and the configure form cannot drift.
+
   const currentType = types.find((entry) => entry.analysis_type === analysisType) ?? null;
   const requirements = (currentType?.requires ?? []).map(parseRequirement);
   const numericColumns = (profile?.variables_by_type?.numeric ?? []) as string[];
   const allColumns = (profile?.variables ?? []).map((variable) => variable.name);
   const datasetVersion = profile?.meta.dataset_version ?? null;
   const pair = resolvePair(analysisType, paramValues);
+
+  // The method recommendation is the engine's, fetched for the pair the form
+  // currently describes, so the brief and the recommendation always agree.
+  const requestRef = useRef(0);
+  useEffect(() => {
+    const token = ++requestRef.current;
+    if (!pair.outcome || !pair.predictor || !Number.isFinite(datasetId)) {
+      setRecommendation(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      statflowApi
+        .recommend({
+          dataset_id: datasetId,
+          dataset_version: datasetVersion ?? undefined,
+          outcome: pair.outcome as string,
+          predictor: pair.predictor as string,
+          run: false,
+        })
+        .then((response) => {
+          if (token === requestRef.current) setRecommendation(response);
+        })
+        .catch(() => {
+          if (token === requestRef.current) setRecommendation(null);
+        });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [datasetId, datasetVersion, pair.outcome, pair.predictor]);
+
+  const outcomeVariable =
+    recommendation?.variables.outcome ??
+    (pair.outcome
+      ? (profile?.variables ?? []).find((variable) => variable.name === pair.outcome) ?? null
+      : null);
+  const predictorVariable =
+    recommendation?.variables.predictor ??
+    (pair.predictor
+      ? (profile?.variables ?? []).find((variable) => variable.name === pair.predictor) ?? null
+      : null);
 
   const missingRequired = requirements.filter(
     (requirement) => !requirement.optional && isBlank(paramValues[requirement.name])
@@ -210,6 +257,9 @@ export default function StatisticsPage() {
         parameters[requirement.name] = raw;
       }
     }
+    // The engine reads confidence_level as a fraction, and it only changes
+    // results for the methods that report an interval.
+    parameters.confidence_level = Number(confidenceLevel);
     return parameters;
   }
 
@@ -367,6 +417,19 @@ export default function StatisticsPage() {
         </Card>
       ) : (
         <>
+          <ResearchBrief
+            question={question}
+            onQuestionChange={setQuestion}
+            outcome={outcomeVariable}
+            predictor={predictorVariable}
+            confidenceLevel={confidenceLevel}
+            onConfidenceChange={setConfidenceLevel}
+            recommendation={recommendation}
+            canRun={canRun}
+            running={running}
+            onRun={runAnalysis}
+          />
+
           <Card
             title="Endesha uchambuzi"
             icon="calculator"
@@ -426,6 +489,7 @@ export default function StatisticsPage() {
             outcome={pair.outcome}
             predictor={pair.predictor}
             selectedAnalysisType={analysisType || null}
+            provided={recommendation}
             onApply={applyRecommendation}
           />
 
@@ -437,6 +501,7 @@ export default function StatisticsPage() {
             {result ? (
               <StandardResultView
                 result={result}
+                question={question}
                 actions={
                   <>
                     <Button

@@ -220,6 +220,20 @@ ChartType = Literal["bar", "line", "scatter", "histogram"]
 AggregationType = Literal["sum", "mean", "count", "min", "max", "median"]
 
 
+PaletteName = Literal["default", "ocean", "sunset", "forest"]
+AxisScale = Literal["linear", "log"]
+
+
+class ChartFormat(BaseModel):
+    """Presentation choices saved with a chart (Visualization Studio)."""
+
+    palette: Optional[PaletteName] = None
+    show_data_labels: Optional[bool] = None
+    show_grid: Optional[bool] = None
+    x_scale: Optional[AxisScale] = None
+    y_scale: Optional[AxisScale] = None
+
+
 class ChartConfig(BaseModel):
     x: str
     y: Optional[str] = None
@@ -227,6 +241,7 @@ class ChartConfig(BaseModel):
     aggregate: AggregationType = "sum"
     bins: Optional[int] = Field(default=None, ge=1, le=200)
     limit: Optional[int] = Field(default=5000, ge=1, le=50000)
+    format: Optional[ChartFormat] = None
 
 
 class ChartRequest(BaseModel):
@@ -246,6 +261,83 @@ class ChartResponse(BaseModel):
 
 
 class ChartListItem(ChartResponse):
+    pass
+
+
+# --------------------------------------------------------------- Dashboards
+
+DashboardWidgetType = Literal["kpi", "chart", "filter", "insight", "text"]
+
+WIDGET_TYPES_FOR_ERROR = "kpi, chart, filter, insight, text"
+
+
+def _validate_dashboard_widgets(widgets: List[Dict[str, Any]]) -> None:
+    """Keep a dashboard honest: every widget has a known type and a stable id.
+
+    The ``config`` JSON lives in the database, so a malformed dashboard could be
+    saved once and then break every render. Validating here means a dashboard is
+    either well-formed or rejected at save time — never silently dropped later.
+    """
+    for index, widget in enumerate(widgets):
+        if not isinstance(widget, dict):
+            raise ValueError(f"Widget {index} must be an object")
+        widget_id = widget.get("id")
+        if not isinstance(widget_id, str) or not widget_id.strip():
+            raise ValueError(f"Widget {index} needs a stable string id")
+        widget_type = widget.get("type")
+        if widget_type not in WIDGET_TYPES_FOR_ERROR.split(", "):
+            raise ValueError(
+                f"Widget {widget_id} has unknown type '{widget_type}'. "
+                f"Allowed: {WIDGET_TYPES_FOR_ERROR}."
+            )
+        if widget_type == "chart" and not isinstance(widget.get("chart_id"), int):
+            raise ValueError(f"Chart widget {widget_id} needs a chart_id")
+        if widget_type == "kpi" and widget.get("source") is None:
+            raise ValueError(f"KPI widget {widget_id} needs a source")
+
+
+class DashboardRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    title: Optional[str] = Field(default=None, max_length=200)
+    widgets: List[Dict[str, Any]] = Field(default_factory=list)
+    dataset_version: Optional[int] = None
+
+    @field_validator("widgets")
+    @classmethod
+    def _widgets_must_be_valid(cls, value: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        _validate_dashboard_widgets(value)
+        return value
+
+
+class DashboardUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    title: Optional[str] = Field(default=None, max_length=200)
+    widgets: Optional[List[Dict[str, Any]]] = Field(default=None)
+
+    @field_validator("widgets")
+    @classmethod
+    def _widgets_must_be_valid_optional(
+        cls, value: Optional[List[Dict[str, Any]]]
+    ) -> Optional[List[Dict[str, Any]]]:
+        if value is not None:
+            _validate_dashboard_widgets(value)
+        return value
+
+
+class DashboardResponse(BaseModel):
+    dashboard_id: int
+    dataset_id: int
+    dataset_version: Optional[int] = None
+    dataset_version_id: Optional[int] = None
+    name: str
+    title: Optional[str] = None
+    config: Dict[str, Any]
+    created_by: Optional[int] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class DashboardListItem(DashboardResponse):
     pass
 
 

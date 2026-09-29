@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
@@ -12,7 +12,25 @@ import { DataTable, formatCell } from "@/components/DataTable";
 import { SelectInput } from "@/components/Field";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
-import { api, apiErrorMessage, DatasetDetailResponse, OrgProject } from "@/lib/api";
+import { api, apiErrorMessage, DatasetDetailResponse, ExploreResponse, OrgProject } from "@/lib/api";
+import { DatasetHealth } from "@/components/DatasetHealth";
+import { VariableProfiles } from "@/components/VariableProfiles";
+
+/** "Updated 18 min ago" the way the prototype reads it, falling back to a date. */
+function relativeTime(value: string | null | undefined): string {
+  if (!value) return "—";
+  const stamp = new Date(value).getTime();
+  if (!Number.isFinite(stamp)) return "—";
+  const seconds = Math.round((Date.now() - stamp) / 1000);
+  if (seconds < 60) return "sasa hivi";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `kinyuma ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `kinyuma ${hours} saa`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `kinyuma ${days} siku`;
+  return new Date(value).toLocaleDateString("en-KE");
+}
 
 export default function DatasetDetailPage() {
   const params = useParams<{ id: string }>();
@@ -23,6 +41,7 @@ export default function DatasetDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<OrgProject[]>([]);
   const [meId, setMeId] = useState<number | null>(null);
+  const [explore, setExplore] = useState<ExploreResponse | null>(null);
 
   useEffect(() => {
     api.auth
@@ -50,6 +69,25 @@ export default function DatasetDetailPage() {
     load();
   }, [load]);
 
+  // Explore is what carries the mean, median and distribution for the health
+  // panel. It is loaded alongside the detail but never blocks the page: if it
+  // fails the panel still shows completeness from the profiles.
+  useEffect(() => {
+    if (!Number.isFinite(datasetId)) return;
+    let cancelled = false;
+    api.datasets
+      .explore(datasetId)
+      .then((response) => {
+        if (!cancelled) setExplore(response);
+      })
+      .catch(() => {
+        if (!cancelled) setExplore(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [datasetId, load]);
+
   useEffect(() => {
     api.organizations
       .list()
@@ -76,9 +114,12 @@ export default function DatasetDetailPage() {
     }
   }
 
-  const columns = detail?.columns ?? [];
-  const previewRows = detail?.preview_rows ?? [];
-  const previewColumns = previewRows.length > 0 ? Object.keys(previewRows[0]) : [];
+  const columns = useMemo(() => detail?.columns ?? [], [detail]);
+  const previewRows = useMemo(() => detail?.preview_rows ?? [], [detail]);
+  const previewColumns = useMemo(
+    () => (previewRows.length > 0 ? Object.keys(previewRows[0]) : []),
+    [previewRows]
+  );
   const totalMissing = columns.reduce(
     (sum, column) => sum + (column.missing_count || 0),
     0
@@ -88,10 +129,40 @@ export default function DatasetDetailPage() {
     .filter((column) => column.data_type === "numeric")
     .map((column) => column.name);
 
+  // The type row under each preview column name. The stored dtype is what the
+  // file actually holds; the explore kind is the richer reading of it, so use
+  // that when it is available and fall back to the profile.
+  const previewTypes = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const column of previewColumns) {
+      const kind = explore?.columns.find((entry) => entry.name === column)?.kind;
+      const stored = columns.find((entry) => entry.name === column)?.data_type;
+      if (kind) {
+        map[column] =
+          kind === "numeric"
+            ? "Numeric"
+            : kind === "categorical"
+              ? "Categorical"
+              : kind === "datetime"
+                ? "Date"
+                : kind === "boolean"
+                  ? "Yes/No"
+                  : "Text";
+      } else if (stored === "numeric") {
+        map[column] = "Numeric";
+      } else if (stored === "integer") {
+        map[column] = "Numeric";
+      } else {
+        map[column] = "Categorical";
+      }
+    }
+    return map;
+  }, [previewColumns, explore, columns]);
+
   return (
     <AppShell
       title={detail?.dataset.original_filename ?? "Dataset"}
-      description="Angalia muundo wa data, safisha kasoro, kisha chambua."
+      description={`Version ${detail?.dataset_version ?? 1} · Updated ${relativeTime(detail?.dataset.uploaded_at)}`}
       actions={
         <>
           <Link href="/datasets">
@@ -180,6 +251,53 @@ export default function DatasetDetailPage() {
                 </dd>
               </div>
             </dl>
+          )}
+
+          <Card
+            title="Preview ya data"
+            description={`Rows ${previewRows.length} za kwanza kama zilivyo sasa. Aina ya kila column iko chini ya jina lake.`}
+            icon="table"
+            footer={`${detail?.dataset.row_count.toLocaleString() ?? 0} rows · ${detail?.dataset.column_count ?? 0} columns`}
+          >
+            {previewRows.length === 0 ? (
+              <EmptyState
+                title="Hakuna data ya kutosha"
+                description="Faili linaonekana halina rows."
+                icon="table"
+              />
+            ) : (
+              <DataTable
+                caption="Dataset preview"
+                columns={previewColumns}
+                rows={previewRows}
+                numericColumns={numericColumns}
+                columnTypes={previewTypes}
+                missingDisplay="dot"
+                typeRowTone={(column) =>
+                  (columns.find((entry) => entry.name === column)?.missing_count ?? 0) > 0
+                    ? "warning"
+                    : "default"
+                }
+                maxHeight="28rem"
+              />
+            )}
+          </Card>
+
+          {detail && (
+            <DatasetHealth
+              rowCount={detail.dataset.row_count}
+              columnCount={detail.dataset.column_count}
+              columns={columns}
+              explore={explore?.columns ?? null}
+              isOwnDataset={meId === null || detail.dataset.user_id === meId}
+            />
+          )}
+
+          {explore && (
+            <VariableProfiles
+              columns={explore.columns}
+              rowCount={explore.row_count}
+            />
           )}
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -308,28 +426,6 @@ export default function DatasetDetailPage() {
                 return formatCell(value);
               }}
             />
-          </Card>
-
-          <Card
-            title="Preview ya data"
-            description={`Rows ${previewRows.length} za kwanza kama zilivyo sasa.`}
-            icon="table"
-          >
-            {previewRows.length === 0 ? (
-              <EmptyState
-                title="Hakuna data ya kutosha"
-                description="Faili linaonekana halina rows."
-                icon="table"
-              />
-            ) : (
-              <DataTable
-                caption="Dataset preview"
-                columns={previewColumns}
-                rows={previewRows}
-                numericColumns={numericColumns}
-                maxHeight="28rem"
-              />
-            )}
           </Card>
 
           <Card

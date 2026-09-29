@@ -3,6 +3,9 @@
 import { Badge } from "@/components/Badge";
 import { DataTable, MissingBadge, formatCell, isMissingValue } from "@/components/DataTable";
 import { Icon } from "@/components/Icon";
+import { ResidualDiagnostic } from "@/components/ResidualDiagnostic";
+import type { ResidualPattern, ResidualPoint } from "@/components/ResidualDiagnostic";
+import { CoefficientTable, ResultHeadline } from "@/components/ResultHeadline";
 import { StandardResult } from "@/lib/api";
 import { colorForIndex } from "@/lib/constants";
 
@@ -604,6 +607,10 @@ interface StandardResultViewProps {
   result: StandardResult;
   /** Optional next-step buttons (design system §10 layer 6). */
   actions?: React.ReactNode;
+  /** The user's own research question, shown as the headline claim. */
+  question?: string | null;
+  /** Author of the run, for the reproducibility line. */
+  authorName?: string | null;
 }
 
 function metaString(meta: Record<string, unknown>, ...keys: string[]): string | null {
@@ -616,40 +623,77 @@ function metaString(meta: Record<string, unknown>, ...keys: string[]): string | 
 }
 
 /** Layer 0 — reproducibility: which data version, engine and run produced this. */
-function ProvenanceStrip({ result }: { result: StandardResult }) {
+function ProvenanceStrip({
+  result,
+  authorName = null,
+}: {
+  result: StandardResult;
+  authorName?: string | null;
+}) {
   const version = metaString(result.meta, "dataset_version", "version");
   const engine = metaString(result.meta, "engine", "engine_version", "method_version");
   const dataset = metaString(result.meta, "dataset_name", "filename", "original_filename");
   const createdAt = metaString(result.meta, "created_at", "timestamp", "computed_at");
-  if (!version && !engine && !dataset && !createdAt) return null;
+  if (!version && !engine && !dataset && !createdAt && !authorName) return null;
 
   return (
-    <dl className="flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-md border border-surface-border bg-surface-sunken px-3.5 py-2.5 text-caption">
-      {version && (
-        <div className="flex items-center gap-1.5">
-          <dt className="text-ink-muted">Data version</dt>
-          <dd className="font-mono font-medium text-ink">v{version}</dd>
-        </div>
-      )}
-      {dataset && (
-        <div className="flex min-w-0 items-center gap-1.5">
-          <dt className="shrink-0 text-ink-muted">Dataset</dt>
-          <dd className="truncate font-medium text-ink">{dataset}</dd>
-        </div>
-      )}
-      {engine && (
-        <div className="flex items-center gap-1.5">
-          <dt className="text-ink-muted">Engine</dt>
-          <dd className="font-mono font-medium text-ink">{engine}</dd>
-        </div>
-      )}
-      {createdAt && (
-        <div className="flex items-center gap-1.5">
-          <dt className="text-ink-muted">Imekokolewa</dt>
-          <dd className="text-ink">{createdAt}</dd>
-        </div>
-      )}
-    </dl>
+    <div className="rounded-md border border-surface-border bg-surface-sunken px-3.5 py-2.5">
+      <p className="text-overline uppercase tracking-wide text-ink-muted">
+        Run inayoweza kurudiwa
+      </p>
+      <dl className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-ink-secondary">
+        {createdAt && (
+          <div className="flex items-center gap-1.5">
+            <dt className="sr-only">Muda</dt>
+            <dd>{createdAt}</dd>
+          </div>
+        )}
+        {createdAt && (version || dataset || authorName) && (
+          <span aria-hidden="true" className="text-surface-border-strong">
+            ·
+          </span>
+        )}
+        {version && (
+          <div className="flex items-center gap-1.5">
+            <dt className="text-ink-muted">dataset</dt>
+            <dd className="font-mono font-medium text-ink">v{version}</dd>
+          </div>
+        )}
+        {(version || createdAt) && (dataset || engine || authorName) && (
+          <span aria-hidden="true" className="text-surface-border-strong">
+            ·
+          </span>
+        )}
+        {dataset && (
+          <div className="flex min-w-0 items-center gap-1.5">
+            <dt className="sr-only">Faili</dt>
+            <dd className="truncate font-medium text-ink">{dataset}</dd>
+          </div>
+        )}
+        {dataset && (engine || authorName) && (
+          <span aria-hidden="true" className="text-surface-border-strong">
+            ·
+          </span>
+        )}
+        {engine && (
+          <div className="flex items-center gap-1.5">
+            <dt className="text-ink-muted">engine</dt>
+            <dd className="font-mono font-medium text-ink">{engine}</dd>
+          </div>
+        )}
+        {engine && authorName && (
+          <span aria-hidden="true" className="text-surface-border-strong">
+            ·
+          </span>
+        )}
+        {authorName && (
+          <div className="flex items-center gap-1.5">
+            <dt className="text-ink-muted">na</dt>
+            <dd className="font-medium text-ink">{authorName}</dd>
+          </div>
+        )}
+      </dl>
+    </div>
   );
 }
 
@@ -830,7 +874,12 @@ function CorrelationMatrixView({ result }: { result: StandardResult }) {
   );
 }
 
-export function StandardResultView({ result, actions }: StandardResultViewProps) {
+export function StandardResultView({
+  result,
+  actions,
+  question = null,
+  authorName = null,
+}: StandardResultViewProps) {
   const pValue = result.test?.p_value;
   const significant = result.test?.significant ?? null;
   const groupValues = findGroupValues(result.estimate);
@@ -840,29 +889,22 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
       result.confidence_interval.upper !== null) ||
     groupValues !== null;
 
+  const residualPoints = Array.isArray(result.diagnostics?.residual_plot)
+    ? (result.diagnostics.residual_plot as ResidualPoint[])
+    : [];
+  const residualPattern = (result.diagnostics?.residual_pattern ?? null) as
+    | ResidualPattern
+    | null;
+  const coefficients = Array.isArray(result.tables?.coefficients)
+    ? (result.tables.coefficients as Record<string, unknown>[])
+    : [];
+
   return (
     <div className="space-y-6">
-      {/* Layer 1 — Kichwa cha habari */}
-      <div>
-        <p className="text-body-lg text-ink">{buildHeadline(result)}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Badge tone="primary">{result.analysis_type}</Badge>
-          {result.test?.method && (
-            <Badge tone="neutral" icon="calculator">
-              {result.test.method}
-            </Badge>
-          )}
-          {significant !== null && (
-            <Badge tone={significant ? "success" : "neutral"}>
-              Umuhimu wa kitakwimu: {significant ? "Ndiyo" : "Hapana"}
-            </Badge>
-          )}
-          {result.status !== "success" && <Badge tone="warning">{result.status}</Badge>}
-        </div>
-      </div>
+      {/* Layer 1 — Kichwa cha habari: the claim, the method, the key numbers */}
+      <ResultHeadline result={result} question={question} />
 
-      <ProvenanceStrip result={result} />
-
+      <ProvenanceStrip result={result} authorName={authorName} />
       {result.warnings.length > 0 && (
         <div
           role="alert"
@@ -893,6 +935,18 @@ export function StandardResultView({ result, actions }: StandardResultViewProps)
             {groupValues && <GroupBars values={groupValues} />}
           </div>
         )
+      )}
+
+      {coefficients.length > 0 && (
+        <div className="rounded-md border border-surface-border bg-surface-sunken p-4">
+          <CoefficientTable result={result} />
+        </div>
+      )}
+
+      {residualPoints.length > 0 && (
+        <div className="rounded-md border border-surface-border bg-surface-panel p-4">
+          <ResidualDiagnostic points={residualPoints} pattern={residualPattern} />
+        </div>
       )}
 
       {/* Layer 4 — Angalia zaidi (undani wa kitakwimu) */}

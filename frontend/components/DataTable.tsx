@@ -67,6 +67,20 @@ interface DataTableProps {
   unsortableColumns?: string[];
   /** Display names for structural columns; dataset column names stay untouched. */
   columnLabels?: Record<string, string>;
+  /**
+   * How a missing cell reads. "badge" (default) spells it out for the tables
+   * where the count matters; "dot" is the compact prototype glyph, for a data
+   * preview where "Hakuna" repeated 400 times costs more than it explains.
+   */
+  missingDisplay?: "badge" | "dot";
+  /**
+   * A second header row carrying the data type of each column, the way a
+   * spreadsheet shows it. It is a real `<th>` row with a scope, so a screen
+   * reader gets the type attached to the column rather than to a value.
+   */
+  columnTypes?: Record<string, string>;
+  /** Highlight columns whose cells are mostly empty, in the type row. */
+  typeRowTone?: (column: string) => "default" | "warning";
 }
 
 const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
@@ -83,6 +97,25 @@ export function MissingBadge() {
     >
       <Icon name="alert-circle" size={12} className="shrink-0" />
       <span>Hakuna</span>
+    </span>
+  );
+}
+
+/**
+ * The compact form: a dot, which is what the prototype uses in a data preview.
+ *
+ * The dot alone would fail §11 on colour and shape, so the word is kept for
+ * assistive technology only and marked aria-hidden on the glyph. The
+ * information is still announced; it is just no longer shouting "Hakuna" in
+ * every cell of a 5,000-row preview.
+ */
+export function MissingDot() {
+  return (
+    <span className="inline-flex items-center text-ink-muted" title="Thamani haipo">
+      <span aria-hidden="true" className="text-body leading-none">
+        &bull;
+      </span>
+      <span className="sr-only">Thamani haipo</span>
     </span>
   );
 }
@@ -116,6 +149,9 @@ export function DataTable({
   stickyHeader = true,
   unsortableColumns = [],
   columnLabels = {},
+  missingDisplay = "badge",
+  columnTypes,
+  typeRowTone,
 }: DataTableProps) {
   const [sort, setSort] = useState<SortState | null>(null);
   const numeric = useMemo(() => new Set(numericColumns), [numericColumns]);
@@ -148,7 +184,9 @@ export function DataTable({
     row: Record<string, unknown>,
   ): ReactNode => {
     if (renderCell) return renderCell(column, value, row);
-    if (isMissingValue(value)) return <MissingBadge />;
+    if (isMissingValue(value)) {
+      return missingDisplay === "dot" ? <MissingDot /> : <MissingBadge />;
+    }
     if (typeof value === "boolean") {
       return (
         <span
@@ -267,6 +305,39 @@ export function DataTable({
                 );
               })}
             </tr>
+            {columnTypes && (
+              <tr className="bg-surface-sunken">
+                {columns.map((column) => {
+                  const type = columnTypes[column];
+                  const warning = typeRowTone?.(column) === "warning";
+                  return (
+                    <th
+                      key={`type-${column}`}
+                      scope="col"
+                      className={`border-b border-surface-border px-3 py-1 text-overline font-normal normal-case tracking-normal ${
+                        numeric.has(column) || typeof rows[0]?.[column] === "number"
+                          ? "text-right"
+                          : "text-left"
+                      } ${warning ? "text-warning-700" : "text-ink-muted"}`}
+                    >
+                      {type ? (
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-pill px-1.5 py-0.5 ${
+                            warning
+                              ? "bg-warning-bg text-warning-700"
+                              : "bg-surface-panel text-ink-muted"
+                          }`}
+                        >
+                          {type}
+                        </span>
+                      ) : (
+                        <span>&nbsp;</span>
+                      )}
+                    </th>
+                  );
+                })}
+              </tr>
+            )}
           </thead>
           <tbody>
             {sorted.map((row, rowIndex) => (

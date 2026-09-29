@@ -882,6 +882,75 @@ def main() -> int:
             "independent OLS is exact on perfect data",
         )
 
+        # The residual diagnostics are part of the standard result: a binned
+        # plot the frontend draws, and a pattern verdict that is honest when a
+        # curve would be invisible to a straight-line read alone.
+        residual_plot_points = regression["diagnostics"]["residual_plot"]
+        check(
+            isinstance(residual_plot_points, list) and len(residual_plot_points) > 0,
+            "regression returns residual plot points",
+        )
+        check(
+            len(residual_plot_points) <= 40,
+            "residual plot is bounded to 40 bins",
+        )
+        check(
+            all(
+                isinstance(point, dict)
+                and point.get("predicted") is not None
+                and point.get("residual") is not None
+                and point.get("residual_sd") is not None
+                and point.get("count") is not None
+                for point in residual_plot_points
+            ),
+            "each residual bin carries predicted, residual, sd and count",
+        )
+        check(
+            regression["diagnostics"]["residual_pattern"]["status"] in {"pass", "warn"},
+            "residual pattern returns a verdict",
+        )
+
+        rng_planet = np.random.default_rng(2026)
+        exact_x = rng_planet.normal(0, 1, 400)
+        exact_y = 2.0 + 3.0 * exact_x + rng_planet.normal(0, 0.5, 400)
+        perfect_points = stats_engine.residual_plot(
+            2.0 + 3.0 * exact_x, exact_y - (2.0 + 3.0 * exact_x)
+        )
+        check(
+            stats_engine.residual_pattern(perfect_points)["status"] == "pass",
+            "flat residuals read as pass",
+        )
+
+        bowl_x = rng_planet.uniform(0, 6, 400)
+        bowl_y = bowl_x**2
+        bowl_fit = stats_engine.ols_fit(
+            bowl_x[:, None], bowl_y, ["x"]
+        )
+        bowl_points = stats_engine.residual_plot(
+            bowl_fit["fitted"], bowl_fit["residuals"]
+        )
+        check(
+            stats_engine.residual_pattern(bowl_points)["status"] == "warn",
+            "a bowl in the residuals is flagged by the curvature term",
+        )
+
+        widening_x = rng_planet.uniform(0, 10, 800)
+        widening_y = 2 * widening_x + rng_planet.normal(0, 0.3 * (1 + widening_x), 800)
+        widening_fit = stats_engine.ols_fit(
+            widening_x[:, None], widening_y, ["x"]
+        )
+        widening_points = stats_engine.residual_plot(
+            widening_fit["fitted"], widening_fit["residuals"]
+        )
+        check(
+            stats_engine.residual_pattern(widening_points)["status"] == "warn",
+            "a widening funnel is flagged",
+        )
+        check(
+            stats_engine.residual_plot(np.array([]), np.array([])) == [],
+            "empty residual plot degrades to []",
+        )
+
         runs = client.get(f"/api/v1/datasets/{dataset_id}/analysis", headers=headers)
         check(
             len(runs.json()) == expected_runs,

@@ -116,6 +116,195 @@ def _effect_label(value: float, small: float, medium: float, large: float) -> st
     return "large"
 
 
+# The residual plot is drawn from binned means rather than from every row: a
+# scatter of 40,000 points is unreadable in a browser and a 2 MB JSON response.
+# Binning keeps the shape, which is the thing a residual plot exists to show.
+RESIDUAL_PLOT_BINS = 40
+
+
+def residual_plot(
+    fitted: np.ndarray, residuals: np.ndarray
+) -> List[Dict[str, Any]]:
+    """Binned predicted-vs-residual means, for the residual diagnostic chart.
+
+    Rows are grouped into equal-width bands of the fitted value and each band
+    reports its mean prediction, mean residual and the spread of residuals
+    inside it. The mean residual per band is what reveals curvature or a
+    funnel shape; a single raw residual cannot.
+
+    The residual standard deviation per band is included because a band whose
+    spread grows with the prediction is heteroscedasticity, which the mean
+    alone would hide.
+    """
+    fitted = np.asarray(fitted, dtype=float)
+    residuals = np.asarray(residuals, dtype=float)
+    if fitted.size == 0 or fitted.size != residuals.size:
+        return []
+
+    finite = np.isfinite(fitted) & np.isfinite(residuals)
+    fitted = fitted[finite]
+    residuals = residuals[finite]
+    if fitted.size == 0:
+        return []
+
+    low, high = float(fitted.min()), float(fitted.max())
+    if high <= low:
+        # Every prediction is the same number, so there is no x-axis to spread
+        # them over. One band is the honest answer.
+        bands = [fitted <= high + 1e-12]
+    else:
+        width = (high - low) / RESIDUAL_PLOT_BINS
+        edges = low + width * np.arange(RESIDUAL_PLOT_BINS + 1)
+        bands = [
+            (fitted >= edges[index]) & (fitted <= edges[index + 1] if index == RESIDUAL_PLOT_BINS - 1 else fitted < edges[index + 1])
+            for index in range(RESIDUAL_PLOT_BINS)
+        ]
+
+    points: List[Dict[str, Any]] = []
+    for mask in bands:
+        if not mask.any():
+            continue
+        band_residuals = residuals[mask]
+        points.append(
+            {
+                "predicted": _round(float(fitted[mask].mean()), 4),
+                "residual": _round(float(band_residuals.mean()), 4),
+                "residual_sd": _round(float(band_residuals.std(ddof=0)), 4)
+                if band_residuals.size > 1
+                else 0.0,
+                "count": int(band_residuals.size),
+            }
+        )
+    return points
+
+
+def residual_pattern(points: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """A plain reading of the residual plot: any drift, curvature or widening.
+
+    The binned means are fitted with a weighted quadratic, and the linear and
+    squared terms are each lifted against their own standard error. A trend mid
+    range is caught by the linear term; a bowl or an arch by the quadratic one.
+    A symmetric bowl has a net slope of zero and would be invisible to a line
+    alone, so the curvature term is not optional.
+    """
+    usable = [
+        point
+        for point in points
+        if point.get("predicted") is not None and point.get("residual") is not None
+    ]
+    n = len(usable)
+    if n < 4:
+        return {"status": "insufficient", "detail": "Too few bands to read a pattern."}
+
+    x = np.array([float(point["predicted"]) for point in usable])
+    y = np.array([float(point["residual"]) for point in usable])
+    weights = np.array(
+        [max(float(point.get("count") or 1), 1.0) for point in usable],
+        dtype=float,
+    )
+    if float(x.max() - x.min()) <= 0:
+        return {
+            "status": "insufficient",
+            "detail": "All predictions are equal, so there is no spread to check a pattern against.",
+        }
+
+    # Weighted least squares: y ~ 1 + x + x^2 on the binned means. "Weighted"
+    # matters at the edges, where a band can hold five hundred rows or five;
+    # ignoring that would let a single noisy band steer the verdict.
+    x_centred = x - float(np.mean(x))
+    design = np.column_stack(
+        [np.ones(n), x_centred, x_centred**2 - np.mean(x_centred**2)]
+    )
+    w_sqrt = np.sqrt(weights)
+    weighted_design = design * w_sqrt[:, None]
+    weighted_y = y * w_sqrt
+    coefficients, *_ = np.linalg.lstsq(weighted_design, weighted_y, rcond=None)
+    predicted = design @ coefficients
+    residual = weighted_y - weighted_design @ coefficients
+    df = n - 3
+    if df <= 0:
+        return {"status": "insufficient", "detail": "Too few bands to read a pattern."}
+    sigma_squared = float(np.sum(residual**2) / df)
+    covariance = (
+        sigma_squared
+        * np.linalg.inv(weighted_design.T @ weighted_design)
+    )
+
+    def t_value(index: int) -> float:
+        standard_error = float(np.sqrt(max(covariance[index, index], 0.0)))
+        if standard_error <= 0:
+            return 0.0
+        return float(coefficients[index] / standard_error)
+
+    linear = coefficients[1]
+    curvature = coefficients[2]
+    t_linear = t_value(1)
+    t_curve = t_value(2)
+
+    drift = abs(t_linear) >= 2.0
+    curve = abs(t_curve) >= 2.0
+
+    # Funnel: the residual spread growing with the prediction. The lowest and
+    # highest thirds are compared so an edge band or two cannot decide this.
+    sds = np.array([float(point.get("residual_sd") or 0.0) for point in usable])
+    if n >= 6:
+        third = max(int(n / 3), 1)
+        low_spread = float(np.mean(sds[:third]))
+        high_spread = float(np.mean(sds[-third:]))
+        funnel = high_spread >= low_spread * 1.5 and high_spread - low_spread > 0.25
+    else:
+        low_spread = high_spread = float(np.mean(sds))
+        funnel = False
+    spread_growth = high_spread - low_spread
+
+    findings = []
+    if drift and curve:
+        findings.append(
+            "residuals both drift and bend across the fitted range, so the line "
+            "is missing curvature and the relationship is not linear"
+        )
+    elif drift:
+        findings.append(
+            "residuals drift across the fitted range, which suggests an omitted "
+            "curve, interaction or threshold in the relationship"
+        )
+    elif curve:
+        findings.append(
+            "residuals bend across the fitted range (a clear arch or bowl), which "
+            "means a straight line is not describing this relationship"
+        )
+    if funnel:
+        findings.append(
+            "residual spread grows with the prediction (heteroscedasticity), so "
+            "the standard errors are not constant across the range"
+        )
+
+    if findings:
+        status = "warn"
+        detail = (
+            "The residual plot flags: "
+            + "; ".join(findings)
+            + ". Treat the printed coefficients and their uncertainty with "
+            "caution, and compare a robust method or a transform."
+        )
+    else:
+        status = "pass"
+        detail = (
+            "Residuals sit around zero with no drift, no bend and no widening, "
+            "which is what a well-specified linear fit looks like."
+        )
+
+    return {
+        "status": status,
+        "slope": _round(float(linear), 4),
+        "t_linear": _round(t_value(1), 4),
+        "curvature": _round(float(curvature), 4),
+        "t_curvature": _round(t_value(2), 4),
+        "spread_growth": _round(float(spread_growth), 4),
+        "detail": detail,
+    }
+
+
 # ------------------------------------------------------------------- helpers
 
 
@@ -1580,6 +1769,13 @@ def linear_regression_analysis(
         f"{row['estimate']:+.4f}*{row['variable']}" for row in fit["coefficients"][1:]
     )
 
+    # Computed once: the plot and the reading of it come from the same points,
+    # so the chart can never disagree with the verdict printed under it.
+    plot_points = residual_plot(fit["fitted"], fit["residuals"])
+    pattern = residual_pattern(plot_points)
+    if pattern["status"] == "warn":
+        warnings.append(pattern["detail"])
+
     return standard_result(
         "linear_regression",
         sample_size=int(fit["n"]),
@@ -1613,6 +1809,8 @@ def linear_regression_analysis(
             "residual_normality": normality,
             "rows_dropped": dropped,
             "outliers_percentage": _round(outlier_share(y_values), 2),
+            "residual_plot": plot_points,
+            "residual_pattern": pattern,
         },
         warnings=warnings,
         tables={"coefficients": fit["coefficients"]},

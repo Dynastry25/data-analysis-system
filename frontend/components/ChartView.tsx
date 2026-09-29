@@ -4,8 +4,8 @@ import dynamic from "next/dynamic";
 import { useMemo } from "react";
 import type { Data, Layout } from "plotly.js";
 
-import { ChartData } from "@/lib/api";
-import { CHART_PALETTE } from "@/lib/constants";
+import { ChartData, ChartFormat } from "@/lib/api";
+import { paletteFor } from "@/lib/constants";
 import { Icon } from "./Icon";
 import { ChartSkeleton } from "./Skeleton";
 
@@ -18,6 +18,8 @@ const Plot = dynamic(() => import("react-plotly.js"), {
 interface ChartViewProps {
   data: ChartData | null;
   height?: number;
+  /** Saved presentation choices (Visualization Studio). */
+  format?: ChartFormat | null;
 }
 
 const GRID_COLOR = "#E2E8F0";
@@ -40,12 +42,15 @@ const HOVER = {
 } as const;
 
 /** Plotly chart fed by the backend's `chart_data` payload. */
-export function ChartView({ data, height = 380 }: ChartViewProps) {
+export function ChartView({ data, height = 380, format }: ChartViewProps) {
   const traces = useMemo<Data[]>(() => {
     if (!data?.series?.length) return [];
+    const palette = paletteFor(format?.palette);
     return data.series.map((series, index) => {
-      const color = CHART_PALETTE[index % CHART_PALETTE.length];
+      const color = palette[index % palette.length];
       const isNumericY = data.chart_type !== "histogram";
+      const showLabels =
+        format?.show_data_labels !== false && isNumericY && data.chart_type !== "scatter";
       if (data.chart_type === "histogram") {
         return {
           type: "histogram",
@@ -86,7 +91,7 @@ export function ChartView({ data, height = 380 }: ChartViewProps) {
         x: series.x as (string | number)[],
         y: (series.y ?? []) as number[],
         marker: { color, line: { color: "rgba(255,255,255,0.6)", width: 0.5 } },
-        text: isNumericY
+        text: showLabels
           ? ((series.y ?? []) as number[]).map((value) => formatNumber(value))
           : undefined,
         textposition: "outside",
@@ -95,7 +100,7 @@ export function ChartView({ data, height = 380 }: ChartViewProps) {
         hovertemplate: `%{x}<br>${data.y_label}: %{y}<extra>${series.name}</extra>`,
       } as Data;
     });
-  }, [data]);
+  }, [data, format]);
 
   if (!data || traces.length === 0) {
     return (
@@ -112,6 +117,10 @@ export function ChartView({ data, height = 380 }: ChartViewProps) {
     );
   }
 
+  const showGrid = format?.show_grid !== false;
+  const xType = format?.x_scale === "log" ? "log" : undefined;
+  const yType = format?.y_scale === "log" ? "log" : undefined;
+
   const layout: Partial<Layout> = {
     height,
     margin: { l: 64, r: 24, t: 28, b: 64 },
@@ -122,14 +131,16 @@ export function ChartView({ data, height = 380 }: ChartViewProps) {
     hoverlabel: HOVER,
     xaxis: {
       title: { text: data.x_label, font: AXIS_FONT, standoff: 10 },
-      gridcolor: GRID_COLOR,
+      gridcolor: showGrid ? GRID_COLOR : "rgba(0,0,0,0)",
+      type: xType,
       linecolor: AXIS_LINE_COLOR,
       zeroline: false,
       automargin: true,
     },
     yaxis: {
       title: { text: data.y_label, font: AXIS_FONT, standoff: 10 },
-      gridcolor: GRID_COLOR,
+      gridcolor: showGrid ? GRID_COLOR : "rgba(0,0,0,0)",
+      type: yType,
       linecolor: AXIS_LINE_COLOR,
       zeroline: false,
       automargin: true,

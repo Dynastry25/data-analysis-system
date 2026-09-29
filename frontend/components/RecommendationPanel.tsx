@@ -33,6 +33,12 @@ interface RecommendationPanelProps {
   /** The method currently selected in the configure form, used to flag agreement. */
   selectedAnalysisType: string | null;
   onApply: (recommendation: Recommendation["recommendation"]) => void;
+  /**
+   * A recommendation the page already fetched for the same pair. When given,
+   * the panel renders it instead of asking the engine again for the same
+   * variables, so one pair costs one request rather than two.
+   */
+  provided?: Recommendation | null;
   className?: string;
 }
 
@@ -49,9 +55,10 @@ export function RecommendationPanel({
   predictor,
   selectedAnalysisType,
   onApply,
+  provided = null,
   className = "",
 }: RecommendationPanelProps) {
-  const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
+  const [recommendation, setRecommendation] = useState<Recommendation | null>(provided);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef(0);
@@ -59,6 +66,11 @@ export function RecommendationPanel({
   const ready = Boolean(outcome && predictor) && Number.isFinite(datasetId);
 
   useEffect(() => {
+    setRecommendation(provided);
+  }, [provided]);
+
+  useEffect(() => {
+    if (provided) return;
     if (!ready || !outcome || !predictor) {
       setRecommendation(null);
       setError(null);
@@ -87,7 +99,7 @@ export function RecommendationPanel({
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [ready, datasetId, datasetVersion, outcome, predictor]);
+  }, [ready, datasetId, datasetVersion, outcome, predictor, provided]);
 
   if (!ready) {
     return (

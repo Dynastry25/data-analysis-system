@@ -10,12 +10,13 @@ import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
 import { SelectInput, TextInput } from "@/components/Field";
 import { Icon } from "@/components/Icon";
-import { StandardResultView } from "@/components/StandardResultView";
+import { StandardResultView, fmt, pFmt } from "@/components/StandardResultView";
 import { useToast } from "@/components/Toast";
 import {
   apiErrorMessage,
   AssistantAnswer,
   PlanningVariable,
+  StandardResult,
   statflowApi,
 } from "@/lib/api";
 
@@ -139,8 +140,8 @@ export default function AskPage() {
 
   return (
     <AppShell
-      title="Msaidizi wa takwimu"
-      description="Uliza swali kwa lugha ya kawaida — msaidizi hupanga uchambuzi, engine hujibu kwa takwimu zilizothibitishwa."
+      title="AI Statistical Copilot"
+      description="Uliza swali kwa lugha ya kawaida — engine hupanga uchambuzi na kujibu kwa takwimu zilizothibitishwa."
       actions={
         <Link href={`/datasets/${datasetId}`}>
           <Button variant="secondary">Rudi kwenye dataset</Button>
@@ -311,6 +312,37 @@ export default function AskPage() {
   );
 }
 
+/** Layer 5 — practical meaning of a run in plain language. */
+function interpretation(result: StandardResult): string {
+  const sentences: string[] = [];
+  const test = result.test;
+  const effect = result.effect_size;
+  if (test?.significant === true) {
+    sentences.push(
+      "Tofauti/uhusiano huonekana ni wa kweli katika data hii, si bahati tu."
+    );
+  } else if (test?.significant === false) {
+    sentences.push(
+      "Hatuna ushahidi wa kutosha kusema tofauti/uhusiano upo — inawezekana ni bahati au sample ndogo."
+    );
+  }
+  if (effect?.value !== null && effect?.value !== undefined) {
+    sentences.push(
+      `Ukubwa wa athari (${effect.name ?? "effect size"}) ni ${fmt(effect.value)}${effect.interpretation ? ` — ${effect.interpretation}` : ""}.`
+    );
+  }
+  if (test?.statistic !== null && test?.statistic !== undefined) {
+    sentences.push(`Takwimu ya mtihani = ${fmt(test.statistic)} (${test.method ?? "method"}).`);
+  }
+  if (result.estimate?.r_squared !== undefined) {
+    sentences.push(`R² = ${fmt(result.estimate.r_squared)} ya tofauti inaelezewa na model.`);
+  }
+  if (sentences.length === 0) {
+    sentences.push("Hakuna tafsiri rahisi inayoweza kutolewa kwa matokeo haya.");
+  }
+  return sentences.join(" ");
+}
+
 function AnswerView({ answer }: { answer: AssistantAnswer }) {
   const validationTone =
     answer.validation.status === "ok"
@@ -323,11 +355,25 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
     (value): value is string => Boolean(value)
   );
 
+  const result = answer.result;
+  const effect = result?.effect_size?.value ?? null;
+  const pValue = result?.test?.p_value ?? null;
+  const ci = result?.confidence_interval;
+  const significant =
+    result?.test?.significant === true
+      ? "ndio"
+      : result?.test?.significant === false
+        ? "hapana"
+        : "—";
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
+        <Badge tone="primary" icon="sparkles">
+          ASK STATFLOW
+        </Badge>
         {answer.intent.intent && (
-          <Badge tone="primary">intent: {answer.intent.intent}</Badge>
+          <Badge tone="neutral">intent: {answer.intent.intent}</Badge>
         )}
         <Badge tone="neutral">method: {answer.plan.method_label}</Badge>
         <Badge tone={validationTone as "success" | "warning" | "danger"}>
@@ -341,6 +387,89 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
       {variables.length > 0 && (
         <p className="text-caption text-ink-muted">Variables: {variables.join(", ")}</p>
       )}
+
+      <div className="rounded-lg border border-surface-border border-l-4 border-l-primary-400 bg-surface-panel p-4">
+        <p className="text-overline uppercase tracking-wide text-ink-muted">Jibu la copilot</p>
+        <p className="mt-1 text-body-lg font-medium text-ink">{answer.explanation}</p>
+
+        {result && (
+          <dl className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {effect !== null && (
+              <div className="rounded-md bg-surface-sunken px-3 py-2.5">
+                <dt className="text-overline uppercase tracking-wide text-ink-muted">
+                  Effect size
+                </dt>
+                <dd className="tabular mt-0.5 font-mono text-h3 text-ink">
+                  {fmt(effect)}
+                </dd>
+              </div>
+            )}
+            {pValue !== null && (
+              <div className="rounded-md bg-surface-sunken px-3 py-2.5">
+                <dt className="text-overline uppercase tracking-wide text-ink-muted">
+                  p-value
+                </dt>
+                <dd className="tabular mt-0.5 font-mono text-h3 text-ink">
+                  {pFmt(pValue)}
+                </dd>
+              </div>
+            )}
+            {ci && (ci.lower !== null || ci.upper !== null) && (
+              <div className="rounded-md bg-surface-sunken px-3 py-2.5">
+                <dt className="text-overline uppercase tracking-wide text-ink-muted">
+                  CI {ci.level != null ? `${ci.level}%` : ""}
+                </dt>
+                <dd className="tabular mt-0.5 font-mono text-h3 text-ink">
+                  {fmt(ci.lower)} … {fmt(ci.upper)}
+                </dd>
+              </div>
+            )}
+            <div className="rounded-md bg-surface-sunken px-3 py-2.5">
+              <dt className="text-overline uppercase tracking-wide text-ink-muted">
+                Significant
+              </dt>
+              <dd className="tabular mt-0.5 font-mono text-h3 text-ink">{significant}</dd>
+            </div>
+          </dl>
+        )}
+      </div>
+
+      {result && (
+        <section className="rounded-lg border border-surface-border bg-surface-panel p-4">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary-50 text-primary-600">
+              <Icon name="calculator" size={16} />
+            </span>
+            <h3 className="text-h3 text-ink">Maana yake (interpretation)</h3>
+          </div>
+          <p className="text-body text-ink-secondary">
+            {interpretation(result)}
+          </p>
+        </section>
+      )}
+
+      <details className="group rounded-lg border border-surface-border bg-surface-panel">
+        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3">
+          <Icon
+            name="chevron-right"
+            size={14}
+            className="text-ink-muted transition-transform duration-150 group-open:rotate-90"
+          />
+          <span className="text-body font-medium text-ink">Onyesha hesabu kamili</span>
+          <span className="text-caption text-ink-muted">
+            Show Calculation — jedwali na assumptions za engine
+          </span>
+        </summary>
+        <div className="details-content px-4 pb-4">
+          {result ? (
+            <StandardResultView result={result} question={answer.question} />
+          ) : (
+            <p className="text-body text-ink-muted">
+              Engine haikui hesabu kwa swali hili — hakuna takwimu inayoweza kuonyeshwa.
+            </p>
+          )}
+        </div>
+      </details>
 
       {answer.validation.issues.length > 0 && (
         <div className="rounded-md border border-warning/40 bg-warning-bg p-3">
@@ -356,56 +485,31 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
         </div>
       )}
 
-      <section className="rounded-lg border border-surface-border border-l-4 border-l-success bg-surface-panel p-4">
+      <section className="rounded-lg border border-danger/30 border-l-4 border-l-danger bg-danger-bg p-4">
         <div className="mb-1 flex flex-wrap items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-success-bg text-success">
+          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-danger shadow-card">
             <Icon name="shield" size={16} />
           </span>
-          <h3 className="text-h3 text-ink">Computed by Statistical Engine</h3>
+          <h3 className="text-h3 text-ink">LIMITATIONS — mipaka ya copilot</h3>
         </div>
-        <p className="mb-3 text-caption text-ink-muted">
-          Kila namba hapa chini imekokolewa na mhesabu wa takwimu kwa method
-          <span className="font-medium text-ink-secondary"> {answer.plan.method_label}</span>
-          — si na AI. AI hawezi kubadilisha namba hizi.
-        </p>
-        {answer.result ? (
-          <StandardResultView result={answer.result} />
-        ) : (
-          <p className="text-body text-ink-muted">
-            Engine haikui hesabu kwa swali hili. Hakuna takwimu inayotokana na msaidizi.
-          </p>
-        )}
-      </section>
-
-      <section className="rounded-lg border border-primary-200 border-l-4 border-l-primary-400 bg-primary-50/60 p-4">
-        <div className="mb-1 flex flex-wrap items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-primary-600 shadow-card">
-            <Icon name="sparkles" size={16} />
-          </span>
-          <h3 className="text-h3 text-ink">AI Interpretation</h3>
-        </div>
-        <p className="mb-3 text-caption text-ink-muted">
-          Sehemu hii ni maelezo ya AI kwa lugha rahisi. Haibadilishi na haisaini takwimu
-          yoyote iliyokokolewa na engine.
-        </p>
-        <div className="space-y-3">
-          {answer.plan.why && (
-            <div>
-              <p className="mb-1 text-overline uppercase tracking-wide text-ink-muted">
-                Kwa nini method hii?
-              </p>
-              <p className="text-body text-ink-secondary">{answer.plan.why}</p>
-            </div>
+        <ul className="list-disc space-y-1 pl-5 text-caption text-danger-700">
+          <li>
+            Copilot huchagua na kutafsiri; hajabadilishi takwimu zilizokokotwa na engine.
+          </li>
+          <li>
+            Uchambuzi hufanyika kwenye toleo moja la data (
+            {answer.dataset_version != null ? `v${answer.dataset_version}` : "sasa"}); hubadilika
+            ukibadilisha toleo.
+          </li>
+          <li>
+            {answer.intent.confidence < 0.6
+              ? `Uhakika wa nia ni mdogo (${Math.round(answer.intent.confidence * 100)}%). Eleza outcome na predictor kwa usahihi.`
+              : "Hesabu za CI na effect size haziwezi kusema juu ya tafsiri za biashara; thibitisha na mtaalamu."}
+          </li>
+          {answer.intent.keywords.length > 0 && (
+            <li>Maneno yaliyotambuliwa: {answer.intent.keywords.join(", ")}.</li>
           )}
-          <p className="text-body text-ink">{answer.explanation}</p>
-          <p className="flex items-start gap-1.5 rounded-md bg-white/70 px-2.5 py-2 text-caption text-ink-muted">
-            <Icon name="alert-circle" size={14} className="mt-0.5 shrink-0 text-warning" />
-            <span>
-              Maelezo haya yametolewa na AI. Thibitisha kwa matokeo ya engine au dataset
-              rasmi kabla ya kutumia.
-            </span>
-          </p>
-        </div>
+        </ul>
       </section>
 
       {answer.plan.alternatives.length > 0 && (

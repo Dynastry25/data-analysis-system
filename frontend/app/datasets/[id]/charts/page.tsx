@@ -15,10 +15,13 @@ import { useToast } from "@/components/Toast";
 import {
   api,
   apiErrorMessage,
+  ChartFormat,
+  ChartPaletteName,
   ChartRecord,
   ChartType,
   ColumnProfile,
 } from "@/lib/api";
+import { CHART_PALETTES } from "@/lib/constants";
 
 const CHART_TYPE_OPTIONS: { value: ChartType; label: string; use: string }[] = [
   { value: "bar", label: "Chati ya mistari", use: "Kulinganisha makundi" },
@@ -38,6 +41,11 @@ const AGGREGATION_LABELS: Record<string, string> = {
 
 const AGGREGATIONS = ["sum", "mean", "count", "min", "max", "median"] as const;
 
+const SCALE_OPTIONS = [
+  { value: "linear", label: "Linear" },
+  { value: "log", label: "Log" },
+];
+
 export default function ChartsPage() {
   const params = useParams<{ id: string }>();
   const datasetId = Number(params?.id);
@@ -54,6 +62,13 @@ export default function ChartsPage() {
   const [creating, setCreating] = useState(false);
   const [current, setCurrent] = useState<ChartRecord | null>(null);
   const [saved, setSaved] = useState<ChartRecord[]>([]);
+  const [format, setFormat] = useState<ChartFormat>({
+    palette: "default",
+    show_data_labels: true,
+    show_grid: true,
+    x_scale: "linear",
+    y_scale: "linear",
+  });
 
   const numericColumns = columns
     .filter((column) => column.data_type === "numeric")
@@ -102,6 +117,7 @@ export default function ChartsPage() {
           ...(groupBy ? { group_by: groupBy } : {}),
           ...(needsY ? { aggregate } : {}),
           ...(chartType === "histogram" ? { bins: Number(bins) || 20 } : {}),
+          ...(format ? { format } : {}),
         },
       });
       setCurrent(record);
@@ -122,6 +138,9 @@ export default function ChartsPage() {
         <>
           <Link href={`/datasets/${datasetId}`}>
             <Button variant="secondary">Angalia data</Button>
+          </Link>
+          <Link href={`/datasets/${datasetId}/dashboard`}>
+            <Button variant="secondary">Dashboard Builder</Button>
           </Link>
           <Link href={`/datasets/${datasetId}/export`}>
             <Button variant="secondary">Pakua ripoti</Button>
@@ -211,6 +230,112 @@ export default function ChartsPage() {
         </div>
       </Card>
 
+      <Card title="Chanzo & Muundo" description="Palette na format zina jinsi chati inavyowasilishwa, sio takwimu zake." icon="sliders">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <p className="mb-1.5 text-body font-medium text-ink">Palette ya rangi</p>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(CHART_PALETTES) as ChartPaletteName[]).map((name) => {
+                const active = (format.palette ?? "default") === name;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    aria-pressed={active}
+                    className={`flex items-center gap-2 rounded-pill border px-2.5 py-1 text-caption transition-colors ${
+                      active
+                        ? "border-primary-300 bg-primary-50 font-medium text-primary-800"
+                        : "border-surface-border bg-surface-panel text-ink-secondary hover:bg-surface-sunken"
+                    }`}
+                    onClick={() => setFormat((previous) => ({ ...previous, palette: name }))}
+                  >
+                    <span className="flex gap-0.5">
+                      {CHART_PALETTES[name].colors.slice(0, 4).map((color) => (
+                        <span
+                          key={color}
+                          className="h-3 w-3 rounded-full border border-black/10"
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                    </span>
+                    {CHART_PALETTES[name].label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-1.5 text-body font-medium text-ink">Kuonekana</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                aria-pressed={format.show_data_labels !== false}
+                className={`rounded-pill border px-2.5 py-1 text-caption transition-colors ${
+                  format.show_data_labels !== false
+                    ? "border-primary-300 bg-primary-50 font-medium text-primary-800"
+                    : "border-surface-border bg-surface-panel text-ink-secondary hover:bg-surface-sunken"
+                }`}
+                onClick={() =>
+                  setFormat((previous) => ({
+                    ...previous,
+                    show_data_labels: previous.show_data_labels === false,
+                  }))
+                }
+              >
+                Labels za data
+              </button>
+              <button
+                type="button"
+                aria-pressed={format.show_grid !== false}
+                className={`rounded-pill border px-2.5 py-1 text-caption transition-colors ${
+                  format.show_grid !== false
+                    ? "border-primary-300 bg-primary-50 font-medium text-primary-800"
+                    : "border-surface-border bg-surface-panel text-ink-secondary hover:bg-surface-sunken"
+                }`}
+                onClick={() =>
+                  setFormat((previous) => ({
+                    ...previous,
+                    show_grid: previous.show_grid === false,
+                  }))
+                }
+              >
+                Gridlines
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <SelectInput
+              label="Scale ya X"
+              value={format.x_scale ?? "linear"}
+              options={SCALE_OPTIONS}
+              onChange={(event) =>
+                setFormat((previous) => ({
+                  ...previous,
+                  x_scale: event.target.value as ChartFormat["x_scale"],
+                }))
+              }
+            />
+            <SelectInput
+              label="Scale ya Y"
+              value={format.y_scale ?? "linear"}
+              options={SCALE_OPTIONS}
+              onChange={(event) =>
+                setFormat((previous) => ({
+                  ...previous,
+                  y_scale: event.target.value as ChartFormat["y_scale"],
+                }))
+              }
+            />
+          </div>
+        </div>
+        <p className="mt-3 text-caption text-ink-muted">
+          Mapendeleo yanahifadhiwa pamoja na chati kila unapotengeneza. Rangi zinarudishwa
+          kwa kundi moja kila chati ya dataset hii.
+        </p>
+      </Card>
+
       <Card
         title="Preview ya chati"
         description={current ? `${current.chart_type} chart` : "Chati itaonekana hapa"}
@@ -219,7 +344,7 @@ export default function ChartsPage() {
         {loading ? (
           <Skeleton className="h-[380px] w-full" />
         ) : (
-          <ChartView data={current?.chart_data ?? null} />
+          <ChartView data={current?.chart_data ?? null} format={format} />
         )}
       </Card>
 
@@ -261,13 +386,20 @@ export default function ChartsPage() {
                     variant="secondary"
                     size="small"
                     icon="table"
-                    onClick={() => setCurrent(record)}
+                    onClick={() => {
+                      setCurrent(record);
+                      if (record.config.format) setFormat(record.config.format);
+                    }}
                   >
                     Onyesha
                   </Button>
                 </div>
                 <div className="mt-2">
-                  <ChartView data={record.chart_data} height={200} />
+                  <ChartView
+                    data={record.chart_data}
+                    height={200}
+                    format={record.config.format ?? null}
+                  />
                 </div>
               </li>
             ))}

@@ -351,6 +351,12 @@ class Dataset(Base):
         cascade="all, delete-orphan",
         order_by="Chart.id",
     )
+    dashboards = relationship(
+        "Dashboard",
+        back_populates="dataset",
+        cascade="all, delete-orphan",
+        order_by="Dashboard.id",
+    )
     reports = relationship(
         "ExportedReport", back_populates="dataset", cascade="all, delete-orphan"
     )
@@ -457,6 +463,67 @@ class Chart(Base):
             "chart_type": self.chart_type,
             "config": self.config,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class Dashboard(Base):
+    """A saved dashboard: a named grid of widgets pinned to a data version.
+
+    A dashboard, like a chart, is an arrangement (``config``) over data that
+    already exists — saved analyses and charts, column summaries, filters and
+    free-text notes. It records *which* sources it points at, never a copy of
+    the numbers, so the dashboard can be re-rendered and the reproducibility
+    trail stays with the underlying analysis runs and charts.
+
+    Widgets are stored as a JSON array inside ``config["widgets"]`` so adding a
+    widget type never requires a migration. Each widget carries its ``id``
+    (stable across saves), a ``type`` and widget-specific fields; unknown types
+    are rejected at save time so an old dashboard can never be silently dropped.
+    """
+
+    __tablename__ = "dashboards"
+
+    id = Column(Integer, primary_key=True)
+    dataset_id = Column(
+        Integer,
+        ForeignKey("datasets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    dataset_version_id = Column(
+        Integer,
+        ForeignKey("dataset_versions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    name = Column(String(120), nullable=False, default="Dashboard")
+    title = Column(String(200), nullable=True)
+    config = Column(JSON, nullable=False)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    dataset = relationship("Dataset", back_populates="dashboards")
+    dataset_version_record = relationship("DatasetVersion")
+
+    def to_dict(self) -> dict:
+        return {
+            "dashboard_id": self.id,
+            "dataset_id": self.dataset_id,
+            "dataset_version": (
+                self.dataset_version_record.version
+                if self.dataset_version_record is not None
+                else None
+            ),
+            "dataset_version_id": self.dataset_version_id,
+            "name": self.name,
+            "title": self.title,
+            "config": self.config or {},
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 

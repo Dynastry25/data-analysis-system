@@ -16,6 +16,7 @@ import {
   api,
   apiErrorMessage,
   ChartRecord,
+  DashboardRecord,
   http,
   ReportRecord,
   statflowApi,
@@ -36,8 +37,8 @@ const EXPORT_SECTIONS = [
   },
   {
     key: "export",
-    label: "Hamisha",
-    hint: "Pakua ripoti au mpe mtu mwingine ruhusa ya kuiona.",
+    label: "Workspace",
+    hint: "Chagua (workspace) ya dataset hii: dashboards, ripoti na kushiriki.",
   },
 ] as const;
 
@@ -65,6 +66,7 @@ export default function ExportPage() {
   const [analyses, setAnalyses] = useState<AnalysisRunRecord[]>([]);
   const [charts, setCharts] = useState<ChartRecord[]>([]);
   const [reports, setReports] = useState<ReportRecord[]>([]);
+  const [dashboards, setDashboards] = useState<DashboardRecord[]>([]);
   const [datasetVersion, setDatasetVersion] = useState<number | null>(null);
   const [selectedAnalyses, setSelectedAnalyses] = useState<number[]>([]);
   const [selectedCharts, setSelectedCharts] = useState<number[]>([]);
@@ -77,12 +79,14 @@ export default function ExportPage() {
     if (!Number.isFinite(datasetId)) return;
     setLoading(true);
     try {
-      const [datasetDetail, analysisList, chartList, reportList] = await Promise.all([
-        api.datasets.get(datasetId),
-        statflowApi.analysisRuns(datasetId),
-        api.charts.listForDataset(datasetId),
-        api.reports.listForDataset(datasetId),
-      ]);
+      const [datasetDetail, analysisList, chartList, reportList, dashboardList] =
+        await Promise.all([
+          api.datasets.get(datasetId),
+          statflowApi.analysisRuns(datasetId),
+          api.charts.listForDataset(datasetId),
+          api.reports.listForDataset(datasetId),
+          api.dashboards.listForDataset(datasetId),
+        ]);
       const currentVersion = datasetDetail.dataset_version;
       const versionAnalyses = analysisList.filter(
         (item) => item.dataset_version === currentVersion
@@ -94,6 +98,7 @@ export default function ExportPage() {
       setAnalyses(versionAnalyses);
       setCharts(versionCharts);
       setReports(reportList);
+      setDashboards(dashboardList);
       setSelectedAnalyses(versionAnalyses.map((item) => item.analysis_id));
       setSelectedCharts(versionCharts.map((item) => item.chart_id));
     } catch (caught) {
@@ -493,11 +498,133 @@ export default function ExportPage() {
       </Card>
 
       {section === "export" && (
-        <Card
-          title="Hamisha kwa mtu mwingine"
-          icon="users"
-          description="Ripoti inaweza kukopishwa, lakini mtu anayepokea atahitaji akaunti ya StatFlow na ruhusa ya dataset."
-        >
+        <>
+          <Card
+            title="Workspace ya dataset hii"
+            description="Dashboards na ripoti zote za dataset hii — kila artifact imefungwa kwenye toleo la data lililotumiwa."
+            icon="folder"
+          >
+            {dashboards.length === 0 && reports.length === 0 ? (
+              <EmptyState
+                title="Workspace bado iko wazi"
+                description="Tengeneza dashboard au ripoti kwanza; utazipata zikiorodheshwa hapa kama workspace ya project."
+                icon="folder"
+              />
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-md border border-surface-border p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="flex items-center gap-1.5 text-h4 font-semibold text-ink">
+                      <Icon name="dashboard" size={16} />
+                      Dashboards
+                    </h3>
+                    <Link href={`/datasets/${datasetId}/dashboard`}>
+                      <Button variant="ghost" size="small" icon="plus">
+                        Mpya
+                      </Button>
+                    </Link>
+                  </div>
+                  {dashboards.length === 0 ? (
+                    <p className="mt-2 text-body text-ink-secondary">
+                      Hakuna dashboard bado.{" "}
+                      <Link
+                        href={`/datasets/${datasetId}/dashboard`}
+                        className="font-medium text-primary-700 underline underline-offset-2 hover:text-primary-800"
+                      >
+                        Tengeneza dashboard
+                      </Link>
+                    </p>
+                  ) : (
+                    <ul className="mt-2 divide-y divide-surface-border">
+                      {dashboards.map((dashboard) => (
+                        <li
+                          key={dashboard.dashboard_id}
+                          className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0"
+                        >
+                          <span className="flex flex-wrap items-center gap-3">
+                            <span className="text-body font-medium text-ink">
+                              {dashboard.title || dashboard.name}
+                            </span>
+                            <Badge tone="primary">
+                              <span className="font-mono">
+                                v{dashboard.dataset_version}
+                              </span>
+                            </Badge>
+                            <span className="text-caption text-ink-muted">
+                              widgets {dashboard.config?.widgets?.length ?? 0}
+                            </span>
+                          </span>
+                          <Link href={`/datasets/${datasetId}/dashboard`}>
+                            <Button variant="secondary" size="small" icon="table">
+                              Fungua
+                            </Button>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="rounded-md border border-surface-border p-4">
+                  <h3 className="flex items-center gap-1.5 text-h4 font-semibold text-ink">
+                    <Icon name="file-text" size={16} />
+                    Ripoti zilizotengenezwa
+                  </h3>
+                  {reports.length === 0 ? (
+                    <p className="mt-2 text-body text-ink-secondary">
+                      Hakuna ripoti bado.
+                    </p>
+                  ) : (
+                    <ul className="mt-2 divide-y divide-surface-border">
+                      {reports.map((report) => (
+                        <li
+                          key={report.id}
+                          className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0"
+                        >
+                          <span className="flex flex-wrap items-center gap-3">
+                            <Badge
+                              tone={
+                                report.status === "completed"
+                                  ? "success"
+                                  : report.status === "failed"
+                                    ? "danger"
+                                    : "warning"
+                              }
+                            >
+                              {report.status}
+                            </Badge>
+                            <span className="text-body font-medium text-ink">
+                              {report.file_format.toUpperCase()}
+                            </span>
+                            <span className="text-caption text-ink-muted">
+                              {report.created_at
+                                ? new Date(report.created_at).toLocaleString()
+                                : ""}
+                            </span>
+                          </span>
+                          <Button
+                            variant="secondary"
+                            size="small"
+                            icon="download"
+                            disabled={report.status !== "completed"}
+                            onClick={() => downloadReport(report.id, report.file_format)}
+                          >
+                            Pakua
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+          </Card>
+
+          <Card
+            title="Hamisha kwa mtu mwingine"
+            icon="users"
+            description="Ripoti inaweza kukopishwa, lakini mtu anayepokea atahitaji akaunti ya StatFlow na ruhusa ya dataset."
+          >
           <div className="space-y-4">
             <div>
               <p className="text-body font-medium text-ink">Hatua za kushiriki</p>
@@ -551,11 +678,12 @@ export default function ExportPage() {
             </div>
           </div>
         </Card>
+        </>
       )}
 
       <p className="text-caption text-ink-muted">
-        Hatua ya Ripoti haiandishi rekodi; hatua ya Hamisha ndiyo inayorekodi ripoti
-        iliyokamilika. Kwa hiyo &ldquo;Ripoti&rdquo; inabaki kuwa hatua ya kusoma.
+        Kila artifact kwenye Workspace imefungwa kwenye toleo la dataset lililotumiwa.
+        Hatua ya Ripoti haiandishi rekodi; matokeo ya uchambuzi ndiyo yanayorekodiwa.
       </p>
     </AppShell>
   );

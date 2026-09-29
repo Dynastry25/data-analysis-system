@@ -228,6 +228,16 @@ export interface AnalysisRecord extends AnalysisRunRecord {}
 
 export type ChartType = "bar" | "line" | "scatter" | "histogram";
 
+export type ChartPaletteName = "default" | "ocean" | "sunset" | "forest";
+
+export interface ChartFormat {
+  palette?: ChartPaletteName | null;
+  show_data_labels?: boolean | null;
+  show_grid?: boolean | null;
+  x_scale?: "linear" | "log" | null;
+  y_scale?: "linear" | "log" | null;
+}
+
 export interface ChartConfig {
   x: string;
   y?: string | null;
@@ -235,6 +245,7 @@ export interface ChartConfig {
   aggregate?: string;
   bins?: number | null;
   limit?: number | null;
+  format?: ChartFormat | null;
 }
 
 export interface ChartSeries {
@@ -268,6 +279,64 @@ export interface ChartRecord {
   config: ChartConfig;
   chart_data: ChartData;
   created_at: string | null;
+}
+
+// ---------------------------------------------------------------- Dashboards
+
+export type DashboardWidgetType = "kpi" | "chart" | "filter" | "insight" | "text";
+
+/** What a KPI widget is computed from. */
+export interface DashboardKpiSource {
+  /** "analysis" uses a metric from a saved analysis result; "column" uses a column mean. */
+  kind: "analysis" | "column";
+  analysis_id?: number;
+  metric?: string;
+  label?: string;
+  column?: string;
+}
+
+export interface DashboardWidget {
+  id: string;
+  type: DashboardWidgetType;
+  title?: string;
+  // kpi
+  source?: DashboardKpiSource;
+  // chart
+  chart_id?: number;
+  // filter
+  column?: string;
+  operator?: "=" | ">" | "<";
+  value?: string;
+  // insight
+  analysis_id?: number;
+  // text
+  content?: string;
+}
+
+export interface DashboardRecord {
+  dashboard_id: number;
+  dataset_id: number;
+  dataset_version: number | null;
+  dataset_version_id: number | null;
+  name: string;
+  title?: string | null;
+  config: { widgets?: DashboardWidget[] };
+  created_by?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface DashboardCreatePayload {
+  name: string;
+  title?: string;
+  widgets?: DashboardWidget[];
+  dataset_version?: number;
+}
+
+export interface DashboardUpdatePayload {
+  name?: string;
+  title?: string;
+  widgets?: DashboardWidget[];
 }
 
 export interface ExportPayload {
@@ -410,6 +479,22 @@ export const api = {
       http.get<ChartRecord[]>(`/datasets/${id}/charts`).then((r) => r.data),
     get: (chartId: number) =>
       http.get<ChartRecord>(`/charts/${chartId}`).then((r) => r.data),
+  },
+  dashboards: {
+    create: (id: number, payload: DashboardCreatePayload) =>
+      http
+        .post<DashboardRecord>(`/datasets/${id}/dashboards`, payload)
+        .then((r) => r.data),
+    listForDataset: (id: number) =>
+      http.get<DashboardRecord[]>(`/datasets/${id}/dashboards`).then((r) => r.data),
+    get: (dashboardId: number) =>
+      http.get<DashboardRecord>(`/dashboards/${dashboardId}`).then((r) => r.data),
+    update: (dashboardId: number, payload: DashboardUpdatePayload) =>
+      http
+        .put<DashboardRecord>(`/dashboards/${dashboardId}`, payload)
+        .then((r) => r.data),
+    remove: (dashboardId: number) =>
+      http.delete(`/dashboards/${dashboardId}`).then((r) => r.data),
   },
   reports: {
     create: (id: number, payload: ExportPayload) =>
