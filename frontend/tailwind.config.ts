@@ -52,6 +52,11 @@ const config: Config = {
           border: "#E2E8F0",
           "border-strong": "#CBD5E1",
         },
+        sidebar: {
+          DEFAULT: "#111827",
+          deep: "#0B1020",
+          active: "#172554",
+        },
         ink: {
           DEFAULT: "#0F172A",
           secondary: "#475569",
@@ -112,10 +117,10 @@ const config: Config = {
         "page-x": "32px",
       },
       borderRadius: {
-        DEFAULT: "8px",
-        sm: "6px",
-        md: "8px",
-        lg: "12px",
+        DEFAULT: "12px",
+        sm: "8px",
+        md: "12px",
+        lg: "16px",
         pill: "999px",
       },
       boxShadow: {

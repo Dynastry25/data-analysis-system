@@ -18,6 +18,7 @@ interface MetricCardProps {
   value: React.ReactNode;
   hint?: string;
   tone?: MetricTone;
+  accent?: string;
 }
 
 export function MetricCard({
@@ -26,12 +27,19 @@ export function MetricCard({
   value,
   hint,
   tone = "primary",
+  accent,
 }: MetricCardProps) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-surface-border bg-surface-panel p-4 shadow-card transition-shadow duration-150 ease-standard hover:shadow-raised">
+    <div className="relative flex items-start gap-3 overflow-hidden rounded-md border border-surface-border bg-surface-panel p-4 shadow-card transition-shadow duration-150 ease-standard hover:shadow-raised">
+      {accent && (
+        <span
+          aria-hidden="true"
+          className={`absolute inset-x-0 top-0 h-0.5 ${accent}`}
+        />
+      )}
       {icon && (
         <span
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${TONE_CLASSES[tone]}`}
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-sm ${TONE_CLASSES[tone]}`}
         >
           <Icon name={icon} size={20} />
         </span>
