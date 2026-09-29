@@ -172,7 +172,7 @@ export default function UploadPage() {
           }}
           onDragLeave={() => setDragging(false)}
           onDrop={handleDrop}
-          className={`rounded-lg border-2 border-dashed px-6 py-12 text-center transition-colors duration-200 ease-standard ${
+          className={`rounded-md border-2 border-dashed px-6 py-12 text-center transition-colors duration-200 ease-standard ${
             dragging
               ? "border-primary-500 bg-primary-50"
               : "border-surface-border-strong bg-surface-sunken"
@@ -246,10 +246,10 @@ export default function UploadPage() {
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-label="Maendeleo ya upakiaji"
-                  className="h-2 w-full overflow-hidden rounded-pill bg-surface-sunken"
+                  className="h-2 w-full overflow-hidden rounded-full bg-surface-sunken"
                 >
                   <div
-                    className="h-full rounded-pill bg-primary-600 transition-all duration-200 ease-standard"
+                    className="h-full rounded-full bg-primary-600 transition-all duration-200 ease-standard"
                     style={{ width: `${progress}%` }}
                   />
                 </div>

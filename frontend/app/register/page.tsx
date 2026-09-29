@@ -41,7 +41,7 @@ export default function RegisterPage() {
 
   return (
     <main className="flex min-h-screen bg-surface-canvas">
-      <aside className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-neutral-900 p-10 text-white lg:flex">
+      <aside className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-sidebar p-10 text-white lg:flex">
         <div className="flex items-center gap-2.5">
           <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-600">
             <Icon name="chart-line" size={20} />
@@ -63,7 +63,7 @@ export default function RegisterPage() {
               { label: "Ripoti", description: "PDF au Excel kwa kubonyeza moja" },
             ].map((step, index) => (
               <li key={step.label} className="flex items-center gap-3">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-body font-medium text-primary-300">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-body font-medium text-primary-300">
                   {index + 1}
                 </span>
                 <div>
@@ -94,7 +94,7 @@ export default function RegisterPage() {
 
           <form
             onSubmit={handleSubmit}
-            className="space-y-4 rounded-lg border border-surface-border bg-surface-panel p-6 shadow-card"
+            className="space-y-4 rounded-md border border-surface-border bg-surface-panel p-6 shadow-card"
           >
             <TextInput
               label="Jina kamili"
