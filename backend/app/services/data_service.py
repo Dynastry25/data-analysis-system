@@ -15,6 +15,7 @@ import pandas as pd
 from fastapi import UploadFile
 
 from app.config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE_BYTES, STORAGE_DIR
+from app.services.stat_file_readers import STAT_SUFFIXES, read_stat_file
 
 CHUNK_SIZE = 1024 * 1024  # 1MB
 PREVIEW_ROWS = 20
@@ -155,7 +156,8 @@ def read_dataframe(path: str | Path) -> pd.DataFrame:
     """Read a stored dataset file into a DataFrame.
 
     Supported formats: CSV, TSV, TXT (delimiter auto-sniffed), JSON (array of
-    records or dict of columns), XLSX and Parquet.
+    records or dict of columns), XLSX, Parquet, and the statistical package
+    formats Stata (.dta), SPSS (.sav/.zsav/.por) and R (.RData/.rda/.rds).
     """
     path = Path(path)
     if not path.exists():
@@ -182,6 +184,10 @@ def read_dataframe(path: str | Path) -> pd.DataFrame:
             frame = pd.read_parquet(path)
         except Exception as exc:
             raise ValueError(f"Could not read the Parquet file: {exc}") from exc
+    elif suffix in STAT_SUFFIXES:
+        # Stata / SPSS / R. The readers raise ValueError with a message that
+        # names the failing file, so the upload route can report it directly.
+        frame = read_stat_file(path)
     else:
         try:
             frame = pd.read_excel(path, engine="openpyxl")

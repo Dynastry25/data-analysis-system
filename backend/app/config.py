@@ -22,7 +22,12 @@ API_PREFIX = "/api"
 STORAGE_DIR = Path(os.getenv("STORAGE_DIR", str(BASE_DIR / "storage")))
 REPORTS_DIR = STORAGE_DIR / "reports"
 
-ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".json", ".tsv", ".txt", ".parquet"}
+# Upload formats, in two groups. The delimited/spreadsheet group is read by
+# pandas alone; the statistical package group (Stata .dta, SPSS .sav/.zsav/.por,
+# R .RData/.rda/.rds) goes through app.services.stat_file_readers.
+TABLE_EXTENSIONS = {".csv", ".xlsx", ".json", ".tsv", ".txt", ".parquet"}
+STAT_EXTENSIONS = {".dta", ".sav", ".zsav", ".por", ".rdata", ".rds", ".rda"}
+ALLOWED_EXTENSIONS = TABLE_EXTENSIONS | STAT_EXTENSIONS
 MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50MB
 
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)

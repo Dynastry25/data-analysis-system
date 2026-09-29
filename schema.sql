@@ -17,7 +17,7 @@ CREATE TABLE datasets (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     original_filename VARCHAR(255) NOT NULL,
     storage_path VARCHAR(500) NOT NULL,
-    file_type VARCHAR(20) NOT NULL,          -- csv, xlsx
+    file_type VARCHAR(20) NOT NULL,          -- csv, xlsx, dta, sav, rdata, ...
     row_count INTEGER,
     column_count INTEGER,
     status VARCHAR(20) DEFAULT 'uploaded',   -- uploaded, cleaned, analyzed

@@ -46,7 +46,9 @@ privacy checks → delete). A full log is written to `smoke_test_out.log` /
 `statflow_test_out.log`.
 
 `smoke_test.py` also uploads **JSON / TSV / TXT / Parquet** datasets and checks preview +
-versioned cleaning for each format.
+versioned cleaning for each format. `formats_test.py` does the same for the statistical
+package formats — Stata `.dta`, SPSS `.sav`/`.por` — plus the error contract for
+broken R files and for files whose extension does not match their contents.
 
 Result with the current code: **all checks pass**.
 
@@ -153,12 +155,16 @@ backend/
 ## 6. What each endpoint does (short version)
 
 - **Upload**: validates the extension (`.csv`, `.xlsx`, `.json`, `.tsv`, `.txt`,
-  `.parquet`) and a 50MB ceiling *while* streaming the file to
+  `.parquet`, plus the statistical package group `.dta`, `.sav`, `.zsav`, `.por`,
+  `.RData`/`.rda`, `.rds`) and a 50MB ceiling *while* streaming the file to
   `storage/{user_id}/{dataset_id}/data{ext}`; profiles every column
   (type, missing count, unique count, min/max) and stores it in `dataset_columns`.
   `.txt` delimiter is auto-sniffed; every format shares the same `read_dataframe`
   path (and the version store), so cleaning, statistics, charts and exports work
-  identically for all of them.
+  identically for all of them. The package formats are opened by
+  `app/services/stat_file_readers.py` (`pyreadstat` for Stata/SPSS, `pyreadr` for
+  R) with value labels kept as their numeric codes, and a file those libraries
+  cannot parse becomes a 400 rather than a 500.
 - **Profile**: recomputes the profile from the latest immutable version and returns it
   as a read-only response, so profiling never changes database state.
 - **Clean / transform (versioned)**: every operation on

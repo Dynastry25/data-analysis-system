@@ -77,10 +77,13 @@ npm run dev
 cd D:\Project\Data-Analysis-system\backend
 .\venv\Scripts\python.exe tests\smoke_test.py     # end-to-end: 88 checks
 .\venv\Scripts\python.exe tests\statflow_test.py  # statflow: 216 checks
+.\venv\Scripts\python.exe tests\formats_test.py   # Stata/SPSS/R uploads: 59 checks
 .\venv\Scripts\python.exe -m pytest               # zote mbili (fast variant)
 ```
 
 Nywila ya kuthibitisha format mpya (JSON/TSV/TXT/Parquet) iko ndani ya `smoke_test.py`.
+Faili za Stata (`.dta`), SPSS (`.sav`, `.zsav`, `.por`) na R (`.RData`, `.rda`,
+`.rds`) zinathibitishwa na `tests/formats_test.py`.
 
 ---
 
@@ -153,7 +156,7 @@ hivyo dev ya ndani na production zote zinafanya kazi kwa API moja.
 
 1. **Sajili / ingia** — JWT token huhifadhiwa kwenye browser, kila request ina
    `Authorization: Bearer …`.
-2. **Pakia data** — drag & drop CSV, XLSX, JSON, TSV, TXT au Parquet (hadi 50MB).
+2. **Pakia data** — drag & drop CSV, XLSX, JSON, TSV, TXT, Parquet au faili za Stata/SPSS/R (hadi 50MB).
    Mfumo unathibitisha aina na ukubwa wa faili, kisha unachambua columns zote.
 3. **Angalia & safisha** — preview ya rows 20 za kwanza, jedwali la columns (aina, missing,
    unique, min/max), badge za tahadhari kwa missing values, na vitufe 4 vya usafishaji.
