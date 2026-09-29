@@ -3,9 +3,11 @@
 React + TypeScript SPA built with the **Next.js 14 App Router**, styled with **Tailwind
 CSS** following `../ui_ux_design_system.md`, with **Plotly.js** for interactive charts.
 
-It implements the 6-step StatFlow pipeline — **login/register → upload → preview →
-clean → analyse → charts → export** — with a **dashboard home** that surfaces the
-platform's features, quick actions and a stage-by-stage workflow guide.
+It implements the StatFlow pipeline — **login/register → upload → validate → profile →
+clean → transform → explore → analyse → charts → explain → report → export** — grouped
+into the six phases the product is organised around (**Data → Prepare → Analyze →
+Visualize → Explain → Report**), with a **dashboard home** that surfaces the platform's
+features, quick actions and a stage-by-stage workflow guide.
 
 ---
 
@@ -56,7 +58,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000/api
 | `/register` | Sajili (register, then auto-login) |
 | `/datasets` | Dataset list with metric cards, status badges, stage progress, links to every step |
 | `/upload` | Drag & drop upload with a real progress bar |
-| `/datasets/[id]` | Preview table, column profile, missing-value badges, link card to Data Studio |
+| `/datasets/[id]` | Summary metric cards, **`ProfileSummary`** visuals (completeness, type split, unique per column, missing per column), column profile table, preview table, access/project control, Data Studio link |
 | `/datasets/[id]/studio` | Versioned cleaning + transforms, operation history, version preview/download |
 | `/datasets/[id]/statistics` | Unified statistics studio (all engine analyses + versioned run history) |
 | `/datasets/[id]/analyze` | Redirects to `/statistics` (kept so old links keep working) |
@@ -66,25 +68,32 @@ NEXT_PUBLIC_API_URL=http://localhost:8000/api
 | `/organizations` | Mashirika: list + create (creator becomes **owner**) |
 | `/organizations/[id]` | Org detail: RBAC member management (owner/admin/analyst/viewer roles), projects CRUD |
 
-### The 6-stage pipeline (`lib/pipeline.ts`)
+### The workflow (`lib/pipeline.ts`)
 
 The whole product shares **one workflow definition** — `lib/pipeline.ts` is the single
-source of truth:
+source of truth. It holds two levels:
 
-1. **Pakia** `/upload`
-2. **Angalia** `/datasets/[id]`
-3. **Safisha** `/datasets/[id]/studio`
-4. **Chambua** `/datasets/[id]/statistics`
-5. **Chati** `/datasets/[id]/charts`
-6. **Ripoti** `/datasets/[id]/export`
+- **11 stages**, the real work: Pakia `/upload` · Thibitisha `/datasets/[id]/validate` ·
+  Profile `/datasets/[id]/studio?stage=profile` · Safisha `…/studio?stage=clean` ·
+  Badilisha `…/studio?stage=transform` · Chunguza `/datasets/[id]/explore` ·
+  Uchambuzi `/datasets/[id]/statistics` · Chora `/datasets/[id]/charts` ·
+  Eleza `/datasets/[id]/ask` · Ripoti `/datasets/[id]/export?stage=report` ·
+  Hamisha `…/export?stage=export`.
+- **6 phases**, the compact layer the design asks for: Data · Prepare · Analyze ·
+  Visualize · Explain · Report. Eleven items do not fit in a bar on a laptop, so the
+  phases are what a returning user navigates by, and `hrefForPhase()` is the one
+  function that answers "where does phase X start for dataset Y".
 
 It drives four surfaces so the user always knows where they are in the flow:
 
-- **Sidebar "Mtiririko" section** on every dataset page (compact numbered steps).
-- **`PipelineStepper`** — horizontal stepper above the content on dataset pages;
-  completed stages show a check, the current one is filled, all are clickable.
-- **Datasets list + Dashboard** show a `Hatua x/6`-style progress indicator each.
-- **Dashboard "Mtiririko wa kazi" guide** — clickable stage cards for new users.
+- **Sidebar** — Dashboard, Projects, Data, then the five phase links. Phase links act
+  on the dataset in the URL, else on the most recent one.
+- **`WorkflowStrip`** — the `DATA → PREPARE → … → REPORT` bar under the top bar, on
+  every screen, with the phase you are in highlighted.
+- **`JourneyRail`** — the evidence layer inside a dataset page: all 11 stages, each
+  marked done only when a stored record proves it.
+- **Datasets list + Dashboard** — a `Hatua x/11`-style progress indicator and a
+  "Mtiririko wa kazi" guide of clickable stage cards for new users.
 
 ## 6. Structure
 
@@ -108,10 +117,12 @@ frontend/
 │           ├── charts/page.tsx
 │           └── export/page.tsx
 ├── components/
-│   ├── AppShell.tsx            # brand + grouped sidebar, mobile drawer, pipeline stepper
+│   ├── AppShell.tsx            # sidebar (nav + phases) → TopBar → WorkflowStrip → page
+│   ├── TopBar.tsx              # search, help (from pipeline.ts), activity, user menu
+│   ├── WorkflowStrip.tsx       # DATA → PREPARE → … → REPORT bar, on every screen
 │   ├── Icon.tsx                # single inline SVG icon set (Lucide-style, no dependency)
-│   ├── PipelineStepper.tsx     # horizontal 6-stage workflow stepper
 │   ├── MetricCard.tsx          # overview metric with icon badge
+│   ├── ProfileSummary.tsx      # profile drawn: completeness, types, unique, missing
 │   ├── QuickActions.tsx        # shortcut cards to the main features
 │   ├── Button.tsx Badge.tsx Card.tsx Skeleton.tsx DataTable.tsx Toast.tsx
 │   ├── ChartView.tsx           # client-only Plotly wrapper (ssr: false)
@@ -129,9 +140,16 @@ frontend/
 - Colours, type scale, 8px spacing scale and 8px radius live in `tailwind.config.ts`.
 - One icon set (`components/Icon.tsx`, Lucide-style outline SVGs) — no third-party
   icon dependency, so builds stay offline-safe (design system §9).
-- The sidebar has three zones: primary nav, the 6-stage **Mtiririko** flow (only on
-  dataset pages), and the signed-in user + logout at the bottom. On mobile it is an
-  off-canvas drawer.
+- The shell is four zones, top to bottom: a dark **sidebar** (brand, Dashboard /
+  Projects / Data, then the five workflow phases, plus the admin link for platform
+  admins), a **top bar** (search, help, activity, account), the **workflow strip**,
+  then the page. On mobile the sidebar is an off-canvas drawer opened from the top bar.
+- The reference mock for this layout draws its chrome at 8–10px type with ~30px rows,
+  which contradicts this project's own design system (§3 caption 12px, §11 44px touch
+  targets and 4.5:1 contrast). So the **arrangement** follows the mock and the
+  **sizing** follows the design system.
+- The top bar's panels are backed by real endpoints (dataset search, recent activity);
+  nothing in it is a placeholder that looks like a feature.
 - Charts use the colourblind-safe **Okabe-Ito** palette from `lib/constants.ts`.
 - Meaning is never colour-only: missing values / statuses use an icon **and** a colour.
 - `Skeleton` shimmer is used while tables and charts load (instead of a bare spinner).

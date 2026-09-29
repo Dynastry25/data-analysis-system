@@ -20,7 +20,7 @@ Hii ni implementesheni ya MVP kwa mujibu wa nyaraka za mradi:
 | Kipengele cha MVP | Hali | Wapi |
 |---|---|---|
 | Auth (register/login, JWT) | ✅ | `backend/app/routers/auth.py`, `app/login`, `app/register` |
-| **Dashboard home** (metrics, quick actions, recent datasets, 6-stage workflow guide) | ✅ | `app/dashboard`, AppShell sidebar + `PipelineStepper` |
+| **Dashboard home** (metrics, quick actions, recent datasets, workflow guide) | ✅ | `app/dashboard`, AppShell sidebar + `WorkflowStrip` |
 | Upload CSV/XLSX (validation + progress) | ✅ | `backend/app/routers/datasets.py`, `app/upload` |
 | Data preview (rows, columns, types) | ✅ | `app/datasets/[id]` |
 | Data profiling (missing/unique/min/max) | ✅ | `GET /datasets/{id}/profile` |
@@ -35,10 +35,12 @@ Hii ni implementesheni ya MVP kwa mujibu wa nyaraka za mradi:
 | **Migration za database (Alembic)** | ✅ | `backend/migrations/`, `alembic upgrade head` |
 | **Ufikiaji wa data kwenye shirika** (dataset iliyo kwenye mradi kufuatwa kwa role) | ✅ | `deps.get_owned_dataset` (`min_role` parameter) |
 
-**Mtiririko wa uendeshaji (UI):** kila dataset inafuata hatua 6 — Pakia → Angalia →
-Safisha → Chambua → Chati → Ripoti — ikionyeshwa mara moja kwenye sidebar, stepper
-juu ya ukurasa, na kiashirio cha maendeleo kwenye orodha/dashboard. Definisi yote iko
-`frontend/lib/pipeline.ts` (chanzo kimoja cha kweli).
+**Mtiririko wa uendeshaji (UI):** kila dataset inafuata **hatua 11** zilizopangwa katika
+**awamu 6** — Data → Prepare → Analyze → Visualize → Explain → Report. Shell ya
+mtumiaji ina: sidebar yenye Dashboard/Projects/Data + awamu 5, top bar (tafuta, msaada,
+shughuli, akaunti), na `WorkflowStrip` juu ya kila ukurasa. Ndani ya dataset,
+`JourneyRail` huonyesha hatua zote 11 kwa ushahidi halisi (si namba tu). Definisi yote
+iko `frontend/lib/pipeline.ts` (chanzo kimoja cha kweli).
 
 Awamu zote tatu za roadmap (§10 ya spec) zimefikiwa: **Awamu 1** (auth, upload, preview,
 profiling, cleaning), **Awamu 2** (stats, correlation, regression, charts), **Awamu 3**
