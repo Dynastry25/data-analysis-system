@@ -1,4 +1,5 @@
 import type { IconName } from "@/components/Icon";
+import { UPLOAD_FILE_GROUPS } from "@/lib/upload-formats";
 
 /**
  * The StatFlow journey, as one source of truth.
@@ -71,7 +72,7 @@ export const PIPELINE_STAGES: PipelineStage[] = [
     label: "Pakia",
     fullLabel: "Pakia",
     labelEn: "Upload",
-    description: "Pakia faili (CSV, Excel, JSON, TSV, TXT, Parquet)",
+    description: `Pakia faili (${UPLOAD_FILE_GROUPS})`,
     phase: "data",
     icon: "upload",
     hrefFor: () => "/upload",

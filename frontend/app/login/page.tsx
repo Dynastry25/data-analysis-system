@@ -9,12 +9,13 @@ import { TextInput } from "@/components/Field";
 import { Icon, IconName } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, setToken } from "@/lib/api";
+import { UPLOAD_FILE_GROUPS } from "@/lib/upload-formats";
 
 const VALUE_POINTS: { icon: IconName; title: string; description: string }[] = [
   {
     icon: "upload",
     title: "Pakia kwa haraka",
-    description: "CSV, Excel, JSON, TSV, TXT au Parquet, hadi 50MB.",
+    description: `${UPLOAD_FILE_GROUPS}, hadi 50MB.`,
   },
   {
     icon: "calculator",

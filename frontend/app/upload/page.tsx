@@ -10,8 +10,13 @@ import { SelectInput } from "@/components/Field";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, OrgProject, Organization } from "@/lib/api";
+import {
+  UPLOAD_FILE_EXTENSION_LIST,
+  UPLOAD_FILE_GROUPS,
+  UPLOAD_FILE_INPUT_ACCEPT,
+  isAcceptedUploadName,
+} from "@/lib/upload-formats";
 
-const ALLOWED = [".csv", ".xlsx", ".json", ".tsv", ".txt", ".parquet"];
 const MAX_MB = 50;
 
 export default function UploadPage() {
@@ -60,9 +65,8 @@ export default function UploadPage() {
   }
 
   function validate(candidate: File): string | null {
-    const lower = candidate.name.toLowerCase();
-    if (!ALLOWED.some((extension) => lower.endsWith(extension))) {
-      return "File type not supported. Pakia faili la .csv, .xlsx, .json, .tsv, .txt au .parquet pekee.";
+    if (!isAcceptedUploadName(candidate.name)) {
+      return `File type not supported. Pakia faili la ${UPLOAD_FILE_EXTENSION_LIST} pekee.`;
     }
     if (candidate.size > MAX_MB * 1024 * 1024) {
       return `File too large. Maximum allowed size is ${MAX_MB}MB.`;
@@ -116,7 +120,7 @@ export default function UploadPage() {
   return (
     <AppShell
       title="Pakia data"
-      description="CSV, Excel (.xlsx), JSON, TSV, TXT au Parquet, hadi 50MB. Mfumo unasafisha na kuchambua moja kwa moja."
+      description={`Aina zinazokubalika: ${UPLOAD_FILE_GROUPS}. Ukubwa wa juu ${MAX_MB}MB. Mfumo unasafisha na kuchambua moja kwa moja.`}
     >
       {orgs.length > 0 && (
         <Card
@@ -192,12 +196,12 @@ export default function UploadPage() {
             au chagua faili kutoka kompyuta
           </p>
           <p className="mt-1 text-caption text-ink-muted">
-            CSV, Excel (.xlsx), JSON, TSV, TXT au Parquet · hadi {MAX_MB}MB
+            {UPLOAD_FILE_GROUPS} · hadi {MAX_MB}MB
           </p>
           <input
             ref={inputRef}
             type="file"
-            accept=".csv,.xlsx,.json,.tsv,.txt,.parquet"
+            accept={UPLOAD_FILE_INPUT_ACCEPT}
             className="hidden"
             onChange={(event) => pick(event.target.files?.[0])}
           />
@@ -281,6 +285,11 @@ export default function UploadPage() {
           <li>Row ya kwanza iwe majina ya columns (header).</li>
           <li>Columns za namba zisiwe na alama kama &quot;TSh&quot; au &quot;%&quot;.</li>
           <li>Tarehe ziwe katika muundo mmoja (YYYY-MM-DD inapendekezwa).</li>
+          <li>
+            Faili za Stata (.dta), SPSS (.sav, .zsav, .por) na R (.RData, .rda,
+            .rds) zinakubalika; lebo za thamani (value labels) huhifadhiwa kama
+            namba ili columns hizo zipate kubalika na kuchambuliwa.
+          </li>
           <li>
             Faili kubwa (safu 100,000+) zinasindika nyuma ya pazia unaweza kuendelea
             kutumia mfumo.

@@ -9,6 +9,7 @@ import { TextInput } from "@/components/Field";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, setToken } from "@/lib/api";
+import { UPLOAD_FILE_GROUPS } from "@/lib/upload-formats";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -57,7 +58,7 @@ export default function RegisterPage() {
           </p>
           <ol className="mt-8 space-y-4">
             {[
-              { label: "Pakia", description: "CSV, Excel, JSON, TSV, TXT au Parquet" },
+              { label: "Pakia", description: UPLOAD_FILE_GROUPS },
               { label: "Safisha", description: "Ondoa kasoro kwenye Data Studio" },
               { label: "Chambua", description: "Uchambuzi wa takwimu wenye uthibitisho" },
               { label: "Ripoti", description: "PDF au Excel kwa kubonyeza moja" },

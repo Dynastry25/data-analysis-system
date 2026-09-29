@@ -203,7 +203,7 @@ export default function DatasetsPage() {
         ) : datasets.length === 0 ? (
           <EmptyState
             title="Hakuna dataset bado"
-            description="Anza kwa kupakia faili la CSV au Excel."
+            description="Anza kwa kupakia faili la CSV, Excel, JSON, Stata, SPSS au R."
             icon="database"
             action={
               <Link href="/upload">
