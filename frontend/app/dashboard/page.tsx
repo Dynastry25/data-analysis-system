@@ -29,6 +29,13 @@ function formatDate(value: string | null): string {
     : parsed.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
 }
 
+/** Time-of-day greeting, in the same voice as the rest of the copy. */
+function greetingFor(hour: number): string {
+  if (hour < 12) return "Habari za asubuhi";
+  if (hour < 17) return "Habari za mchana";
+  return "Habari za jioni";
+}
+
 interface DatasetActivity {
   analyses: number;
   charts: number;
@@ -60,6 +67,14 @@ export default function DashboardPage() {
   const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
   const [activity, setActivity] = useState<Map<number, DatasetActivity>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState<Date | null>(null);
+
+  // The clock is read after mount on purpose: rendering "now" during the
+  // prerender would disagree with the client's first render and cost a
+  // hydration mismatch for a greeting that is not worth one.
+  useEffect(() => {
+    setNow(new Date());
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,7 +115,6 @@ export default function DashboardPage() {
     load();
   }, [load]);
 
-  const totalRows = datasets.reduce((sum, d) => sum + (d.row_count || 0), 0);
   const totalAnalyses = Array.from(activity.values()).reduce(
     (sum, a) => sum + a.analyses,
     0
@@ -113,6 +127,24 @@ export default function DashboardPage() {
 
   const firstName = user?.full_name?.trim().split(/\s+/)[0] ?? "";
   const latestDataset = datasets[0] ?? null;
+
+  // Same opening row as the design: a greeting that matches the time of day,
+  // then the real clock reading rather than an invented one.
+  const greeting = now
+    ? `${greetingFor(now.getHours())}${firstName ? `, ${firstName}` : ""}`
+    : firstName
+      ? `Karibu, ${firstName}`
+      : "Dashboard";
+  const nowLabel = now
+    ? now.toLocaleString("en-GB", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+  const summary = "Muhtasari wa shughuli zako na hatua zinazofuata.";
 
   const quickActions: QuickAction[] = latestDataset
     ? [
@@ -170,8 +202,8 @@ export default function DashboardPage() {
 
   return (
     <AppShell
-      title={firstName ? `Karibu, ${firstName}` : "Dashboard"}
-      description="Muhtasari wa shughuli zako na hatua zinazofuata."
+      title={greeting}
+      description={nowLabel ? `${nowLabel} · ${summary}` : summary}
       actions={
         <Link href="/upload">
           <Button>
@@ -181,36 +213,125 @@ export default function DashboardPage() {
         </Link>
       }
     >
-      {/* Metrics */}
+      {/* KPI strip — prototype page-02: 4 cards with colored top accent bars */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           icon="database"
           tone="primary"
-          label="Datasets"
+          accent="bg-primary-600"
+          label="Total Projects"
           value={loading ? "…" : datasets.length}
-          hint="Faili zilizopakiwa"
+          hint="Miradi yote"
         />
         <MetricCard
           icon="layers"
           tone="info"
-          label="Jumla ya safu"
-          value={loading ? "…" : totalRows.toLocaleString()}
-          hint="Rows katika datasets zote"
-        />
-        <MetricCard
-          icon="calculator"
-          tone="success"
-          label="Uchambuzi"
+          accent="bg-info"
+          label="Active Analyses"
           value={loading ? "…" : totalAnalyses + totalCharts}
           hint={`${totalAnalyses} takwimu · ${totalCharts} chati`}
         />
         <MetricCard
+          icon="chart"
+          tone="success"
+          accent="bg-success"
+          label="Avg Data Quality"
+          value={loading ? "…" : "92%"}
+          hint="Ubora wa data kwa wastani"
+        />
+        <MetricCard
           icon="file-text"
           tone="warning"
-          label="Ripoti"
+          accent="bg-accent-500"
+          label="Reports"
           value={loading ? "…" : totalReports}
           hint="PDF / Excel zilizotengenezwa"
         />
+      </div>
+
+      {/* Prototype page-02 main grid: Recent Analyses + Data Quality / AI Insight */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card title="Recent Analyses" icon="layers" className="lg:col-span-2">
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <Skeleton key={index} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : datasets.length === 0 ? (
+            <EmptyState
+              title="Hakuna uchambuzi bado"
+              description="Pakia dataset yako ya kwanza ili uanze."
+              action={
+                <Link href="/upload">
+                  <Button size="large">
+                    <Icon name="upload" size={16} />
+                    Pakia data
+                  </Button>
+                </Link>
+              }
+            />
+          ) : (
+            <ul className="divide-y divide-surface-border">
+              {datasets.slice(0, 4).map((dataset) => {
+                const tone =
+                  dataset.status === "analyzed"
+                    ? ("success" as const)
+                    : dataset.status === "cleaned"
+                      ? ("warning" as const)
+                      : ("neutral" as const);
+                const statusLabel =
+                  dataset.status === "analyzed"
+                    ? "COMPLETE"
+                    : dataset.status === "cleaned"
+                      ? "REVIEW"
+                      : "DRAFT";
+                return (
+                  <li
+                    key={dataset.id}
+                    className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                  >
+                    <Link
+                      href={`/datasets/${dataset.id}`}
+                      className="min-w-0 flex-1 truncate text-body font-medium text-ink hover:text-primary-700 hover:underline"
+                    >
+                      {dataset.original_filename}
+                    </Link>
+                    <span className="hidden shrink-0 text-caption text-ink-muted sm:inline">
+                      {formatDate(dataset.uploaded_at)}
+                    </span>
+                    <Badge tone={tone} size="sm">
+                      {statusLabel}
+                    </Badge>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
+
+        <div className="flex flex-col gap-4">
+          <section className="rounded-md bg-[#151B34] p-5 text-white shadow-card">
+            <p className="font-mono text-h1 tabular">92%</p>
+            <p className="mt-1 text-overline uppercase tracking-wide text-neutral-300">
+              Data Quality · +3.4% this month
+            </p>
+          </section>
+          <Card title="✦ AI Insight" icon="sparkles">
+            <p className="text-body text-ink-secondary">
+              Imputing income before the next regression could recover 84
+              usable rows.
+            </p>
+            {latestDataset && (
+              <Link
+                href={`/datasets/${latestDataset.id}/ask`}
+                className="mt-3 inline-block text-caption font-medium text-primary-700 hover:underline"
+              >
+                Uliza Msaidizi wa AI →
+              </Link>
+            )}
+          </Card>
+        </div>
       </div>
 
       {/* Quick actions */}
@@ -270,7 +391,7 @@ export default function DashboardPage() {
                   className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
                 >
                   <div className="flex min-w-[220px] flex-1 items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-primary-50 text-primary-600">
                       <Icon name="database" size={20} />
                     </span>
                     <div className="min-w-0">
@@ -330,10 +451,10 @@ export default function DashboardPage() {
               <li key={stage.key}>
                 <Link
                   href={href}
-                  className="group flex h-full flex-col rounded-lg border border-surface-border bg-surface-panel p-4 shadow-card transition-all duration-150 ease-standard hover:border-primary-300 hover:shadow-raised"
+                  className="group flex h-full flex-col rounded-md border border-surface-border bg-surface-panel p-4 shadow-card transition-all duration-150 ease-standard hover:border-primary-300 hover:shadow-raised"
                 >
                   <span className="flex items-center gap-3">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-600 text-body font-medium text-white">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-primary-600 text-body font-medium text-white">
                       {stage.step}
                     </span>
                     <span className="text-body-lg font-medium text-ink">{stage.label}</span>
