@@ -250,6 +250,31 @@ export function phaseFromStep(step: number | null): PipelinePhase | null {
   );
 }
 
+/** The first stage of each phase is where you enter that phase. */
+const PHASE_ENTRY: Record<PipelinePhaseKey, (datasetId: number | string) => string> = {
+  data: (datasetId) => `/datasets/${datasetId}/validate`,
+  prepare: (datasetId) => `/datasets/${datasetId}/studio?stage=clean`,
+  analyze: (datasetId) => `/datasets/${datasetId}/statistics`,
+  visualize: (datasetId) => `/datasets/${datasetId}/charts`,
+  explain: (datasetId) => `/datasets/${datasetId}/ask`,
+  report: (datasetId) => `/datasets/${datasetId}/export?stage=report`,
+};
+
+/**
+ * Where a phase's work starts, for one dataset.
+ *
+ * With no dataset there is nothing to prepare, analyse or report on, so every
+ * phase resolves to `/upload`: the only honest entry point. Both the sidebar
+ * and the workflow strip read this, so a phase can never point two places.
+ */
+export function hrefForPhase(
+  phaseKey: PipelinePhaseKey,
+  datasetId: number | string | null
+): string {
+  if (datasetId === null) return "/upload";
+  return PHASE_ENTRY[phaseKey](datasetId);
+}
+
 /** Section → pipeline stage for the nested `/datasets/{id}/...` routes. */
 const SECTION_STAGE: Record<string, number> = {
   validate: 2,

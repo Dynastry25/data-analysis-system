@@ -19,9 +19,9 @@ export function QuickActions({ actions }: { actions: QuickAction[] }) {
         <Link
           key={action.label}
           href={action.href}
-          className="group flex h-full flex-col rounded-lg border border-surface-border bg-surface-panel p-4 shadow-card transition-all duration-150 ease-standard hover:border-primary-300 hover:shadow-raised"
+          className="group flex h-full flex-col rounded-md border border-surface-border bg-surface-panel p-4 shadow-card transition-all duration-150 ease-standard hover:border-primary-300 hover:shadow-raised"
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-50 text-primary-600 transition-colors duration-150 ease-standard group-hover:bg-primary-100">
+          <span className="flex h-9 w-9 items-center justify-center rounded-sm bg-primary-50 text-primary-600 transition-colors duration-150 ease-standard group-hover:bg-primary-100">
             <Icon name={action.icon} size={18} />
           </span>
           <p className="mt-3 text-body-lg font-medium text-ink">{action.label}</p>

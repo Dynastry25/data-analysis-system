@@ -139,7 +139,7 @@ export default function AdminDashboardPage() {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {loading && !overview
                 ? Array.from({ length: 8 }, (_, index) => (
-                    <Skeleton key={index} className="h-[92px] w-full rounded-lg" />
+                    <Skeleton key={index} className="h-[92px] w-full rounded-md" />
                   ))
                 : kpis.map((kpi) => (
                     <MetricCard

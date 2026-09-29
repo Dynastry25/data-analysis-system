@@ -141,7 +141,7 @@ export function AdminShell({ title, description, actions, children }: AdminShell
   if (denied) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-surface-canvas px-4">
-        <div className="max-w-md rounded-lg border border-danger/30 bg-danger-bg px-6 py-8 text-center">
+        <div className="max-w-md rounded-md border border-danger/30 bg-danger-bg px-6 py-8 text-center">
           <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-danger/10 text-danger-700">
             <Icon name="lock" size={20} />
           </span>
@@ -170,14 +170,14 @@ export function AdminShell({ title, description, actions, children }: AdminShell
         Nenda kwenye maudhui makuu
       </a>
 
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-surface-border bg-neutral-900 px-4 py-3 lg:hidden">
+      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-surface-border bg-sidebar px-4 py-3 lg:hidden">
         <Brand />
         <button
           type="button"
           aria-label="Fungua menyu"
           aria-expanded={drawerOpen}
           onClick={() => setDrawerOpen(true)}
-          className="flex h-11 w-11 items-center justify-center rounded text-neutral-300 transition-colors hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400"
+          className="flex h-11 w-11 items-center justify-center rounded text-neutral-300 transition-colors hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400"
         >
           <Icon name="menu" size={22} />
         </button>
@@ -187,12 +187,12 @@ export function AdminShell({ title, description, actions, children }: AdminShell
         <div
           aria-hidden="true"
           onClick={() => setDrawerOpen(false)}
-          className="fixed inset-0 z-40 bg-neutral-900/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-sidebar-deep/60 lg:hidden"
         />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-60 transform flex-col bg-neutral-900 transition-transform duration-300 ease-standard lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-60 transform flex-col bg-sidebar transition-transform duration-300 ease-standard lg:static lg:translate-x-0 ${
           drawerOpen ? "translate-x-0 shadow-drawer" : "-translate-x-full"
         }`}
       >
@@ -202,7 +202,7 @@ export function AdminShell({ title, description, actions, children }: AdminShell
             type="button"
             aria-label="Funga menyu"
             onClick={() => setDrawerOpen(false)}
-            className="flex h-11 w-11 items-center justify-center rounded text-neutral-300 transition-colors hover:bg-neutral-800 lg:hidden"
+            className="flex h-11 w-11 items-center justify-center rounded text-neutral-300 transition-colors hover:bg-white/10 lg:hidden"
           >
             <Icon name="close" size={22} />
           </button>
@@ -234,8 +234,8 @@ export function AdminShell({ title, description, actions, children }: AdminShell
                           aria-current={active ? "page" : undefined}
                           className={`flex min-h-[38px] items-center gap-2.5 rounded-md px-3 text-caption transition-colors duration-150 ease-standard ${
                             active
-                              ? "bg-primary-600 font-medium text-white"
-                              : "text-neutral-300 hover:bg-neutral-800 hover:text-white"
+                              ? "bg-sidebar-active font-medium text-white"
+                              : "text-neutral-300 hover:bg-white/10 hover:text-white"
                           }`}
                         >
                           <Icon name={item.icon} size={18} />
@@ -250,10 +250,10 @@ export function AdminShell({ title, description, actions, children }: AdminShell
           })}
         </nav>
 
-        <div className="border-t border-neutral-800 px-4 py-3">
+        <div className="border-t border-white/10 px-4 py-3">
           <Link
             href="/dashboard"
-            className="flex min-h-[38px] items-center gap-2 rounded-md text-caption text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-white"
+            className="flex min-h-[38px] items-center gap-2 rounded-md text-caption text-neutral-400 transition-colors hover:bg-white/10 hover:text-white"
           >
             <Icon name="arrow-right" size={16} />
             Rudi kwenye programu
@@ -261,7 +261,7 @@ export function AdminShell({ title, description, actions, children }: AdminShell
           <button
             type="button"
             onClick={logout}
-            className="mt-1 flex min-h-[38px] w-full items-center gap-2 rounded-md px-1 text-caption text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-white"
+            className="mt-1 flex min-h-[38px] w-full items-center gap-2 rounded-md px-1 text-caption text-neutral-400 transition-colors hover:bg-white/10 hover:text-white"
           >
             <Icon name="logout" size={16} />
             Toka

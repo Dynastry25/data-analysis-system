@@ -498,7 +498,7 @@ export default function OrganizationDetailPage() {
             key={item.label}
             className="flex items-center gap-3 rounded-md border border-surface-border bg-surface-panel px-4 py-3"
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-50 text-primary-600">
+            <span className="flex h-9 w-9 items-center justify-center rounded-sm bg-primary-50 text-primary-600">
               <Icon name={item.icon} size={18} />
             </span>
             <div>
