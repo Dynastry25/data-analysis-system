@@ -17,6 +17,28 @@ class OperationRequest(BaseModel):
     label: Optional[str] = None
 
 
+class DatasetJoinRequest(BaseModel):
+    """POST /datasets/{id}/merge and /datasets/{id}/append.
+
+    The second dataset is named by id rather than shipped inside
+    ``configuration``. A second table's worth of rows inside a JSON body is a
+    request that hits a size limit, cannot be authorised against the dataset it
+    came from, and leaves no lineage record of which dataset was used.
+    """
+
+    operation_type: Literal["merge", "append"]
+    other_dataset_id: int
+    other_dataset_version: Optional[int] = Field(
+        default=None,
+        description="Which version of the other dataset (default: its latest)",
+    )
+    configuration: Dict[str, Any] = Field(default_factory=dict)
+    dataset_version: Optional[int] = Field(
+        default=None, description="Which version of this dataset to start from"
+    )
+    label: Optional[str] = None
+
+
 class AnalysisRequest(BaseModel):
     """POST /datasets/{id}/analysis (MVP-19 engine)."""
 

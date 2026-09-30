@@ -16,11 +16,13 @@ from app.statflow.operations import (
     CLEAN,
     TRANSFORM,
     OperationError,
+    append_frames,
     apply_operation,
     catalog,
+    merge_frames,
     operation_group,
 )
-from app.statflow.schemas import OperationRequest
+from app.statflow.schemas import DatasetJoinRequest, OperationRequest
 from app.statflow.version_store import VersionError
 
 router = APIRouter(prefix="/datasets", tags=["statflow-v1-operations"])
@@ -106,6 +108,77 @@ def transform(
 ) -> Dict[str, Any]:
     """Apply a transformation operation -> new dataset version."""
     return _apply(dataset_id, payload, db, user, TRANSFORM)
+
+
+@router.post("/{dataset_id}/join")
+def join_dataset(
+    dataset_id: int,
+    payload: DatasetJoinRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Merge or append a second dataset -> new version of this one.
+
+    The result becomes a new immutable version of *this* dataset; neither input
+    is altered. That is what lets the cleaned or joined table be handed
+    straight to the analysis engine afterwards: analysis reads a version, and
+    this endpoint produces one.
+    """
+    dataset = get_owned_dataset(dataset_id, db, user)
+    if dataset.id == payload.other_dataset_id:
+        raise _fail(
+            OperationError(
+                "A dataset cannot be joined to itself. Pick a different second dataset."
+            )
+        )
+    try:
+        # get_owned_dataset applies the same permission check to the second
+        # dataset, so a merge cannot be used to read data the caller is not
+        # allowed to see.
+        other = get_owned_dataset(payload.other_dataset_id, db, user, require_file=False)
+        version_record, frame = _load_frame(db, dataset, payload.dataset_version)
+        _, other_frame = _load_frame(db, other, payload.other_dataset_version)
+
+        handler = (
+            append_frames if payload.operation_type == "append" else merge_frames
+        )
+        result, summary, warnings = handler(frame, other_frame, payload.configuration)
+
+        new_version, operation = version_store.create_version(
+            db,
+            dataset,
+            result,
+            operation_group=TRANSFORM,
+            operation_type=payload.operation_type,
+            configuration={
+                **payload.configuration,
+                "other_dataset_id": other.id,
+                "other_dataset_version": int(
+                    version_store.get_version(
+                        db, other, payload.other_dataset_version
+                    ).version
+                ),
+            },
+            source_version=int(version_record.version),
+            summary=summary,
+            warnings=warnings,
+            label=payload.label,
+            created_by=user.id,
+        )
+    except (VersionError, OperationError) as exc:
+        raise _fail(exc)
+
+    return {
+        "dataset_id": dataset.id,
+        "other_dataset_id": other.id,
+        "version": new_version.version,
+        "current_version": new_version.version,
+        "operation": operation.to_dict(),
+        "summary": summary,
+        "warnings": warnings,
+        "row_count": new_version.row_count,
+        "column_count": new_version.column_count,
+    }
 
 
 @router.get("/{dataset_id}/operations")

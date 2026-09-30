@@ -26,6 +26,9 @@ const OPERATION_ICONS: Record<string, IconName> = {
   drop_duplicates: "layers",
   rename_columns: "file-text",
   select_columns: "table",
+  drop_columns: "table",
+  merge: "layers",
+  append: "layers",
 };
 
 const FAMILY_ORDER: { key: string; label: string; hint: string; ops: string[] }[] = [
@@ -33,7 +36,8 @@ const FAMILY_ORDER: { key: string; label: string; hint: string; ops: string[] }[
   { key: "impute", label: "Jaza missing", hint: "Weka thamani inayofaa", ops: ["fill_missing"] },
   { key: "normalize", label: "Badilisha aina", hint: "Namba, tarehe, boolean", ops: ["cast_types"] },
   { key: "encode", label: "Tengeneza column", hint: "Hesabu, changanya, changanya", ops: ["calculate_column", "group_by"] },
-  { key: "join", label: "Unganisha datasets", hint: "Haijaandikwa bado", ops: [] },
+  { key: "columns", label: "Ondoa column", hint: "Weke au ondoa column", ops: ["select_columns", "drop_columns"] },
+  { key: "join", label: "Unganisha datasets", hint: "Unganisha au ongeza dataset ya pili kwa key", ops: ["merge", "append"] },
 ];
 
 function stepTone(step: number, currentStep: number) {

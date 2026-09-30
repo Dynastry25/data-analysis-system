@@ -16,12 +16,15 @@ import {
   PreparationPipeline,
   VersionHistory,
 } from "@/components/PreparationStudio";
+import { PanelCard, PanelDrawer } from "@/components/PanelDrawer";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import {
   api,
   apiErrorMessage,
+  ApplyOperationResponse,
   ColumnProfile,
+  DatasetSummary,
   OperationCatalogEntry,
   OperationsHistoryResponse,
   statflowApi,
@@ -29,12 +32,39 @@ import {
 
 type FieldDef = {
   key: string;
-  kind: "column" | "columns" | "text" | "number" | "select";
+  kind: "column" | "columns" | "text" | "number" | "select" | "dataset";
   label: string;
   hint?: string;
   required?: boolean;
   options?: { value: string; label: string }[];
 };
+
+/** The secondary panels a summary card can open. */
+type OpenPanel = "versions" | "preview" | "pipeline" | "audit" | null;
+
+/** What one cleaning/transform step left behind, for the result panel. */
+type LastResult = {
+  version: number;
+  operation: string;
+  rowsBefore: number;
+  rowsAfter: number;
+  columnsBefore: number;
+  columnsAfter: number;
+  warnings: string[];
+  summary: Record<string, unknown>;
+};
+
+/**
+ * How a merge is expected to line up. The guide's warning is the reason the
+ * choice is surfaced rather than defaulted and forgotten: an inner join that
+ * silently drops rows looks like a successful filter.
+ */
+const JOIN_OPTIONS = [
+  { value: "left", label: "left — kila row ya dataset hii (recommended)" },
+  { value: "inner", label: "inner — tu rows zinazopatikana kwenye zote mbili" },
+  { value: "right", label: "right — kila row ya dataset ya pili" },
+  { value: "outer", label: "outer — zote mbili" },
+];
 
 const KEEP_OPTIONS = [
   { value: "first", label: "first (ya kwanza)" },
@@ -72,6 +102,47 @@ const AGG_OPTIONS = ["count", "sum", "mean", "median", "min", "max"].map((value)
 }));
 
 const OPERATION_FIELDS: Record<string, FieldDef[]> = {
+  drop_columns: [
+    {
+      key: "columns",
+      kind: "columns",
+      label: "Ondoa column",
+      hint: "Chagua column unazotaka kuondoa",
+      required: true,
+    },
+  ],
+  merge: [
+    {
+      key: "other_dataset_id",
+      kind: "dataset",
+      label: "Dataset ya pili",
+      hint: "Dataset unayotaka kuunganisha na hii",
+      required: true,
+    },
+    { key: "left_on", kind: "column", label: "Key (dataset hii)", required: true },
+    {
+      key: "right_on",
+      kind: "column",
+      label: "Key (dataset ya pili)",
+      hint: "Weka sawa na key ya kushoto ikiwa jina ni sawa",
+    },
+    {
+      key: "how",
+      kind: "select",
+      label: "Aina ya kuunganisha",
+      hint: "left haipunguzi rows; inner hupunguza",
+      options: JOIN_OPTIONS,
+    },
+  ],
+  append: [
+    {
+      key: "other_dataset_id",
+      kind: "dataset",
+      label: "Dataset ya pili",
+      hint: "Dataset utakaongeza chini ya hii",
+      required: true,
+    },
+  ],
   drop_duplicates: [
     { key: "subset", kind: "columns", label: "Subset", hint: "Pengoja kama zisizo" },
     { key: "keep", kind: "select", label: "Weka (keep)", options: KEEP_OPTIONS },
@@ -167,6 +238,24 @@ export default function StudioPage() {
   const [applying, setApplying] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [downloading, setDownloading] = useState<number | null>(null);
+  // The datasets this user can merge with. Loaded once alongside everything
+  // else, because the merge form cannot be drawn without them.
+  const [otherDatasets, setOtherDatasets] = useState<DatasetSummary[]>([]);
+  /**
+   * The result of the last operation: which version it produced, what it
+   * changed, and what the dataset looks like now. This is the "kile kilichobaki
+   * baada ya kusafisha" panel -- without it the studio keeps rendering the
+   * profile and preview of the data as it was *before* the operation, because
+   * only the history was being refetched.
+   */
+  const [lastResult, setLastResult] = useState<LastResult | null>(null);
+  /**
+   * Which secondary panel is open, if any. The studio keeps the operation in
+   * view and moves the rest behind cards, so this is the only way the preview,
+   * the versions, the pipeline or the audit trail are on screen at once.
+   */
+  const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
+
 
   const columnNames = columns.map((column) => column.name);
 
@@ -175,16 +264,25 @@ export default function StudioPage() {
     setLoading(true);
     setError(null);
     try {
-      const [detail, operationsCatalog, operationsHistory] = await Promise.all([
-        api.datasets.get(datasetId),
-        statflowApi.operationsCatalog(),
-        statflowApi.operationsHistory(datasetId),
-      ]);
+      const [detail, operationsCatalog, operationsHistory, datasetList] =
+        await Promise.all([
+          api.datasets.get(datasetId),
+          statflowApi.operationsCatalog(),
+          statflowApi.operationsHistory(datasetId),
+          api.datasets.list().catch(() => [] as DatasetSummary[]),
+        ]);
       setColumns(detail.columns);
       setPreviewRows(detail.preview_rows);
       setRowCount(detail.dataset.row_count);
       setCatalog(operationsCatalog);
       setHistory(operationsHistory);
+      // A dataset cannot be merged with itself, so it is filtered out here
+      // rather than offering a choice the server will refuse.
+      setOtherDatasets(
+        (Array.isArray(datasetList) ? datasetList : []).filter(
+          (entry: DatasetSummary) => entry.id !== datasetId
+        )
+      );
     } catch (caught) {
       const message = apiErrorMessage(caught);
       setError(message);
@@ -221,6 +319,22 @@ export default function StudioPage() {
       if (fieldValues.aggregation) config.aggregation = fieldValues.aggregation;
       return config;
     }
+    if (selectedOp === "merge") {
+      // The endpoint takes the keys as lists, so a single key chosen in the
+      // form is wrapped here. Sending a bare string would make pandas treat
+      // each character as its own key.
+      const left = fieldValues.left_on ? [String(fieldValues.left_on)] : [];
+      if (left.length > 0) config.left_on = left;
+      // An empty right key means "same name as the left", which is the
+      // common case and is left out rather than restated.
+      const right = fieldValues.right_on ? [String(fieldValues.right_on)] : [];
+      if (right.length > 0) config.right_on = right;
+      config.how = String(fieldValues.how || "left");
+      return config;
+    }
+    if (selectedOp === "append") {
+      return {};
+    }
     for (const field of fields) {
       const raw = fieldValues[field.key];
       if (raw === undefined || raw === "") continue;
@@ -237,6 +351,52 @@ export default function StudioPage() {
     return config;
   }
 
+  /**
+   * Re-read the dataset after an operation so the studio shows the cleaned
+   * data rather than the data as it was.
+   *
+   * The detail endpoint always serves the *current* version, so one call
+   * re-reads the columns, the preview rows and the row count together with the
+   * new shape. Refreshing only the history -- which is all this used to do --
+   * left the profile and the preview describing the pre-operation data, so the
+   * studio appeared to ignore what it had just done.
+   *
+   * Deliberately does not toggle the page-level `loading` flag: that would
+   * blank the whole studio for a change the user just made and is waiting on.
+   */
+  const refreshAfterOperation = useCallback(
+    async (result: ApplyOperationResponse, operation: string, before: { rows: number; columns: number }) => {
+      try {
+        const [detail, operationsHistory] = await Promise.all([
+          api.datasets.get(datasetId),
+          statflowApi.operationsHistory(datasetId),
+        ]);
+        setColumns(detail.columns);
+        setPreviewRows(detail.preview_rows);
+        setRowCount(detail.dataset.row_count);
+        setHistory(operationsHistory);
+        setLastResult({
+          version: result.version,
+          operation,
+          rowsBefore: before.rows,
+          rowsAfter: detail.dataset.row_count,
+          columnsBefore: before.columns,
+          columnsAfter: detail.columns.length,
+          warnings: result.warnings ?? [],
+          summary: result.summary ?? {},
+        });
+      } catch (caught) {
+        // The operation itself succeeded; failing to re-read afterwards should
+        // not claim otherwise. Say what happened and leave the history alone.
+        showToast(
+          `Operation imefanikiwa, lakini hakupatiweka taarifa mpya: ${apiErrorMessage(caught)}`,
+          "warning"
+        );
+      }
+    },
+    [datasetId, showToast]
+  );
+
   async function applyOperation() {
     if (!currentOperation) return;
     setAttempted(true);
@@ -251,7 +411,36 @@ export default function StudioPage() {
       return;
     }
     setApplying(true);
+    // Captured before the operation so the result panel can show the change
+    // rather than just the end state.
+    const before = { rows: rowCount, columns: columns.length };
     try {
+      // merge and append read a second dataset, so they go to their own
+      // endpoint: the other table is named by id rather than sent in the
+      // request body, which keeps it authorisable and out of the payload.
+      if (currentOperation.needs_other_dataset) {
+        const otherId = Number(fieldValues.other_dataset_id);
+        if (!otherId) {
+          showToast("Chagua dataset ya pili ya kunganisha.", "warning");
+          return;
+        }
+        const response = await statflowApi.joinDataset(datasetId, {
+          operation_type: currentOperation.type as "merge" | "append",
+          other_dataset_id: otherId,
+          configuration: buildConfiguration(),
+          label: label.trim() || undefined,
+        });
+        await refreshAfterOperation(response, currentOperation.type, before);
+        showToast(
+          `Version v${response.version} imetengenezwa (${response.row_count} rows · ${response.column_count} columns)`,
+          "success"
+        );
+        setLabel("");
+        setFieldValues({});
+        setAttempted(false);
+        return;
+      }
+
       const payload = {
         operation_type: currentOperation.type,
         configuration: buildConfiguration(),
@@ -261,6 +450,9 @@ export default function StudioPage() {
         currentOperation.group === "clean"
           ? await statflowApi.applyClean(datasetId, payload)
           : await statflowApi.applyTransform(datasetId, payload);
+      // Re-read the dataset so the profile, the preview and the row count all
+      // describe what is left, not what was there before.
+      await refreshAfterOperation(response, currentOperation.type, before);
       showToast(
         `Version v${response.version} imetengenezwa (${response.row_count} rows × ${response.column_count} columns)`,
         "success"
@@ -268,7 +460,6 @@ export default function StudioPage() {
       setLabel("");
       setFieldValues({});
       setAttempted(false);
-      setHistory(await statflowApi.operationsHistory(datasetId));
     } catch (caught) {
       showToast(apiErrorMessage(caught), "danger");
     } finally {
@@ -321,6 +512,34 @@ export default function StudioPage() {
           selected={selected}
           onToggle={(name) => toggleColumn(field.key, name)}
           maxHeightClassName="max-h-36"
+        />
+      );
+    }
+    if (field.kind === "dataset") {
+      // The picker is fed the user's own datasets with the current one already
+      // removed, so the one choice the server would refuse is never offered.
+      const options = otherDatasets.map((entry) => ({
+        value: String(entry.id),
+        label: `${entry.original_filename} (${entry.row_count} rows, ${entry.column_count} columns)`,
+      }));
+      if (options.length === 0) {
+        return (
+          <p className="rounded-md border border-surface-border bg-surface-sunken px-3 py-2 text-caption text-ink-muted">
+            Hakuna dataset ya pili bado. Ingiza dataset ya pili kwanza ili kuunganisha.
+          </p>
+        );
+      }
+      return (
+        <SelectInput
+          label={field.label}
+          required={field.required}
+          error={error}
+          placeholder="— chagua dataset —"
+          value={String(value || "")}
+          options={options}
+          onChange={(event) =>
+            setFieldValues((previous) => ({ ...previous, [field.key]: event.target.value }))
+          }
         />
       );
     }
@@ -538,74 +757,201 @@ export default function StudioPage() {
                 </Card>
               </div>
             )}
+            {lastResult && (
+              <Card
+                title="Kimebaki baada ya kusafisha"
+                icon="check"
+                description={`Version v${lastResult.version} - dataset asili haukubadilika.`}
+              >
+                <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-md border border-surface-border bg-surface-sunken px-3 py-2">
+                    <dt className="text-caption text-ink-muted">Rows zilizobaki</dt>
+                    <dd className="text-ink">
+                      <span className="font-medium">{lastResult.rowsAfter}</span>
+                      {lastResult.rowsBefore !== lastResult.rowsAfter && (
+                        <span className="ml-1.5 text-caption text-ink-muted">
+                          (zilikuwa {lastResult.rowsBefore})
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                  <div className="rounded-md border border-surface-border bg-surface-sunken px-3 py-2">
+                    <dt className="text-caption text-ink-muted">Columns zilizobaki</dt>
+                    <dd className="text-ink">
+                      <span className="font-medium">{lastResult.columnsAfter}</span>
+                      {lastResult.columnsBefore !== lastResult.columnsAfter && (
+                        <span className="ml-1.5 text-caption text-ink-muted">
+                          (zilikuwa {lastResult.columnsBefore})
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                  <div className="rounded-md border border-surface-border bg-surface-sunken px-3 py-2">
+                    <dt className="text-caption text-ink-muted">Operation</dt>
+                    <dd className="font-mono text-caption text-ink-secondary">
+                      {lastResult.operation}
+                    </dd>
+                  </div>
+                  <div className="rounded-md border border-surface-border bg-surface-sunken px-3 py-2">
+                    <dt className="text-caption text-ink-muted">Version</dt>
+                    <dd className="font-medium text-ink">v{lastResult.version}</dd>
+                  </div>
+                </dl>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <VersionHistory
-                versions={versions}
-                onDownload={downloadVersion}
-                downloading={downloading}
+                {lastResult.warnings.length > 0 && (
+                  <ul className="mt-3 space-y-1.5">
+                    {lastResult.warnings.map((warning) => (
+                      <li
+                        key={warning}
+                        className="flex items-start gap-1.5 text-caption text-ink-secondary"
+                      >
+                        <Icon name="alert-triangle" size={13} className="mt-0.5 shrink-0" />
+                        <span>{warning}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <p className="mt-3 text-caption text-ink-muted">
+                  Profile, preview na row count zimewekwa upya kutoka version
+                  {` v${lastResult.version}`}. Unaweza kuiendelea na analysis moja kwa moja kwenye
+                  dataset hii.
+                </p>
+              </Card>
+            )}
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <PanelCard
+                title="Historia ya versions"
+                hint="Kila version iliyotengenezwa"
+                icon="history"
+                onOpen={() => setOpenPanel("versions")}
+                value={`v${history?.current_version ?? 1}`}
+                meta={`${versions.length} version`}
               />
-              <div className="space-y-4">
-                <LivePreview
-                  rows={previewRows}
-                  rowCount={rowCount}
-                  version={history?.current_version ?? 1}
-                />
-                <PreparationPipeline
-                  history={versions}
-                  currentVersion={history?.current_version ?? 1}
-                />
-              </div>
+              <PanelCard
+                title="Data preview"
+                hint="Rows za version inayo sasa"
+                icon="table"
+                onOpen={() => setOpenPanel("preview")}
+                value={`${rowCount} rows`}
+                meta={`${columns.length} columns`}
+              />
+              <PanelCard
+                title="Pipeline"
+                hint="Hatua zilizofanywa, mpangilio wake"
+                icon="layers"
+                onOpen={() => setOpenPanel("pipeline")}
+                value={`${operations.length} hatua`}
+                meta={operations.length === 0 ? "bado hakuna" : `mwisho: ${operations[operations.length - 1].type}`}
+              />
+              <PanelCard
+                title="Audit trail"
+                hint="Mpangilio kamili wa kila operation"
+                icon="clipboard"
+                onOpen={() => setOpenPanel("audit")}
+                value={operations.length === 0 ? "Hakuna" : `${operations.length} rekodi`}
+                meta={operations.length === 0 ? "bado hakuna" : "tazama mpangilio kamili"}
+              />
             </div>
 
-          <Card
-            title="Historia ya operations (audit trail)"
-            description="Hatua zote za kusafisha/kubadilisha data, mpangilio ulivyotokea."
-            icon="history"
-          >
-            {operations.length === 0 ? (
-              <EmptyState
-                title="Hakuna operation iliyofanywa bado"
-                description="Tumia form ya juu kutengeneza version v2."
-                icon="history"
-              />
-            ) : (
-              <ol className="space-y-2">
-                {operations.map((operation) => (
-                  <li
-                    key={operation.sequence}
-                    className="rounded-md border border-surface-border px-3 py-2.5"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone="neutral">#{operation.sequence}</Badge>
-                      <Badge tone={operation.group === "clean" ? "primary" : "neutral"}>
-                        {operation.type}
-                      </Badge>
-                      <span className="text-caption text-ink-muted">
-                        <span className="font-mono font-medium text-ink">
-                          v{operation.source_version} → v{operation.version}
-                        </span>
-                        {operation.created_at
-                          ? ` · ${new Date(operation.created_at).toLocaleString()}`
-                          : ""}
-                      </span>
-                    </div>
-                    {Object.keys(operation.configuration).length > 0 && (
-                      <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap rounded-md bg-surface-sunken p-2 font-mono text-caption text-ink-secondary">
-                        {JSON.stringify(operation.configuration, null, 2)}
-                      </pre>
-                    )}
-                    {operation.warnings.length > 0 && (
-                      <p className="mt-1.5 flex items-start gap-1.5 rounded-md bg-warning-bg px-2 py-1.5 text-caption text-warning-700">
-                        <Icon name="alert-triangle" size={13} className="mt-0.5 shrink-0" />
-                        <span>{operation.warnings.join(" ")}</span>
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </Card>
+
+      {/*
+        The secondary panels. Each stays closed until its card is clicked, so
+        the operation form keeps the screen and the detail is one click away
+        rather than permanently competing with it.
+      */}
+      <PanelDrawer
+        open={openPanel === "versions"}
+        onClose={() => setOpenPanel(null)}
+        title="Historia ya versions"
+        description="Kila version iliyotengenezwa, pamoja na muundo wake."
+        icon="history"
+      >
+        <VersionHistory
+          versions={versions}
+          onDownload={downloadVersion}
+          downloading={downloading}
+        />
+      </PanelDrawer>
+
+      <PanelDrawer
+        open={openPanel === "preview"}
+        onClose={() => setOpenPanel(null)}
+        title="Data preview"
+        description={`Rows za version v${history?.current_version ?? 1} baada ya kusafisha.`}
+        icon="table"
+      >
+        <LivePreview
+          rows={previewRows}
+          rowCount={rowCount}
+          version={history?.current_version ?? 1}
+        />
+      </PanelDrawer>
+
+      <PanelDrawer
+        open={openPanel === "pipeline"}
+        onClose={() => setOpenPanel(null)}
+        title="Pipeline"
+        description="Hatua zilizofanywa na mpangilio wake, toka awali hadi mwisho."
+        icon="layers"
+      >
+        <PreparationPipeline
+          history={versions}
+          currentVersion={history?.current_version ?? 1}
+        />
+      </PanelDrawer>
+
+      <PanelDrawer
+        open={openPanel === "audit"}
+        onClose={() => setOpenPanel(null)}
+        title="Audit trail"
+        description="Hatua zote za kusafisha/kubadilisha data, mpangilio ulivyotokea."
+        icon="clipboard"
+      >
+                  {operations.length === 0 ? (
+                    <EmptyState
+                      title="Hakuna operation iliyofanywa bado"
+                      description="Tumia form ya juu kutengeneza version v2."
+                      icon="history"
+                    />
+                  ) : (
+                    <ol className="space-y-2">
+                      {operations.map((operation) => (
+                        <li
+                          key={operation.sequence}
+                          className="rounded-md border border-surface-border px-3 py-2.5"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge tone="neutral">#{operation.sequence}</Badge>
+                            <Badge tone={operation.group === "clean" ? "primary" : "neutral"}>
+                              {operation.type}
+                            </Badge>
+                            <span className="text-caption text-ink-muted">
+                              <span className="font-mono font-medium text-ink">
+                                v{operation.source_version} → v{operation.version}
+                              </span>
+                              {operation.created_at
+                                ? ` · ${new Date(operation.created_at).toLocaleString()}`
+                                : ""}
+                            </span>
+                          </div>
+                          {Object.keys(operation.configuration).length > 0 && (
+                            <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap rounded-md bg-surface-sunken p-2 font-mono text-caption text-ink-secondary">
+                              {JSON.stringify(operation.configuration, null, 2)}
+                            </pre>
+                          )}
+                          {operation.warnings.length > 0 && (
+                            <p className="mt-1.5 flex items-start gap-1.5 rounded-md bg-warning-bg px-2 py-1.5 text-caption text-warning-700">
+                              <Icon name="alert-triangle" size={13} className="mt-0.5 shrink-0" />
+                              <span>{operation.warnings.join(" ")}</span>
+                            </p>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+      </PanelDrawer>
         </>
       )}
     </AppShell>

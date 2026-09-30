@@ -676,6 +676,194 @@ def op_group_by(frame: pd.DataFrame, config: Dict[str, Any]) -> OperationResult:
 
 # ------------------------------------------------------------------ registry
 
+# ----------------------------------------------------------- column removal
+
+
+def op_drop_columns(frame: pd.DataFrame, config: Dict[str, Any]) -> OperationResult:
+    """Remove columns by name.
+
+    Distinct from ``select_columns`` because it reads the other way round: it
+    takes the columns to *remove* rather than the columns to keep. Dropping one
+    column out of forty is the common case, and spelling out the other
+    thirty-nine is both tedious and destructive the next time a column is added.
+    """
+    columns = _require_columns(frame, config.get("columns"))
+    kept = [column for column in frame.columns if column not in columns]
+    if not kept:
+        raise OperationError(
+            "That would remove every column, leaving an empty table. Keep at least one column."
+        )
+    return (
+        frame[kept].copy(),
+        {"dropped_columns": list(columns), "dropped_count": len(columns), "columns": kept},
+        [],
+    )
+
+
+# ------------------------------------------------------------ dataset joins
+
+#: The joins offered. There is deliberately no "indicator" mode: a merge whose
+#: result depends on a magic flag column is a merge nobody can check afterwards.
+JOIN_TYPES = ("inner", "left", "right", "outer")
+
+
+def _join_keys(
+    frame: pd.DataFrame, other: pd.DataFrame, config: Dict[str, Any]
+) -> Tuple[List[str], List[str]]:
+    """The key columns on each side.
+
+    The two sides may name their keys differently (``left_id`` against ``id``),
+    which is normal, so each side declares its own.
+    """
+    left = _as_list(config.get("left_on") or config.get("key") or config.get("on"))
+    right = _as_list(config.get("right_on") or config.get("on"))
+    if not left:
+        raise OperationError("Name the key column to merge on ('left_on').")
+    if not right:
+        right = list(left)
+    if len(left) != len(right):
+        raise OperationError(
+            f"Merging on {len(left)} key columns against {len(right)}: the two sides must "
+            "have the same number of keys."
+        )
+    missing_left = [column for column in left if column not in frame.columns]
+    missing_right = [column for column in right if column not in other.columns]
+    if missing_left:
+        raise OperationError(f"Not in this dataset: {', '.join(missing_left)}")
+    if missing_right:
+        raise OperationError(f"Not in the other dataset: {', '.join(missing_right)}")
+    return [str(c) for c in left], [str(c) for c in right]
+
+
+def _rename_overlapping_keys(
+    left_keys: List[str], right_keys: List[str], suffixes: Sequence[str]
+) -> Tuple[List[str], List[str]]:
+    """Kept deliberately empty, and that is the point.
+
+    The key columns are *not* renamed. They are what the two tables are joined
+    on, so pandas correctly collapses them into a single column when both
+    sides call it ``id`` -- which is what a reader expects to see afterwards.
+    Renaming them beforehand leaves ``id_left`` and ``id_right`` side by side,
+    two columns holding the same values, and every downstream analysis has to
+    choose between them. When the two sides name the key differently
+    (``hh_id`` against ``id``) both are kept, because that is the only way to
+    show that the values matched.
+    """
+    return [], []
+
+
+def merge_frames(
+    frame: pd.DataFrame, other: pd.DataFrame, config: Dict[str, Any]
+) -> OperationResult:
+    """Join this dataset to another on a key, producing one wider table.
+
+    The row count is reported, because that is the thing that quietly goes
+    wrong: an inner join on a key that does not match can leave a handful of
+    rows, and an outer join against a duplicated key can multiply them. Both
+    are stated in the summary rather than left for the caller to discover in a
+    preview.
+    """
+    join_type = str(config.get("how") or config.get("join_type") or "inner").lower()
+    if join_type not in JOIN_TYPES:
+        raise OperationError(f"'{join_type}' is not a join. Use one of: {', '.join(JOIN_TYPES)}.")
+    left_keys, right_keys = _join_keys(frame, other, config)
+    suffixes = [str(s) for s in (config.get("suffixes") or ["_left", "_right"])]
+    if len(suffixes) < 2:
+        raise OperationError("Two suffixes are needed, one for each side of the merge.")
+
+    right_columns = _as_list(config.get("right_columns")) or list(other.columns)
+    missing = [c for c in right_columns if c not in other.columns]
+    if missing:
+        raise OperationError(f"Not in the other dataset: {', '.join(missing)}")
+
+    left_renames, right_renames = _rename_overlapping_keys(left_keys, right_keys, suffixes)
+    left_side = (
+        frame.rename(columns=dict(zip(left_keys, left_renames))) if left_renames else frame
+    )
+    right_side = (
+        other[right_columns].rename(columns=dict(zip(right_keys, right_renames)))
+        if right_renames
+        else other[right_columns]
+    )
+
+    merged = left_side.merge(
+        right_side,
+        how=join_type,
+        left_on=left_renames or left_keys,
+        right_on=right_renames or right_keys,
+        suffixes=(suffixes[0], suffixes[1]),
+    )
+
+    summary: Dict[str, Any] = {
+        "how": join_type,
+        "left_on": left_keys,
+        "right_on": right_keys,
+        "rows_before": int(frame.shape[0]),
+        "rows_after": int(merged.shape[0]),
+        "rows_other": int(other.shape[0]),
+        "columns_before": int(frame.shape[1]),
+        "columns_after": int(merged.shape[1]),
+    }
+    warnings: List[str] = []
+    if merged.shape[0] == 0:
+        warnings.append(
+            "The merge produced no rows: the two datasets share no values on the key. Check "
+            "the key spelling, and whether one file stores ids as text and the other as numbers."
+        )
+    elif join_type == "inner" and merged.shape[0] < min(frame.shape[0], other.shape[0]):
+        warnings.append(
+            f"The inner join kept {merged.shape[0]} of {frame.shape[0]} rows, so the keys do "
+            "not match one-to-one. A left join would show what is being dropped."
+        )
+    elif merged.shape[0] > max(frame.shape[0], other.shape[0]):
+        warnings.append(
+            f"The join produced more rows ({merged.shape[0]}) than either input, so some keys "
+            "appear more than once in the other dataset. Check it for duplicates."
+        )
+    return merged, summary, warnings
+
+
+def append_frames(
+    frame: pd.DataFrame, other: pd.DataFrame, config: Dict[str, Any]
+) -> OperationResult:
+    """Stack another dataset underneath this one.
+
+    Columns are unioned: a column missing from one side is filled with a
+    missing value rather than dropped, because silently discarding a column is
+    how a stacked file quietly loses a variable.
+    """
+    ignore_index = bool(config.get("ignore_index", True))
+    left, right = frame.copy(), other.copy()
+    only_left = [str(c) for c in frame.columns if c not in other.columns]
+    only_right = [str(c) for c in other.columns if c not in frame.columns]
+    for column in only_left:
+        right[column] = np.nan
+    for column in only_right:
+        left[column] = np.nan
+    combined = pd.concat([left, right], ignore_index=ignore_index, sort=False)
+
+    summary: Dict[str, Any] = {
+        "rows_before": int(frame.shape[0]),
+        "rows_other": int(other.shape[0]),
+        "rows_after": int(combined.shape[0]),
+        "columns_after": int(combined.shape[1]),
+        "columns_only_in_this": only_left,
+        "columns_only_in_other": only_right,
+    }
+    warnings: List[str] = []
+    for column in only_left:
+        warnings.append(
+            f"'{column}' is not in the other dataset, so it is missing for the "
+            f"{other.shape[0]} appended rows."
+        )
+    for column in only_right:
+        warnings.append(
+            f"'{column}' is not in this dataset, so it is missing for the "
+            f"{frame.shape[0]} original rows."
+        )
+    return combined, summary, warnings
+
+
 OPERATION_CATALOG: Dict[str, Dict[str, Any]] = {
     "drop_duplicates": {
         "group": CLEAN,
@@ -717,6 +905,12 @@ OPERATION_CATALOG: Dict[str, Dict[str, Any]] = {
         "handler": op_select_columns,
         "parameters": ["columns"],
     },
+    "drop_columns": {
+        "group": TRANSFORM,
+        "label": "Remove columns",
+        "handler": op_drop_columns,
+        "parameters": ["columns"],
+    },
     "filter": {
         "group": TRANSFORM,
         "label": "Filter rows",
@@ -744,6 +938,23 @@ OPERATION_CATALOG: Dict[str, Dict[str, Any]] = {
             "aggregations {column: [count|sum|mean|median|min|max]}",
         ],
     },
+    "merge": {
+        "group": TRANSFORM,
+        "label": "Merge with another dataset",
+        "handler": None,
+        "parameters": [
+            "other_dataset_id", "other_dataset_version", "left_on", "right_on",
+            "how (inner|left|right|outer)", "suffixes", "right_columns",
+        ],
+        "needs_other_dataset": True,
+    },
+    "append": {
+        "group": TRANSFORM,
+        "label": "Append another dataset",
+        "handler": None,
+        "parameters": ["other_dataset_id", "other_dataset_version", "ignore_index"],
+        "needs_other_dataset": True,
+    },
 }
 
 
@@ -755,6 +966,9 @@ def catalog() -> List[Dict[str, Any]]:
             "group": metadata["group"],
             "label": metadata["label"],
             "parameters": metadata["parameters"],
+            # The UI has to know which operations need a second dataset, or it
+            # renders a form with no way to choose one.
+            "needs_other_dataset": bool(metadata.get("needs_other_dataset")),
         }
         for operation_type, metadata in OPERATION_CATALOG.items()
     ]

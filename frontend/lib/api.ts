@@ -630,6 +630,8 @@ export interface OperationCatalogEntry {
   group: "clean" | "transform";
   label: string;
   parameters: string[];
+  /** True when the operation reads a second dataset (merge, append). */
+  needs_other_dataset?: boolean;
 }
 
 export interface OperationHistoryEntry {
@@ -856,6 +858,89 @@ export interface AssistantAnswer {
   dataset_version_id: number;
 }
 
+/**
+ * One step of a method's stage plan.
+ *
+ * `kind` decides how the studio renders it: `input` and `run` are things the
+ * reader fills in or presses, `evidence` is read from the data, `results` and
+ * `interpretation` are what comes back. `gate` marks a step the run cannot
+ * proceed without.
+ */
+export interface AnalysisStage {
+  key: string;
+  order: number;
+  label: string;
+  label_en: string;
+  kind: "input" | "evidence" | "run" | "results" | "interpretation" | string;
+  icon: string;
+  description: string;
+  fields: string[];
+  gate: boolean;
+  /** Present on the assumptions stage: what to actually go and check. */
+  checks?: string[];
+  /** Present on the run and interpretation stages: what the guide says to show. */
+  outputs?: string;
+  /** Present on the interpretation stage: what to switch to if a check fails. */
+  alternatives?: string[];
+}
+
+/** One method from the Methods of Analysis guide. */
+export interface AnalysisMethod {
+  key: string;
+  label: string;
+  label_en: string;
+  label_sw: string;
+  category: string;
+  family: string;
+  /** When to reach for this method, in the reader's language. */
+  purpose: string;
+  when_to_use: string;
+  /** The kind of dependent variable this method suits. */
+  dv: string;
+  /** The data layout it expects. */
+  design: string;
+  variables: string[];
+  assumptions: string[];
+  outputs: string;
+  alternatives: string[];
+  requires: string[];
+  extras: string[];
+  engine: string | null;
+  implemented: boolean;
+  notes: string;
+  /** Key into `MethodCatalog.stage_plans`; the steps themselves are shared. */
+  stage_plan: string;
+}
+
+export interface MethodCatalogCategory {
+  key: string;
+  label: string;
+  label_en: string;
+  description: string;
+}
+
+export interface MethodCatalog {
+  questions: { question: string; hint: string }[];
+  categories: MethodCatalogCategory[];
+  methods: AnalysisMethod[];
+  stage_plans: Record<string, AnalysisStage[]>;
+  dv_guide: { dv: string; example: string; method: string; key: string }[];
+  goal_guide: { goal: string; method: string; key: string }[];
+  checklist: string[];
+  common_mistakes: string[];
+  counts: {
+    methods: number;
+    implemented: number;
+    by_category: Record<string, number>;
+    implemented_by_category: Record<string, number>;
+  };
+}
+
+/** A method plus its resolved stage plan, as returned by the detail endpoint. */
+export interface AnalysisMethodDetail extends AnalysisMethod {
+  stages: AnalysisStage[];
+}
+
 export const statflowApi = {
   operationsCatalog: () =>
     http
@@ -885,6 +970,28 @@ export const statflowApi = {
     http
       .post<ApplyOperationResponse>(`/v1/datasets/${datasetId}/transform`, payload)
       .then((r) => r.data),
+  /**
+   * Merge or append a second dataset. The result becomes a new immutable
+   * version of `datasetId`; neither input is modified, so the joined table can
+   * be analysed straight away.
+   */
+  joinDataset: (
+    datasetId: number,
+    payload: {
+      operation_type: "merge" | "append";
+      other_dataset_id: number;
+      other_dataset_version?: number;
+      configuration: Record<string, unknown>;
+      dataset_version?: number;
+      label?: string;
+    }
+  ) =>
+    http
+      .post<ApplyOperationResponse & { other_dataset_id: number }>(
+        `/v1/datasets/${datasetId}/join`,
+        payload
+      )
+      .then((r) => r.data),
   operationsHistory: (datasetId: number) =>
     http
       .get<OperationsHistoryResponse>(`/v1/datasets/${datasetId}/operations`)
@@ -901,6 +1008,14 @@ export const statflowApi = {
       .then((r) => r.data as Blob),
   analysisTypes: () =>
     http.get<AnalysisTypeInfo[]>("/v1/analysis/types").then((r) => r.data),
+  /** The whole Methods of Analysis guide, fetched once and reused. */
+  methodCatalog: () =>
+    http.get<MethodCatalog>("/v1/analysis/methods").then((r) => r.data),
+  /** One method with its stage plan resolved and ready to render. */
+  method: (key: string) =>
+    http
+      .get<AnalysisMethodDetail>(`/v1/analysis/methods/${key}`)
+      .then((r) => r.data),
   runAnalysis: (
     datasetId: number,
     payload: {

@@ -147,7 +147,14 @@ def main() -> int:
 
         catalog = client.get("/api/v1/datasets/operations/catalog", headers=headers)
         check(catalog.status_code == 200, "operation catalog returns 200")
-        check(len(catalog.json()) == 10, "catalog has 10 operations")
+        # Counted from the module rather than hardcoded, so adding an operation
+        # does not turn this into a tripwire that fires on every later change.
+        from app.statflow import operations as operations_module
+
+        check(
+            len(catalog.json()) == len(operations_module.OPERATION_CATALOG),
+            f"catalog lists every operation ({len(operations_module.OPERATION_CATALOG)})",
+        )
 
         operations_response = client.get(
             f"/api/v1/datasets/{dataset_id}/operations", headers=headers
@@ -518,9 +525,14 @@ def main() -> int:
             return result
 
         types_response = client.get("/api/v1/analysis/types", headers=headers)
+        catalog = types_response.json()
         check(
-            len(types_response.json()) == 12,
-            "12 analyses in the v1 catalog",
+            len(catalog) == len(stats_engine.ANALYSIS_HANDLERS),
+            f"the v1 catalog lists every implemented analysis ({len(catalog)})",
+        )
+        check(
+            all(entry["requires"] for entry in catalog),
+            "every catalog entry states the parameters it expects",
         )
 
         descriptive = run_analysis("descriptive", {"columns": ["age", "income"]})

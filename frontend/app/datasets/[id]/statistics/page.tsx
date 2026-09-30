@@ -2,21 +2,25 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { AnalysisStageRail } from "@/components/AnalysisStageRail";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
 import { CheckboxGroup, SelectInput, TextInput } from "@/components/Field";
 import { ResearchBrief } from "@/components/AnalysisStudio";
+import { MethodPicker } from "@/components/MethodPicker";
 import { RecommendationPanel } from "@/components/RecommendationPanel";
 import { TableSkeleton } from "@/components/Skeleton";
 import { StandardResultView } from "@/components/StandardResultView";
 import { useToast } from "@/components/Toast";
 import {
+  AnalysisMethod,
   AnalysisRunRecord,
   AnalysisTypeInfo,
+  MethodCatalog,
   apiErrorMessage,
   PlanningProfileResponse,
   Recommendation,
@@ -145,6 +149,7 @@ export default function StatisticsPage() {
   const { showToast } = useToast();
 
   const [types, setTypes] = useState<AnalysisTypeInfo[]>([]);
+  const [catalog, setCatalog] = useState<MethodCatalog | null>(null);
   const [profile, setProfile] = useState<PlanningProfileResponse | null>(null);
   const [runs, setRuns] = useState<AnalysisRunRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,6 +169,9 @@ export default function StatisticsPage() {
     setLoading(true);
     setError(null);
     try {
+      // The catalogue is reference data, not dataset data: if it fails the rest
+      // of the page still works, so it is loaded separately and never allowed to
+      // blank the workspace.
       const [analysisTypes, planningProfile, history] = await Promise.all([
         statflowApi.analysisTypes(),
         statflowApi.planningProfile(datasetId),
@@ -172,6 +180,10 @@ export default function StatisticsPage() {
       setTypes(analysisTypes);
       setProfile(planningProfile);
       setRuns(history);
+      statflowApi
+        .methodCatalog()
+        .then(setCatalog)
+        .catch(() => setCatalog(null));
     } catch (caught) {
       const message = apiErrorMessage(caught);
       setError(message);
@@ -245,6 +257,50 @@ export default function StatisticsPage() {
     (requirement) => !requirement.optional && isBlank(paramValues[requirement.name])
   );
   const canRun = currentType !== null && missingRequired.length === 0 && !running;
+
+  // The guide row behind the chosen analysis type, and the stage plan it
+  // implies. Both come from the backend so the order of the steps is decided in
+  // one place rather than restated in the UI.
+  const selectedMethod: AnalysisMethod | null = useMemo(() => {
+    if (!catalog || !analysisType) return null;
+    return catalog.methods.find((method) => method.engine === analysisType) ?? null;
+  }, [catalog, analysisType]);
+  const selectedStages = useMemo(() => {
+    if (!catalog || !selectedMethod) return [];
+    return catalog.stage_plans[selectedMethod.stage_plan] ?? [];
+  }, [catalog, selectedMethod]);
+
+  // How far the reader has actually got. Only steps the product can honestly
+  // infer are marked done: the data and variable steps once the form is filled,
+  // the run step once a result exists. The assumption steps are never marked,
+  // because nothing here records that a reader checked them, and the rail must
+  // not imply a checklist the product does not keep.
+  const completedThrough = useMemo(() => {
+    if (selectedStages.length === 0) return -1;
+    const variableStage = selectedStages.find((stage) => stage.key === "vigezo");
+    const variablesChosen =
+      variableStage !== undefined &&
+      variableStage.fields.some((field) => !isBlank(paramValues[field]));
+    return selectedStages.reduce((best, stage) => {
+      if (stage.kind === "results" || stage.kind === "interpretation") return best;
+      if (stage.kind === "evidence" && datasetVersion !== null) {
+        return Math.max(best, stage.order);
+      }
+      if (stage.key === "lengo" && question.trim()) return Math.max(best, stage.order);
+      if (stage.key === "vigezo" && variablesChosen) return Math.max(best, stage.order);
+      if (stage.key === "endesha" && result) return Math.max(best, stage.order);
+      return best;
+    }, 0);
+  }, [selectedStages, paramValues, result, question, datasetVersion]);
+
+  /** Adopt a method from the picker: set the type and clear the stale form. */
+  function chooseMethod(method: AnalysisMethod) {
+    if (!method.engine) return;
+    setAnalysisType(method.engine);
+    setParamValues({});
+    setAttempted(false);
+    setResult(null);
+  }
 
   function buildParameters(): Record<string, unknown> {
     const parameters: Record<string, unknown> = {};
@@ -430,6 +486,14 @@ export default function StatisticsPage() {
             onRun={runAnalysis}
           />
 
+          {catalog && (
+            <MethodPicker
+              catalog={catalog}
+              selected={analysisType}
+              onSelect={chooseMethod}
+            />
+          )}
+
           <Card
             title="Endesha uchambuzi"
             icon="calculator"
@@ -455,7 +519,9 @@ export default function StatisticsPage() {
                 hint={currentType?.description}
                 options={types.map((entry) => ({
                   value: entry.analysis_type,
-                  label: entry.analysis_type,
+                  label:
+                    catalog?.methods.find((method) => method.engine === entry.analysis_type)
+                      ?.label_sw ?? entry.analysis_type,
                 }))}
                 onChange={(event) => {
                   setAnalysisType(event.target.value);
@@ -491,6 +557,14 @@ export default function StatisticsPage() {
               )}
             </div>
           </Card>
+
+          {selectedMethod && selectedStages.length > 0 && (
+            <AnalysisStageRail
+              method={selectedMethod}
+              stages={selectedStages}
+              completedThrough={completedThrough}
+            />
+          )}
 
           <RecommendationPanel
             datasetId={datasetId}

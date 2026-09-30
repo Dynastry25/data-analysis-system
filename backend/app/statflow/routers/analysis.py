@@ -9,7 +9,7 @@ from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
 from app.models import AnalysisRun, Dataset, User
 from app.rbac import ORG_ROLE_VIEWER
-from app.statflow import stats_engine, version_store
+from app.statflow import methods, stats_engine, version_store
 from app.statflow.schemas import AnalysisRequest
 from app.statflow.version_store import VersionError
 
@@ -30,6 +30,36 @@ def _frame_for(
 def analysis_types(user: User = Depends(get_current_user)) -> List[Dict[str, Any]]:
     """Analyses the unified engine supports (+ the parameters each expects)."""
     return stats_engine.catalog()
+
+
+@router.get("/analysis/methods")
+def analysis_method_catalog(
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """The whole Methods of Analysis guide: categories, methods and stage plans.
+
+    This is the reference the analysis studio reads. Every method carries its
+    purpose, the dependent-variable type it suits, its assumptions, the outputs
+    it must show, the alternatives to it, and the stage plan the guide says to
+    follow when running it.
+    """
+    return methods.method_catalog()
+
+
+@router.get("/analysis/methods/{method_key}")
+def analysis_method_detail(
+    method_key: str,
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """One method with its full stage plan, or 404 when the key is unknown."""
+    found = methods.method(method_key)
+    if found is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unknown method '{method_key}'",
+        )
+    found["stages"] = methods.stage_plan(found)
+    return found
 
 
 @router.post("/datasets/{dataset_id}/analysis")
