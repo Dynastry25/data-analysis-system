@@ -20,7 +20,7 @@ Hii ni implementesheni ya MVP kwa mujibu wa nyaraka za mradi:
 | Kipengele cha MVP | Hali | Wapi |
 |---|---|---|
 | Auth (register/login, JWT) | ✅ | `backend/app/routers/auth.py`, `app/login`, `app/register` |
-| **Dashboard home** (metrics, quick actions, recent datasets, 6-stage workflow guide) | ✅ | `app/dashboard`, AppShell sidebar + `PipelineStepper` |
+| **Dashboard home** (metrics, quick actions, recent datasets, workflow guide) | ✅ | `app/dashboard`, AppShell sidebar + `WorkflowStrip` |
 | Upload CSV/XLSX (validation + progress) | ✅ | `backend/app/routers/datasets.py`, `app/upload` |
 | Data preview (rows, columns, types) | ✅ | `app/datasets/[id]` |
 | Data profiling (missing/unique/min/max) | ✅ | `GET /datasets/{id}/profile` |
@@ -35,10 +35,12 @@ Hii ni implementesheni ya MVP kwa mujibu wa nyaraka za mradi:
 | **Migration za database (Alembic)** | ✅ | `backend/migrations/`, `alembic upgrade head` |
 | **Ufikiaji wa data kwenye shirika** (dataset iliyo kwenye mradi kufuatwa kwa role) | ✅ | `deps.get_owned_dataset` (`min_role` parameter) |
 
-**Mtiririko wa uendeshaji (UI):** kila dataset inafuata hatua 6 — Pakia → Angalia →
-Safisha → Chambua → Chati → Ripoti — ikionyeshwa mara moja kwenye sidebar, stepper
-juu ya ukurasa, na kiashirio cha maendeleo kwenye orodha/dashboard. Definisi yote iko
-`frontend/lib/pipeline.ts` (chanzo kimoja cha kweli).
+**Mtiririko wa uendeshaji (UI):** kila dataset inafuata **hatua 11** zilizopangwa katika
+**awamu 6** — Data → Prepare → Analyze → Visualize → Explain → Report. Shell ya
+mtumiaji ina: sidebar yenye Dashboard/Projects/Data + awamu 5, top bar (tafuta, msaada,
+shughuli, akaunti), na `WorkflowStrip` juu ya kila ukurasa. Ndani ya dataset,
+`JourneyRail` huonyesha hatua zote 11 kwa ushahidi halisi (si namba tu). Definisi yote
+iko `frontend/lib/pipeline.ts` (chanzo kimoja cha kweli).
 
 Awamu zote tatu za roadmap (§10 ya spec) zimefikiwa: **Awamu 1** (auth, upload, preview,
 profiling, cleaning), **Awamu 2** (stats, correlation, regression, charts), **Awamu 3**
@@ -75,10 +77,13 @@ npm run dev
 cd D:\Project\Data-Analysis-system\backend
 .\venv\Scripts\python.exe tests\smoke_test.py     # end-to-end: 88 checks
 .\venv\Scripts\python.exe tests\statflow_test.py  # statflow: 216 checks
+.\venv\Scripts\python.exe tests\formats_test.py   # Stata/SPSS/R uploads: 59 checks
 .\venv\Scripts\python.exe -m pytest               # zote mbili (fast variant)
 ```
 
 Nywila ya kuthibitisha format mpya (JSON/TSV/TXT/Parquet) iko ndani ya `smoke_test.py`.
+Faili za Stata (`.dta`), SPSS (`.sav`, `.zsav`, `.por`) na R (`.RData`, `.rda`,
+`.rds`) zinathibitishwa na `tests/formats_test.py`.
 
 ---
 
@@ -151,7 +156,7 @@ hivyo dev ya ndani na production zote zinafanya kazi kwa API moja.
 
 1. **Sajili / ingia** — JWT token huhifadhiwa kwenye browser, kila request ina
    `Authorization: Bearer …`.
-2. **Pakia data** — drag & drop CSV, XLSX, JSON, TSV, TXT au Parquet (hadi 50MB).
+2. **Pakia data** — drag & drop CSV, XLSX, JSON, TSV, TXT, Parquet au faili za Stata/SPSS/R (hadi 50MB).
    Mfumo unathibitisha aina na ukubwa wa faili, kisha unachambua columns zote.
 3. **Angalia & safisha** — preview ya rows 20 za kwanza, jedwali la columns (aina, missing,
    unique, min/max), badge za tahadhari kwa missing values, na vitufe 4 vya usafishaji.

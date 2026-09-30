@@ -332,7 +332,7 @@ class Dataset(Base):
     )
     original_filename = Column(String(255), nullable=False)
     storage_path = Column(String(500), nullable=False, default="")
-    file_type = Column(String(20), nullable=False)  # csv, xlsx
+    file_type = Column(String(20), nullable=False)  # csv, xlsx, dta, sav, rdata, ...
     row_count = Column(Integer, default=0)
     column_count = Column(Integer, default=0)
     status = Column(String(20), default="uploaded")  # uploaded, cleaned, analyzed

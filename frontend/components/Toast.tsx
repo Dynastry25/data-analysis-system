@@ -69,7 +69,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           <div
             key={t.id}
             role={t.variant === "danger" ? "alert" : "status"}
-            className={`toast-enter pointer-events-auto flex w-[min(22rem,calc(100vw-2rem))] items-start gap-2.5 rounded-lg border px-3.5 py-3 text-body shadow-overlay ${VARIANT_STYLES[t.variant]}`}
+            className={`toast-enter pointer-events-auto flex w-[min(22rem,calc(100vw-2rem))] items-start gap-2.5 rounded-md border px-3.5 py-3 text-body shadow-overlay ${VARIANT_STYLES[t.variant]}`}
           >
             <Icon name={VARIANT_ICONS[t.variant]} size={16} className="mt-0.5 shrink-0" />
             <p className="min-w-0 flex-1">{t.message}</p>

@@ -4,37 +4,94 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { useAuthGuard, useLogout } from "@/lib/useAuth";
-import { api, UserProfile } from "@/lib/api";
+import { useAuthGuard } from "@/lib/useAuth";
+import { api, DatasetSummary, UserProfile } from "@/lib/api";
 import {
-  StageProgressInput,
-  pipelineStageFromPathname,
+  PIPELINE_PHASES,
   PIPELINE_STAGES,
+  PipelinePhaseKey,
+  StageProgressInput,
+  hrefForPhase,
+  phaseFromStep,
+  pipelineStageFromPathname,
 } from "@/lib/pipeline";
-import { Button } from "./Button";
 import { Icon, IconName } from "./Icon";
 import { JourneyRail } from "./JourneyRail";
-import { PipelineStepper } from "./PipelineStepper";
+import { TopBar } from "./TopBar";
+import { WorkflowStrip } from "./WorkflowStrip";
 
-const PRIMARY_NAV: { href: string; label: string; icon: IconName }[] = [
-  { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
-  { href: "/datasets", label: "Datasets zangu", icon: "database" },
-  { href: "/organizations", label: "Mashirika", icon: "building" },
-  { href: "/upload", label: "Pakia data", icon: "upload" },
+interface SidebarEntry {
+  key: string;
+  label: string;
+  href: string;
+  icon: IconName;
+  description: string;
+}
+
+/**
+ * The sidebar, in the order the StatFlow design lays it out: the three
+ * destinations that stand on their own, then the five workflow phases.
+ */
+const FIXED_NAV: SidebarEntry[] = [
+  {
+    key: "dashboard",
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: "dashboard",
+    description: "Muhtasari wa shughuli na hatua inayofuata",
+  },
+  {
+    key: "projects",
+    label: "Projects",
+    href: "/organizations",
+    icon: "folder",
+    description: "Mashirika na miradi inayowahusu",
+  },
+  {
+    key: "data",
+    label: "Data",
+    href: "/datasets",
+    icon: "database",
+    description: "Datasets zako na upakiaji wa faili",
+  },
 ];
+
+/**
+ * The workflow phases the sidebar lists after Data. `data` itself is already
+ * the Data entry above, so listing it twice would only add noise.
+ */
+const PHASE_ICON: Record<PipelinePhaseKey, IconName> = {
+  data: "database",
+  prepare: "sliders",
+  analyze: "calculator",
+  visualize: "chart",
+  explain: "sparkles",
+  report: "file-text",
+};
+
+const SIDEBAR_PHASES = PIPELINE_PHASES.filter((phase) => phase.key !== "data");
+
+/**
+ * Which sidebar entry is current.
+ *
+ * The dataset routes have no section of their own, so they map by the phase
+ * their URL belongs to — which is what `lib/pipeline.ts` already knows.
+ * An unknown route highlights nothing rather than guessing.
+ */
+function activeNavKey(pathname: string, stage: number | null): string | null {
+  if (pathname === "/dashboard") return "dashboard";
+  if (pathname === "/organizations" || pathname.startsWith("/organizations/")) {
+    return "projects";
+  }
+  if (pathname === "/datasets" || pathname === "/upload") return "data";
+  return phaseFromStep(stage)?.key ?? null;
+}
 
 interface AppShellProps {
   title: string;
   description?: string;
   actions?: React.ReactNode;
   children: React.ReactNode;
-}
-
-function isActiveNav(pathname: string, href: string): boolean {
-  if (href === "/datasets" || href === "/organizations") {
-    return pathname === href || pathname.startsWith(`${href}/`);
-  }
-  return pathname === href;
 }
 
 function Brand() {
@@ -64,7 +121,7 @@ function Breadcrumbs({ datasetId, pathname }: { datasetId: number; pathname: str
       <ol className="flex flex-wrap items-center gap-1.5 text-caption text-ink-muted">
         <li>
           <Link href="/datasets" className="transition-colors hover:text-primary-700">
-            Datasets
+            Data
           </Link>
         </li>
         <li aria-hidden="true" className="text-neutral-300">
@@ -93,17 +150,45 @@ function Breadcrumbs({ datasetId, pathname }: { datasetId: number; pathname: str
   );
 }
 
+/**
+ * The user-facing shell, arranged the way the StatFlow design lays it out:
+ * a dark sidebar, a top bar (search / help / activity / account), the workflow
+ * strip (DATA → PREPARE → ANALYZE → VISUALIZE → EXPLAIN → REPORT), then the page.
+ *
+ * Two rules keep the arrangement honest:
+ *
+ * - The sidebar and the strip take their targets from `lib/pipeline.ts`, so a
+ *   phase can never point at two different screens.
+ * - A phase needs a dataset. Inside a dataset the links act on that one;
+ *   anywhere else they act on the most recent dataset, and the strip says which
+ *   so the links never hide their target. With no datasets at all every phase
+ *   resolves to `/upload`, which is the truth.
+ */
 export function AppShell({ title, description, actions, children }: AppShellProps) {
   const ready = useAuthGuard();
-  const logout = useLogout();
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
   const [journeyProgress, setJourneyProgress] = useState<StageProgressInput | null>(
     null
   );
 
   const pipeline = pipelineStageFromPathname(pathname);
+  const latestDataset = datasets[0] ?? null;
+  const targetDatasetId = pipeline.datasetId ?? latestDataset?.id ?? null;
+  const activeKey = activeNavKey(pathname, pipeline.stage);
+
+  const activeDataset =
+    pipeline.datasetId !== null
+      ? (datasets.find((entry) => entry.id === pipeline.datasetId) ?? null)
+      : latestDataset;
+  const contextLabel =
+    pipeline.datasetId !== null && activeDataset === null
+      ? `Inafanya kazi kwenye: Dataset #${pipeline.datasetId}`
+      : activeDataset
+        ? `Inafanya kazi kwenye: ${activeDataset.original_filename}`
+        : "Hakuna dataset bado · anza kwa kupakia data";
 
   useEffect(() => {
     setDrawerOpen(false);
@@ -163,6 +248,26 @@ export function AppShell({ title, description, actions, children }: AppShellProp
       .catch(() => setUser(null));
   }, []);
 
+  // The dataset list feeds three things the shell owns: the search box, the
+  // activity menu, and where the phase links point when the URL has no dataset.
+  // A list that fails to load must degrade to "no datasets known", not break
+  // the page it decorates.
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    api.datasets
+      .list()
+      .then((response) => {
+        if (!cancelled) setDatasets(response);
+      })
+      .catch(() => {
+        if (!cancelled) setDatasets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, pathname]);
+
   if (!ready) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-surface-canvas">
@@ -183,29 +288,16 @@ export function AppShell({ title, description, actions, children }: AppShellProp
         Nenda kwenye maudhui makuu
       </a>
 
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-surface-border bg-neutral-900 px-4 py-3 lg:hidden">
-        <Brand />
-        <button
-          type="button"
-          aria-label="Fungua menyu"
-          aria-expanded={drawerOpen}
-          onClick={() => setDrawerOpen(true)}
-          className="flex h-11 w-11 items-center justify-center rounded text-neutral-300 transition-colors hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-400"
-        >
-          <Icon name="menu" size={22} />
-        </button>
-      </header>
-
       {drawerOpen && (
         <div
           aria-hidden="true"
           onClick={() => setDrawerOpen(false)}
-          className="fixed inset-0 z-40 bg-neutral-900/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-sidebar-deep/60 lg:hidden"
         />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col bg-neutral-900 transition-transform duration-300 ease-standard lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col bg-sidebar transition-transform duration-300 ease-standard lg:static lg:translate-x-0 ${
           drawerOpen ? "translate-x-0 shadow-drawer" : "-translate-x-full"
         }`}
       >
@@ -215,28 +307,29 @@ export function AppShell({ title, description, actions, children }: AppShellProp
             type="button"
             aria-label="Funga menyu"
             onClick={() => setDrawerOpen(false)}
-            className="flex h-11 w-11 items-center justify-center rounded text-neutral-300 transition-colors hover:bg-neutral-800 lg:hidden"
+            className="flex h-11 w-11 items-center justify-center rounded text-neutral-300 transition-colors hover:bg-white/10 lg:hidden"
           >
             <Icon name="close" size={22} />
           </button>
         </div>
 
         <nav aria-label="Urambazaji kuu" className="flex-1 overflow-y-auto px-3 pb-4">
-          <p className="px-3 pb-2 pt-1 text-overline uppercase tracking-wide text-neutral-500">
-            Kuu
-          </p>
           <ul className="space-y-1">
-            {PRIMARY_NAV.map((item) => {
-              const active = isActiveNav(pathname, item.href);
+            {FIXED_NAV.map((item) => {
+              const active = activeKey === item.key;
               return (
-                <li key={item.href}>
+                <li key={item.key} className="relative">
+                  {active && (
+                    <span aria-hidden="true" className="absolute inset-y-1.5 left-0 w-1 rounded-full bg-primary-400" />
+                  )}
                   <Link
                     href={item.href}
                     aria-current={active ? "page" : undefined}
-                    className={`flex min-h-[44px] items-center gap-3 rounded-md px-3 text-body transition-colors duration-150 ease-standard ${
+                    title={item.description}
+                    className={`flex min-h-[44px] items-center gap-3 rounded-sm py-2 pl-4 pr-3 text-body transition-colors duration-150 ease-standard ${
                       active
-                        ? "bg-primary-600 font-medium text-white"
-                        : "text-neutral-300 hover:bg-neutral-800 hover:text-white"
+                        ? "bg-sidebar-active font-medium text-white"
+                        : "text-neutral-300 hover:bg-white/10 hover:text-white"
                     }`}
                   >
                     <Icon name={item.icon} size={20} />
@@ -247,124 +340,101 @@ export function AppShell({ title, description, actions, children }: AppShellProp
             })}
           </ul>
 
-          {pipeline.datasetId !== null && pipeline.stage !== null && (
-            <>
-              <p className="px-3 pb-2 pt-6 text-overline uppercase tracking-wide text-neutral-500">
-                Mtiririko wa dataset
-              </p>
-              <ul className="space-y-0.5">
-                {PIPELINE_STAGES.map((stage) => {
-                  const active = pipeline.stage === stage.step;
-                  const done = (pipeline.stage ?? 0) > stage.step;
-                  const href =
-                    pipeline.datasetId !== null
-                      ? stage.hrefFor(pipeline.datasetId)
-                      : "/upload";
-                  return (
-                    <li key={stage.key}>
-                      <Link
-                        href={href}
-                        aria-current={active ? "step" : undefined}
-                        className={`flex min-h-[40px] items-center gap-3 rounded-md px-3 text-body transition-colors duration-150 ease-standard ${
-                          active
-                            ? "bg-neutral-800 font-medium text-white"
-                            : "text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-                        }`}
-                      >
-                        <span
-                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] ${
-                            done
-                              ? "bg-success/20 text-success"
-                              : active
-                                ? "bg-primary-600 text-white"
-                                : "bg-neutral-800 text-neutral-500"
-                          }`}
-                        >
-                          {done ? <Icon name="check" size={12} /> : stage.step}
-                        </span>
-                        {stage.label}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </>
-          )}
+          <p className="px-3 pb-2 pt-6 text-overline uppercase tracking-wide text-neutral-400">
+            Mtiririko
+          </p>
+          <ul className="space-y-1">
+            {SIDEBAR_PHASES.map((phase) => {
+              const active = activeKey === phase.key;
+              const stageList = PIPELINE_STAGES.filter(
+                (stage) => stage.phase === phase.key
+              );
+              return (
+                <li key={phase.key} className="relative">
+                  {active && (
+                    <span aria-hidden="true" className="absolute inset-y-1.5 left-0 w-1 rounded-full bg-primary-400" />
+                  )}
+                  <Link
+                    href={hrefForPhase(phase.key, targetDatasetId)}
+                    aria-current={active ? "page" : undefined}
+                    title={stageList.map((stage) => stage.fullLabel).join(" · ")}
+                    className={`flex min-h-[44px] items-center gap-3 rounded-sm py-2 pl-4 pr-3 text-body transition-colors duration-150 ease-standard ${
+                      active
+                        ? "bg-sidebar-active font-medium text-white"
+                        : "text-neutral-300 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    <Icon name={PHASE_ICON[phase.key]} size={20} />
+                    {phase.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         </nav>
 
-        <div className="border-t border-neutral-800 p-3">
-          {user?.system_role && (
+        {user?.system_role && (
+          <div className="border-t border-white/10 p-3">
             <Link
               href="/admin"
-              className="mb-1 flex min-h-[40px] items-center gap-3 rounded-md px-2 text-caption text-neutral-300 transition-colors duration-150 ease-standard hover:bg-neutral-800 hover:text-white"
+              className="flex min-h-[44px] items-center gap-3 rounded-md px-3 text-caption text-neutral-300 transition-colors duration-150 ease-standard hover:bg-white/10 hover:text-white"
             >
               <Icon name="shield" size={18} />
               Admin portal
             </Link>
-          )}
-          <div className="flex items-center gap-3 px-1 py-2">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-600 text-white">
-              <Icon name="user" size={18} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-body text-white">
-                {user?.full_name ?? "Mtumiaji"}
-              </p>
-              <p className="truncate text-caption text-neutral-400">{user?.email ?? ""}</p>
-            </div>
           </div>
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-neutral-300 hover:bg-neutral-800 hover:text-white"
-            onClick={logout}
-          >
-            <Icon name="logout" size={18} />
-            Toka (logout)
-          </Button>
-        </div>
+        )}
       </aside>
 
-      <main id="main-content" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-content">
-          <header className="mb-5">
-            {pipeline.datasetId !== null && (
-              <Breadcrumbs datasetId={pipeline.datasetId} pathname={pathname} />
-            )}
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0">
-                <h1 className="text-h1 text-ink">{title}</h1>
-                {description && (
-                  <p className="mt-1 max-w-3xl text-body-lg text-ink-secondary">
-                    {description}
-                  </p>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar
+          user={user}
+          datasets={datasets}
+          onOpenMenu={() => setDrawerOpen(true)}
+        />
+
+        <WorkflowStrip
+          datasetId={targetDatasetId}
+          currentStage={pipeline.stage}
+          contextLabel={contextLabel}
+        />
+
+        <main id="main-content" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-content">
+            <header className="mb-5">
+              {pipeline.datasetId !== null && (
+                <Breadcrumbs datasetId={pipeline.datasetId} pathname={pathname} />
+              )}
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h1 className="text-h1 text-ink">{title}</h1>
+                  {description && (
+                    <p className="mt-1 max-w-3xl text-body-lg text-ink-secondary">
+                      {description}
+                    </p>
+                  )}
+                </div>
+                {actions && (
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
                 )}
               </div>
-              {actions && (
-                <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
-              )}
-            </div>
-          </header>
+            </header>
 
-          {pipeline.stage !== null && (
-            <PipelineStepper
-              datasetId={pipeline.datasetId}
-              currentStage={pipeline.stage}
-            />
-          )}
+            {pipeline.datasetId !== null && journeyProgress && (
+              <JourneyRail
+                datasetId={pipeline.datasetId}
+                currentStage={pipeline.stage}
+                progress={journeyProgress}
+              />
+            )}
 
-          {pipeline.datasetId !== null && journeyProgress && (
-            <JourneyRail
-              datasetId={pipeline.datasetId}
-              currentStage={pipeline.stage}
-              progress={journeyProgress}
-            />
-          )}
-
-          <div className="space-y-6">{children}</div>
-        </div>
-      </main>
+            <div className="space-y-6">{children}</div>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
 
 export default AppShell;
+

@@ -1,4 +1,5 @@
 import type { IconName } from "@/components/Icon";
+import { UPLOAD_FILE_GROUPS } from "@/lib/upload-formats";
 
 /**
  * The StatFlow journey, as one source of truth.
@@ -71,7 +72,7 @@ export const PIPELINE_STAGES: PipelineStage[] = [
     label: "Pakia",
     fullLabel: "Pakia",
     labelEn: "Upload",
-    description: "Pakia faili (CSV, Excel, JSON, TSV, TXT, Parquet)",
+    description: `Pakia faili (${UPLOAD_FILE_GROUPS})`,
     phase: "data",
     icon: "upload",
     hrefFor: () => "/upload",
@@ -248,6 +249,31 @@ export function phaseFromStep(step: number | null): PipelinePhase | null {
   return (
     PIPELINE_PHASES.find((phase) => step >= phase.from && step <= phase.to) ?? null
   );
+}
+
+/** The first stage of each phase is where you enter that phase. */
+const PHASE_ENTRY: Record<PipelinePhaseKey, (datasetId: number | string) => string> = {
+  data: (datasetId) => `/datasets/${datasetId}/validate`,
+  prepare: (datasetId) => `/datasets/${datasetId}/studio?stage=clean`,
+  analyze: (datasetId) => `/datasets/${datasetId}/statistics`,
+  visualize: (datasetId) => `/datasets/${datasetId}/charts`,
+  explain: (datasetId) => `/datasets/${datasetId}/ask`,
+  report: (datasetId) => `/datasets/${datasetId}/export?stage=report`,
+};
+
+/**
+ * Where a phase's work starts, for one dataset.
+ *
+ * With no dataset there is nothing to prepare, analyse or report on, so every
+ * phase resolves to `/upload`: the only honest entry point. Both the sidebar
+ * and the workflow strip read this, so a phase can never point two places.
+ */
+export function hrefForPhase(
+  phaseKey: PipelinePhaseKey,
+  datasetId: number | string | null
+): string {
+  if (datasetId === null) return "/upload";
+  return PHASE_ENTRY[phaseKey](datasetId);
 }
 
 /** Section → pipeline stage for the nested `/datasets/{id}/...` routes. */

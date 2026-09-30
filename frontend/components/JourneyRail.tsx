@@ -61,7 +61,7 @@ export function JourneyRail({
   const doneCount = [...states.values()].filter((s) => s === "done").length;
 
   return (
-    <section className="mb-6 rounded-lg border border-surface-border bg-surface-panel shadow-card">
+    <section className="mb-6 rounded-md border border-surface-border bg-surface-panel shadow-card">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}

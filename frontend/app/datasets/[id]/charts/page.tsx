@@ -132,7 +132,7 @@ export default function ChartsPage() {
 
   return (
     <AppShell
-      title="Chora chati"
+      title="Visualization Studio"
       description="Chagua X na Y, aina ya chati, na uone preview papo hapo."
       actions={
         <>
@@ -149,6 +149,9 @@ export default function ChartsPage() {
       }
     >
       <Card title="Mipangilio ya chati" icon="chart">
+        <p className="mb-3 text-overline uppercase tracking-wide text-ink-muted">
+          Variable mapping
+        </p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <SelectInput
             label="Aina ya chati"

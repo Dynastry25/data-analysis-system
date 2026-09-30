@@ -92,7 +92,7 @@ const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" })
 export function MissingBadge() {
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-pill border border-warning/30 bg-warning-bg px-1.5 py-0.5 text-caption font-medium text-warning-700"
+      className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning-bg px-1.5 py-0.5 text-caption font-medium text-warning-700"
       title="Thamani haipo"
     >
       <Icon name="alert-circle" size={12} className="shrink-0" />
@@ -190,7 +190,7 @@ export function DataTable({
     if (typeof value === "boolean") {
       return (
         <span
-          className={`inline-flex items-center rounded-pill border px-1.5 py-0.5 text-caption font-medium ${
+          className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-caption font-medium ${
             value
               ? "border-success/30 bg-success-bg text-success-700"
               : "border-surface-border bg-surface-sunken text-ink-muted"
@@ -205,7 +205,7 @@ export function DataTable({
 
   if (rows.length === 0) {
     return (
-      <div className="overflow-hidden rounded-lg border border-surface-border bg-surface-panel">
+      <div className="overflow-hidden rounded-md border border-surface-border bg-surface-panel">
         <p className="px-4 py-10 text-center text-body text-ink-muted">{emptyMessage}</p>
       </div>
     );
@@ -218,7 +218,7 @@ export function DataTable({
         {sorted.map((row, rowIndex) => (
           <div
             key={rowIndex}
-            className="rounded-lg border border-surface-border bg-surface-panel p-3"
+            className="rounded-md border border-surface-border bg-surface-panel p-3"
           >
             <p className="mb-2 break-words text-body font-medium text-ink">
               {renderValue(columns[0], row[columns[0]], row)}
@@ -247,7 +247,7 @@ export function DataTable({
       </div>
 
       <div
-        className="hidden overflow-auto rounded-lg border border-surface-border bg-surface-panel sm:block"
+        className="hidden overflow-auto rounded-md border border-surface-border bg-surface-panel sm:block"
         style={{ maxHeight }}
       >
         <table className="min-w-full border-collapse text-body">

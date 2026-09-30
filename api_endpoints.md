@@ -22,8 +22,11 @@ Ingia na kupata token.
 ## 2. Datasets
 
 ### POST /datasets/upload
-Pakia faili (CSV, XLSX, JSON, TSV, TXT, Parquet). Inaunda record katika `datasets` na
+Pakia faili (CSV, XLSX, JSON, TSV, TXT, Parquet, Stata `.dta`, SPSS `.sav`/`.zsav`/`.por`,
+R `.RData`/`.rda`/`.rds`). Inaunda record katika `datasets` na
 `dataset_columns`. Ukubwa wa juu: MB 50.
+Lebo za thamani (value labels) za Stata/SPSS hazipanuliwi: columns hizo hubaki namba
+za misimbo (codes) ili hesabu za takwamu zisiharibike.
 **Body:** `multipart/form-data` — `file`, na `project_id?` (hiari, namba)
 **Response:** `{ dataset_id, original_filename, project_id, row_count, column_count, columns: [...] }`
 

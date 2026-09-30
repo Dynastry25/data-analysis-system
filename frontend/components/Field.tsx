@@ -256,7 +256,7 @@ export function CheckboxGroup({
             return (
               <label
                 key={option}
-                className={`inline-flex min-h-[28px] cursor-pointer items-center gap-1.5 rounded-pill border px-2.5 py-0.5 text-caption transition-colors duration-150 ease-standard ${
+                className={`inline-flex min-h-[28px] cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-caption transition-colors duration-150 ease-standard ${
                   active
                     ? "border-primary-200 bg-primary-50 font-medium text-primary-800"
                     : "border-surface-border bg-surface-panel text-ink-secondary hover:border-surface-border-strong hover:bg-surface-sunken"
@@ -295,10 +295,10 @@ export function FeatureCard({
 }: FeatureCardProps) {
   return (
     <section
-      className={`rounded-lg border border-surface-border bg-surface-panel p-5 shadow-card ${className}`}
+      className={`rounded-md border border-surface-border bg-surface-panel p-5 shadow-card ${className}`}
     >
       <div className="flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-primary-50 text-primary-600">
           <Icon name={icon} size={18} />
         </span>
         <div className="min-w-0 flex-1">

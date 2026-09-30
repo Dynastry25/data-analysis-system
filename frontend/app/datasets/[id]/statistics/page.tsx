@@ -397,8 +397,8 @@ export default function StatisticsPage() {
 
   return (
     <AppShell
-      title="Chumba cha takwimu"
-      description="Endesha uchambuzi wowote wa engine moja ya takwimu matokeo yote yana muundo mmoja."
+      title="Statistical Analysis Studio"
+      description="Endesha uchambuzi wowote wa engine moja ya takwimu — matokeo yote yana muundo mmoja."
       actions={
         <Link href={`/datasets/${datasetId}`}>
           <Button variant="secondary" icon="arrow-right">
@@ -439,6 +439,15 @@ export default function StatisticsPage() {
                 : undefined
             }
           >
+            <p className="mb-2 text-overline uppercase tracking-wide text-ink-muted">
+              Research question
+            </p>
+            <p className="mb-4 text-body text-ink-secondary">
+              What is the effect of onboarding completion on 90-day retention?
+            </p>
+            <p className="mb-3 text-overline uppercase tracking-wide text-ink-muted">
+              Variables
+            </p>
             <div className="grid gap-4 md:grid-cols-2">
               <SelectInput
                 label="Aina ya uchambuzi"

@@ -45,7 +45,7 @@ export function Card({
   const headerless = !title && !actions && !description;
   return (
     <section
-      className={`rounded-lg border shadow-card ${TONE_CLASSES[tone]} ${className}`}
+      className={`rounded-md border shadow-card ${TONE_CLASSES[tone]} ${className}`}
     >
       {headerless ? (
         <div className={PADDING_CLASSES[padding]}>{children}</div>
@@ -58,7 +58,7 @@ export function Card({
           >
             <div className="flex min-w-0 items-start gap-2.5">
               {icon && (
-                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600">
+                <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-primary-50 text-primary-600">
                   <Icon name={icon} size={16} />
                 </span>
               )}
@@ -96,7 +96,7 @@ interface StatProps {
 
 export function Stat({ label, value, hint, tone = "default" }: StatProps) {
   return (
-    <div className="rounded-md border border-surface-border bg-surface-sunken px-3.5 py-3">
+    <div className="rounded-sm border border-surface-border bg-surface-sunken px-3.5 py-3">
       <p className="text-overline uppercase tracking-wide text-ink-muted">{label}</p>
       <p
         className={`tabular mt-1 font-mono text-h2 ${
@@ -124,8 +124,8 @@ export function EmptyState({
   icon = "layers",
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center rounded-lg border border-dashed border-surface-border-strong bg-surface-sunken px-6 py-10 text-center">
-      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-panel text-ink-muted shadow-card">
+    <div className="flex flex-col items-center rounded-md border border-dashed border-surface-border-strong bg-surface-sunken px-6 py-10 text-center">
+      <span className="flex h-11 w-11 items-center justify-center rounded-sm bg-surface-panel text-ink-muted shadow-card">
         <Icon name={icon} size={20} />
       </span>
       <p className="mt-3 text-body-lg font-medium text-ink">{title}</p>

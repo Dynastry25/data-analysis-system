@@ -38,7 +38,7 @@ export function Badge({
   const statusIcon = icon === null ? undefined : (icon ?? STATUS_ICONS[tone]);
   return (
     <span
-      className={`inline-flex max-w-full items-center gap-1 rounded-pill border font-medium ${
+      className={`inline-flex max-w-full items-center gap-1 rounded-full border font-medium ${
         size === "sm" ? "px-1.5 py-0 text-caption" : "px-2 py-0.5 text-caption"
       } ${TONES[tone]} ${className}`}
     >

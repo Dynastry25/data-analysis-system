@@ -9,12 +9,13 @@ import { TextInput } from "@/components/Field";
 import { Icon, IconName } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, setToken } from "@/lib/api";
+import { UPLOAD_FILE_GROUPS } from "@/lib/upload-formats";
 
 const VALUE_POINTS: { icon: IconName; title: string; description: string }[] = [
   {
     icon: "upload",
     title: "Pakia kwa haraka",
-    description: "CSV, Excel, JSON, TSV, TXT au Parquet, hadi 50MB.",
+    description: `${UPLOAD_FILE_GROUPS}, hadi 50MB.`,
   },
   {
     icon: "calculator",
@@ -30,7 +31,7 @@ const VALUE_POINTS: { icon: IconName; title: string; description: string }[] = [
 
 function BrandPanel() {
   return (
-    <aside className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-neutral-900 p-10 text-white lg:flex">
+    <aside className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-sidebar p-10 text-white lg:flex">
       <div className="flex items-center gap-2.5">
         <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-600">
           <Icon name="chart-line" size={20} />
@@ -47,7 +48,7 @@ function BrandPanel() {
         <ol className="mt-8 space-y-5">
           {VALUE_POINTS.map((point) => (
             <li key={point.title} className="flex items-start gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-neutral-800 text-primary-300">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white/10 text-primary-300">
                 <Icon name={point.icon} size={18} />
               </span>
               <div>
@@ -110,7 +111,7 @@ export default function LoginPage() {
 
           <form
             onSubmit={handleSubmit}
-            className="space-y-4 rounded-lg border border-surface-border bg-surface-panel p-6 shadow-card"
+            className="space-y-4 rounded-md border border-surface-border bg-surface-panel p-6 shadow-card"
           >
             <TextInput
               label="Barua pepe (email)"

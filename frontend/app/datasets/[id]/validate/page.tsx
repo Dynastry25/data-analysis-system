@@ -95,7 +95,7 @@ export default function ValidateDatasetPage() {
 
   return (
     <AppShell
-      title="Thibitisha data"
+      title="Data Quality / Profile"
       description="Kagua schema, data quality na tabia za data kabla ya kuchambua. Kila tatizo hapa linaweza kurekebishwa na kuthibitishwa."
     >
       {loading && <TableSkeleton rows={5} />}

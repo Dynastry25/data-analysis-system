@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
@@ -85,14 +85,30 @@ export default function DatasetsPage() {
     }
   }
 
+  const projectNames = useMemo(() => {
+    const names = new Map<string, number>();
+    for (const dataset of datasets) {
+      const key = dataset.project_name?.trim() || "Binafsi";
+      names.set(key, (names.get(key) ?? 0) + 1);
+    }
+    return [...names.entries()].sort((a, b) => b[1] - a[1]);
+  }, [datasets]);
+  const [activeProject, setActiveProject] = useState<string>("all");
+  const filteredDatasets =
+    activeProject === "all"
+      ? datasets
+      : datasets.filter(
+          (dataset) => (dataset.project_name?.trim() || "Binafsi") === activeProject
+        );
+
   const totalRows = datasets.reduce((sum, d) => sum + (d.row_count || 0), 0);
   const cleanedCount = datasets.filter((d) => d.status === "cleaned").length;
   const analyzedCount = datasets.filter((d) => d.status === "analyzed").length;
 
   return (
     <AppShell
-      title="Datasets"
-      description="Faili ulizopakia na data iliyoshirikishwa na wanachama wa mashirika yako."
+      title="Projects & Datasets"
+      description={`${datasets.length} projects · ${datasets.length} datasets`}
       actions={
         <>
           <Link href="/dashboard">
@@ -103,8 +119,7 @@ export default function DatasetsPage() {
           </Link>
           <Link href="/upload">
             <Button>
-              <Icon name="upload" size={16} />
-              Pakia data mpya
+              <Icon name="upload" size={16} />+ Add Dataset
             </Button>
           </Link>
         </>
@@ -141,8 +156,41 @@ export default function DatasetsPage() {
         />
       </div>
 
+      {/* Project filter chips — prototype page-03 groups datasets under projects */}
+      {projectNames.length > 1 && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Chuja kwa mradi">
+          <button
+            type="button"
+            onClick={() => setActiveProject("all")}
+            aria-pressed={activeProject === "all"}
+            className={`rounded-full border px-2.5 py-1 text-caption transition-colors duration-150 ease-standard ${
+              activeProject === "all"
+                ? "border-primary-200 bg-primary-50 font-medium text-primary-800"
+                : "border-surface-border bg-surface-sunken text-ink-secondary hover:border-primary-300"
+            }`}
+          >
+            All ({datasets.length})
+          </button>
+          {projectNames.map(([name, count]) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => setActiveProject(name)}
+              aria-pressed={activeProject === name}
+              className={`rounded-full border px-2.5 py-1 text-caption transition-colors duration-150 ease-standard ${
+                activeProject === name
+                  ? "border-primary-200 bg-primary-50 font-medium text-primary-800"
+                  : "border-surface-border bg-surface-sunken text-ink-secondary hover:border-primary-300"
+              }`}
+            >
+              {name} ({count})
+            </button>
+          ))}
+        </div>
+      )}
+
       <Card
-        title="Datasets zako"
+        title={activeProject === "all" ? "Datasets zako" : activeProject}
         icon="database"
         description={
           datasets.length > 0
@@ -155,7 +203,7 @@ export default function DatasetsPage() {
         ) : datasets.length === 0 ? (
           <EmptyState
             title="Hakuna dataset bado"
-            description="Anza kwa kupakia faili la CSV au Excel."
+            description="Anza kwa kupakia faili la CSV, Excel, JSON, Stata, SPSS au R."
             icon="database"
             action={
               <Link href="/upload">
@@ -168,27 +216,35 @@ export default function DatasetsPage() {
           />
         ) : (
           <ul className="space-y-3">
-            {datasets.map((dataset) => {
+            {filteredDatasets.map((dataset) => {
               const done = completedStageCount({ status: dataset.status });
               const confirming = pendingDelete === dataset.id;
               const canDelete = meId === null || dataset.user_id === meId;
               return (
                 <li
                   key={dataset.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-surface-border bg-surface-panel p-4 shadow-card transition-shadow duration-150 ease-standard hover:shadow-raised"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-surface-border bg-surface-panel p-4 shadow-card transition-shadow duration-150 ease-standard hover:shadow-raised"
                 >
                   <div className="flex min-w-[240px] flex-1 items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-primary-50 text-primary-600">
                       <Icon name="database" size={20} />
                     </span>
                     <div className="min-w-0">
                       <p className="truncate text-body-lg font-medium text-ink">
                         {dataset.original_filename}
                       </p>
-                      <p className="mt-0.5 text-caption text-ink-muted">
-                        Safu {dataset.row_count.toLocaleString()} · Columns{" "}
-                        {dataset.column_count} · {dataset.file_type.toUpperCase()} ·{" "}
-                        {formatDate(dataset.uploaded_at)}
+                      <p className="mt-1 flex flex-wrap items-center gap-x-2 text-caption text-ink-muted">
+                        <span className="font-mono tabular">DATASET SIZE</span>
+                        <span aria-hidden="true">·</span>
+                        <span>
+                          Safu {dataset.row_count.toLocaleString()} · Columns{" "}
+                          {dataset.column_count}
+                        </span>
+                      </p>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-caption text-ink-muted">
+                        <span className="font-mono tabular">UPDATED</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{formatDate(dataset.uploaded_at)}</span>
                       </p>
                     </div>
                   </div>
