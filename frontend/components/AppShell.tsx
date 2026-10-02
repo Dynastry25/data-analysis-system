@@ -15,17 +15,20 @@ import {
   phaseFromStep,
   pipelineStageFromPathname,
 } from "@/lib/pipeline";
+import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { Icon, IconName } from "./Icon";
 import { JourneyRail } from "./JourneyRail";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 import { TopBar } from "./TopBar";
 import { WorkflowStrip } from "./WorkflowStrip";
 
 interface SidebarEntry {
   key: string;
-  label: string;
+  /** Resolved through the translation table, so the nav follows the language. */
+  labelKey: TranslationKey;
+  descriptionKey: TranslationKey;
   href: string;
   icon: IconName;
-  description: string;
 }
 
 /**
@@ -35,24 +38,38 @@ interface SidebarEntry {
 const FIXED_NAV: SidebarEntry[] = [
   {
     key: "dashboard",
-    label: "Dashboard",
+    labelKey: "nav.dashboard",
+    descriptionKey: "nav.dashboard.desc",
     href: "/dashboard",
     icon: "dashboard",
-    description: "Muhtasari wa shughuli na hatua inayofuata",
   },
   {
     key: "projects",
-    label: "Projects",
+    labelKey: "nav.projects",
+    descriptionKey: "nav.projects.desc",
     href: "/organizations",
     icon: "folder",
-    description: "Mashirika na miradi inayowahusu",
   },
   {
     key: "data",
-    label: "Data",
+    labelKey: "nav.data",
+    descriptionKey: "nav.data.desc",
     href: "/datasets",
     icon: "database",
-    description: "Datasets zako na upakiaji wa faili",
+  },
+  {
+    key: "templates",
+    labelKey: "nav.templates",
+    descriptionKey: "nav.templates.desc",
+    href: "/templates",
+    icon: "clipboard",
+  },
+  {
+    key: "activity",
+    labelKey: "nav.activity",
+    descriptionKey: "nav.activity.desc",
+    href: "/activity",
+    icon: "history",
   },
 ];
 
@@ -69,6 +86,35 @@ const PHASE_ICON: Record<PipelinePhaseKey, IconName> = {
   report: "file-text",
 };
 
+/**
+ * The bottom group: screens that stand outside the data workflow. They are
+ * separate from the phases because none of them is a stage -- they are
+ * account, reference and history.
+ */
+const SECONDARY_NAV: SidebarEntry[] = [
+  {
+    key: "profile",
+    labelKey: "nav.profile",
+    descriptionKey: "nav.profile.desc",
+    href: "/profile",
+    icon: "user",
+  },
+  {
+    key: "settings",
+    labelKey: "nav.settings",
+    descriptionKey: "nav.settings.desc",
+    href: "/settings",
+    icon: "sliders",
+  },
+  {
+    key: "help",
+    labelKey: "nav.help",
+    descriptionKey: "nav.help.desc",
+    href: "/help",
+    icon: "info",
+  },
+];
+
 const SIDEBAR_PHASES = PIPELINE_PHASES.filter((phase) => phase.key !== "data");
 
 /**
@@ -84,6 +130,11 @@ function activeNavKey(pathname: string, stage: number | null): string | null {
     return "projects";
   }
   if (pathname === "/datasets" || pathname === "/upload") return "data";
+  if (pathname === "/templates") return "templates";
+  if (pathname === "/activity") return "activity";
+  if (pathname === "/profile") return "profile";
+  if (pathname === "/settings") return "settings";
+  if (pathname === "/help") return "help";
   return phaseFromStep(stage)?.key ?? null;
 }
 
@@ -167,6 +218,7 @@ function Breadcrumbs({ datasetId, pathname }: { datasetId: number; pathname: str
 export function AppShell({ title, description, actions, children }: AppShellProps) {
   const ready = useAuthGuard();
   const pathname = usePathname();
+  const { t } = useLanguage();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
@@ -325,7 +377,7 @@ export function AppShell({ title, description, actions, children }: AppShellProp
                   <Link
                     href={item.href}
                     aria-current={active ? "page" : undefined}
-                    title={item.description}
+                    title={t(item.descriptionKey)}
                     className={`flex min-h-[44px] items-center gap-3 rounded-sm py-2 pl-4 pr-3 text-body transition-colors duration-150 ease-standard ${
                       active
                         ? "bg-sidebar-active font-medium text-white"
@@ -333,7 +385,7 @@ export function AppShell({ title, description, actions, children }: AppShellProp
                     }`}
                   >
                     <Icon name={item.icon} size={20} />
-                    {item.label}
+                    {t(item.labelKey)}
                   </Link>
                 </li>
               );
@@ -341,7 +393,7 @@ export function AppShell({ title, description, actions, children }: AppShellProp
           </ul>
 
           <p className="px-3 pb-2 pt-6 text-overline uppercase tracking-wide text-neutral-400">
-            Mtiririko
+            {t("nav.workspace")}
           </p>
           <ul className="space-y-1">
             {SIDEBAR_PHASES.map((phase) => {
@@ -371,19 +423,48 @@ export function AppShell({ title, description, actions, children }: AppShellProp
               );
             })}
           </ul>
+          <p className="px-3 pb-2 pt-6 text-overline uppercase tracking-wide text-neutral-400">
+            {t("nav.more")}
+          </p>
+          <ul className="space-y-1">
+            {SECONDARY_NAV.map((item) => {
+              const active = activeKey === item.key;
+              return (
+                <li key={item.key} className="relative">
+                  {active && (
+                    <span aria-hidden="true" className="absolute inset-y-1.5 left-0 w-1 rounded-full bg-primary-400" />
+                  )}
+                  <Link
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    title={t(item.descriptionKey)}
+                    className={`flex min-h-[44px] items-center gap-3 rounded-sm py-2 pl-4 pr-3 text-body transition-colors duration-150 ease-standard ${
+                      active
+                        ? "bg-sidebar-active font-medium text-white"
+                        : "text-neutral-300 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    <Icon name={item.icon} size={20} />
+                    {t(item.labelKey)}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         </nav>
 
-        {user?.system_role && (
-          <div className="border-t border-white/10 p-3">
+        <div className="border-t border-white/10 p-3">
+          <LanguageSwitcher className="mb-2 w-full [&>button]:flex-1" />
+          {user?.system_role && (
             <Link
               href="/admin"
               className="flex min-h-[44px] items-center gap-3 rounded-md px-3 text-caption text-neutral-300 transition-colors duration-150 ease-standard hover:bg-white/10 hover:text-white"
             >
               <Icon name="shield" size={18} />
-              Admin portal
+              {t("nav.admin")}
             </Link>
-          </div>
-        )}
+          )}
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

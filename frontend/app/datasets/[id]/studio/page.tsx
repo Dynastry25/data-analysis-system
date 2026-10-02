@@ -9,6 +9,13 @@ import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
 import { CheckboxGroup, SelectInput, TextInput } from "@/components/Field";
+import {
+  FilterBuilder,
+  buildFilterConfig,
+  emptyCondition,
+  type FilterCondition,
+  type FilterLogic,
+} from "@/components/FilterBuilder";
 import { Icon } from "@/components/Icon";
 import {
   LivePreview,
@@ -77,9 +84,6 @@ const TYPE_OPTIONS = ["numeric", "integer", "text", "date", "boolean"].map((valu
   value,
   label: value,
 }));
-const OPERATOR_OPTIONS = ["eq", "ne", "gt", "gte", "lt", "lte", "contains"].map(
-  (value) => ({ value, label: value })
-);
 
 /** Profiling min/max arrive as `any`, so render them rather than trusting the type. */
 function formatCell(value: unknown): string {
@@ -167,11 +171,8 @@ const OPERATION_FIELDS: Record<string, FieldDef[]> = {
   select_columns: [
     { key: "columns", kind: "columns", label: "Columns za kuweka", required: true },
   ],
-  filter: [
-    { key: "column", kind: "column", label: "Column", required: true },
-    { key: "operator", kind: "select", label: "Operator", required: true, options: OPERATOR_OPTIONS },
-    { key: "value", kind: "text", label: "Value", required: true, hint: "mf. 18 au Dar" },
-  ],
+  // The filter builds its own conditions through FilterBuilder rather than the
+  // generic field list, so it is deliberately absent here.
   sort: [
     { key: "by", kind: "column", label: "Panga kwa (by)", required: true },
     { key: "ascending", kind: "select", label: "Mpangilio", options: ASC_OPTIONS },
@@ -305,8 +306,39 @@ export default function StudioPage() {
   const currentOperation = catalog.find((entry) => entry.type === selectedOp) ?? null;
   const fields = OPERATION_FIELDS[selectedOp] ?? [];
 
+  /*
+   * The filter is the one operation whose parameters are a list rather than a
+   * set of named fields, so its conditions live in their own state instead of
+   * being flattened into `fieldValues`. `and` is the default because a filter
+   * that quietly widens when you add a second condition is the dangerous
+   * direction: `or` has to be chosen on purpose.
+   */
+  const [filterConditions, setFilterConditions] = useState<FilterCondition[]>([]);
+  const [filterLogic, setFilterLogic] = useState<FilterLogic>("and");
+  const [filterError, setFilterError] = useState<string | null>(null);
+
+  // Re-seed whenever the operation or the dataset changes, so a condition can
+  // never reference a column that the new version no longer has.
+  useEffect(() => {
+    setFilterError(null);
+    if (selectedOp === "filter") {
+      setFilterConditions(columns.length > 0 ? [emptyCondition(columns)] : []);
+    } else {
+      setFilterConditions([]);
+    }
+  }, [selectedOp, columns]);
+
   function buildConfiguration(): Record<string, unknown> {
     const config: Record<string, unknown> = {};
+    if (selectedOp === "filter") {
+      // buildFilterConfig has already validated by this point; applyOperation
+      // returns early on an error, so an unvalidated path is not reachable.
+      const { config: filterConfig } = buildFilterConfig(filterConditions);
+      if (filterConfig) {
+        return { ...filterConfig, logic: filterLogic };
+      }
+      return config;
+    }
     if (selectedOp === "rename_columns") {
       const oldName = String(fieldValues.old || "");
       const newName = String(fieldValues.new || "").trim();
@@ -400,6 +432,20 @@ export default function StudioPage() {
   async function applyOperation() {
     if (!currentOperation) return;
     setAttempted(true);
+
+    if (selectedOp === "filter") {
+      // Validated here rather than in buildConfiguration so the message can
+      // name the row that is wrong instead of reaching the server as a filter
+      // that keeps nothing.
+      const { config, error } = buildFilterConfig(filterConditions);
+      if (error || config === null) {
+        setFilterError(error ?? "Add at least one condition.");
+        showToast(error ?? "Weka angalia conditions za chujio.", "warning");
+        return;
+      }
+      setFilterError(null);
+    }
+
     const missing = fields.filter(
       (field) => field.required && isBlankValue(fieldValues[field.key])
     );
@@ -437,6 +483,9 @@ export default function StudioPage() {
         );
         setLabel("");
         setFieldValues({});
+        setFilterConditions([emptyCondition(columns)]);
+        setFilterLogic("and");
+        setFilterError(null);
         setAttempted(false);
         return;
       }
@@ -459,6 +508,11 @@ export default function StudioPage() {
       );
       setLabel("");
       setFieldValues({});
+      // The filter is reseeded from the new version's columns, so a condition
+      // can never still name a column the operation just removed.
+      setFilterConditions([emptyCondition(columns)]);
+      setFilterLogic("and");
+      setFilterError(null);
       setAttempted(false);
     } catch (caught) {
       showToast(apiErrorMessage(caught), "danger");
@@ -735,13 +789,25 @@ export default function StudioPage() {
                         </div>
                       </div>
 
-                      {fields.length > 0 && (
+                      {selectedOp === "filter" ? (
+                        <div className="mt-4">
+                          <FilterBuilder
+                            columns={columns}
+                            conditions={filterConditions}
+                            logic={filterLogic}
+                            onChange={setFilterConditions}
+                            onLogicChange={setFilterLogic}
+                            attempted={attempted}
+                            error={filterError}
+                          />
+                        </div>
+                      ) : fields.length > 0 ? (
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
                           {fields.map((field) => (
                             <div key={field.key}>{renderField(field)}</div>
                           ))}
                         </div>
-                      )}
+                      ) : null}
 
                       <Button
                         className="mt-4"

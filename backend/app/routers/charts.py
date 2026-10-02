@@ -53,6 +53,20 @@ def create_chart(
         )
         config = payload.config.model_dump()
         chart_data = build_chart_data(frame, payload.chart_type, config)
+        # Source attribution, per the visualization rules: "data source/version
+        # visibility" is a requirement, not a nicety. A chart that does not say
+        # which dataset version it came from cannot be checked, and in a tool
+        # where every operation creates a new version that is the difference
+        # between a result and a guess.
+        chart_data.setdefault("meta", {})
+        chart_data["meta"].update(
+            {
+                "dataset_id": dataset.id,
+                "dataset_name": dataset.original_filename,
+                "dataset_version": int(version_record.version),
+                "rows_total": int(frame.shape[0]),
+            }
+        )
     except (VersionError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 

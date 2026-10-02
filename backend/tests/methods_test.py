@@ -11,6 +11,7 @@ Run it with:  python tests/methods_test.py
 """
 
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -28,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
-from app.statflow import methods, stats_engine  # noqa: E402
+from app.statflow import methods, operations, stats_engine  # noqa: E402
 
 PASSED = 0
 
@@ -1737,6 +1738,118 @@ def assert_authenticated_endpoints(client: TestClient) -> None:
     )
 
 
+def test_filter_conditions_and_frontend_parity() -> None:
+    """The multi-condition filter, and the operator list the UI depends on.
+
+    The studio exposes a condition builder rather than a single
+    column/operator/value triple, so the engine path that joins several
+    conditions has to be exercised directly: it is reachable from the UI but
+    nothing else in the suite covered it.
+    """
+    # op_filter returns the (frame, summary, warnings) tuple, so each result is
+    # indexed as [0] below to reach the kept rows.
+    frame = pd.DataFrame(
+        {
+            "region": ["Dar", "Dodoma", "Arusha", "Dar", "Mwanza"],
+            "age": [22, 35, 47, 19, 60],
+            "weight": [10.0, 20.0, None, 40.0, 50.0],
+        }
+    )
+
+    # A single condition still works through the conditions list, not just the
+    # legacy single-condition shape.
+    only_dar = operations.op_filter(
+        frame, {"conditions": [{"column": "region", "operator": "eq", "value": "Dar"}], "logic": "and"}
+    )
+    check(len(only_dar[0]) == 2, "one condition through the conditions list keeps 2 rows")
+    check(set(only_dar[0]["region"]) == {"Dar"}, "and they are the Dar rows")
+
+    # 'and' is the default join, and must stay that way: a second condition that
+    # silently widens the filter is the dangerous direction.
+    adult = {"column": "age", "operator": "gte", "value": 18}
+    dar = {"column": "region", "operator": "eq", "value": "Dar"}
+    both = operations.op_filter(frame, {"conditions": [dar, adult], "logic": "and"})
+    check(len(both[0]) == 2, "'and' keeps rows matching every condition")
+
+    # The second condition has to reach rows the first one misses, or "or" looks
+    # like it does nothing. The ages run 22, 35, 47, 19, 60 and the two Dar rows
+    # are the 22 and the 19, so "> 40" is what adds Arusha and Mwanza.
+    either = operations.op_filter(
+        frame,
+        {"conditions": [dar, {"column": "age", "operator": "gt", "value": 40}], "logic": "or"},
+    )
+    check(
+        len(either[0]) == 4,
+        f"'or' keeps rows matching any condition (got {len(either[0])})",
+    )
+
+    # The default when logic is absent must be 'and', not 'or'.
+    default_logic = operations.op_filter(frame, {"conditions": [dar, adult]})
+    check(
+        len(default_logic[0]) == len(both[0]),
+        "an omitted logic behaves as 'and'",
+    )
+
+    # Set and range operators over a list of values.
+    in_set = operations.op_filter(
+        frame, {"conditions": [{"column": "region", "operator": "in", "value": ["Dar", "Mwanza"]}], "logic": "and"}
+    )
+    check(len(in_set[0]) == 3, "'in' keeps the rows in the list")
+
+    between = operations.op_filter(
+        frame, {"conditions": [{"column": "age", "operator": "between", "value": [20, 50]}], "logic": "and"}
+    )
+    check(
+        len(between[0]) == 3,
+        f"'between' is inclusive at both limits (got {len(between[0])})",
+    )
+
+    # A null test needs no value, which is why the UI hides the field for it.
+    missing = operations.op_filter(
+        frame, {"conditions": [{"column": "weight", "operator": "is_null"}], "logic": "and"}
+    )
+    check(len(missing[0]) == 1, "'is_null' needs no value and finds the gap")
+
+    # Malformed input is refused rather than producing a filter that keeps
+    # nothing and reads as a successful empty result.
+    try:
+        operations.op_filter(frame, {"conditions": "not-a-list"})
+        check(False, "'conditions' must be a list")
+    except operations.OperationError:
+        check(True, "'conditions' must be a list")
+
+    try:
+        operations.op_filter(frame, {"conditions": [dar], "logic": "xor"})
+        check(False, "an unknown logic is refused")
+    except operations.OperationError:
+        check(True, "an unknown logic is refused")
+
+    try:
+        operations.op_filter(
+            frame, {"conditions": [{"column": "age", "operator": "between", "value": [1]}]}
+        )
+        check(False, "'between' with one limit is refused")
+    except operations.OperationError:
+        check(True, "'between' with one limit is refused")
+
+    # The UI hardcodes the operator list because the catalogue reports parameter
+    # names, not arity. This is the check that stops the two lists drifting: a
+    # frontend-only operator would build a filter the engine rejects.
+    frontend = Path(__file__).resolve().parent.parent.parent / "frontend" / "components" / "FilterBuilder.tsx"
+    if frontend.exists():
+        source = frontend.read_text(encoding="utf-8")
+        listed = set(re.findall(r'\{ value: "([a-z_]+)", label: "[^"]+", arity:', source))
+        check(
+            listed == set(operations.FILTER_OPERATORS),
+            "the frontend operator list matches the engine's "
+            f"(frontend-only: {sorted(listed - set(operations.FILTER_OPERATORS))}, "
+            f"engine-only: {sorted(set(operations.FILTER_OPERATORS) - listed)})",
+        )
+    else:
+        check(True, "the frontend is not present, so parity cannot be checked here")
+
+
+
 def main() -> int:
     test_catalogue()
     test_stage_plans()
@@ -1753,6 +1866,7 @@ def main() -> int:
     test_reliability_statistics()
     test_join_clean_and_analyse()
     test_api_surface()
+    test_filter_conditions_and_frontend_parity()
     print(f"\nALL METHODS TESTS PASSED ({PASSED} checks)")
     return 0
 

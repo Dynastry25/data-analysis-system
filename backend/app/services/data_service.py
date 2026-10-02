@@ -15,7 +15,11 @@ import pandas as pd
 from fastapi import UploadFile
 
 from app.config import ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE_BYTES, STORAGE_DIR
-from app.services.stat_file_readers import STAT_SUFFIXES, read_stat_file
+from app.services.stat_file_readers import (
+    STAT_SUFFIXES,
+    VariableLabels,
+    read_stat_file,
+)
 
 CHUNK_SIZE = 1024 * 1024  # 1MB
 PREVIEW_ROWS = 20
@@ -152,16 +156,28 @@ def read_delimited(path: Path, sep: str | None) -> pd.DataFrame:
     raise ValueError(f"Could not decode the file: {last_error}") from last_error
 
 
-def read_dataframe(path: str | Path) -> pd.DataFrame:
+def read_dataframe(
+    path: str | Path, with_labels: bool = False
+) -> "pd.DataFrame | tuple[pd.DataFrame, VariableLabels]":
     """Read a stored dataset file into a DataFrame.
 
     Supported formats: CSV, TSV, TXT (delimiter auto-sniffed), JSON (array of
     records or dict of columns), XLSX, Parquet, and the statistical package
     formats Stata (.dta), SPSS (.sav/.zsav/.por) and R (.RData/.rda/.rds).
+
+    Pass ``with_labels=True`` to get the ``(frame, labels)`` pair instead of the
+    frame alone. Only the statistical package formats carry labels; every other
+    format returns an empty :class:`VariableLabels` rather than raising, so the
+    caller does not need to know which file type it has before asking.
     """
     path = Path(path)
     if not path.exists():
         raise ValueError("Dataset file is missing from storage")
+
+    # Only the stat-package branch fills this in. Declared up front so every
+    # format reaches the same return, instead of the non-label formats having
+    # to special-case themselves.
+    labels = VariableLabels()
 
     suffix = path.suffix.lower()
     last_error: Optional[Exception] = None
@@ -187,7 +203,7 @@ def read_dataframe(path: str | Path) -> pd.DataFrame:
     elif suffix in STAT_SUFFIXES:
         # Stata / SPSS / R. The readers raise ValueError with a message that
         # names the failing file, so the upload route can report it directly.
-        frame = read_stat_file(path)
+        frame, labels = read_stat_file(path)
     else:
         try:
             frame = pd.read_excel(path, engine="openpyxl")
@@ -200,6 +216,8 @@ def read_dataframe(path: str | Path) -> pd.DataFrame:
     frame.columns = [str(col).strip() for col in frame.columns]
     if frame.shape[1] == 0:
         raise ValueError("The file has no columns to analyse")
+    if with_labels:
+        return frame, labels
     return frame
 
 

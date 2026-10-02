@@ -49,13 +49,21 @@ export type IconName =
   | "target"
   | "lock"
   | "mail"
-  | "eye";
+  | "eye"
+  | "globe";
 
 /**
  * Outline icon set (Lucide-style, 24×24 viewBox). One consistent icon set is
  * required by the design system (§9). 20px inline / 24px standalone buttons.
  */
 const PATHS: Record<IconName, ReactNode> = {
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </>
+  ),
   dashboard: (
     <>
       <rect x="3" y="3" width="7" height="9" rx="1" />

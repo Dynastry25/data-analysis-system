@@ -43,6 +43,7 @@ from app.services.data_service import (
     validate_extension,
 )
 from app.services.explore_service import explore_frame
+from app.services.stat_file_readers import VariableLabels
 from app.services.validation_service import validate_frame
 from app.statflow import version_store
 from app.statflow.version_store import VersionError
@@ -51,11 +52,25 @@ router = APIRouter(prefix="/datasets", tags=["datasets"])
 
 
 def sync_dataset_columns(
-    db: Session, dataset: Dataset, profiles: List[Dict[str, Any]]
+    db: Session,
+    dataset: Dataset,
+    profiles: List[Dict[str, Any]],
+    labels: Optional[VariableLabels] = None,
 ) -> None:
-    """Replace the stored column metadata for a dataset (from schema.sql table)."""
+    """Replace the stored column metadata for a dataset (from schema.sql table).
+
+    ``labels`` carries the variable and value labels the source file declared.
+    It is optional because versions written by a cleaning operation are Parquet
+    and carry none: passing it on a later sync must not wipe the labels recorded
+    at upload, so a caller that has no labels simply omits the argument and the
+    existing rows are rebuilt without them.
+    """
     db.query(DatasetColumn).filter(DatasetColumn.dataset_id == dataset.id).delete()
     for profile in profiles:
+        variable_label = None
+        value_labels = None
+        if labels is not None:
+            variable_label, value_labels = labels.for_column(profile["name"])
         db.add(
             DatasetColumn(
                 dataset_id=dataset.id,
@@ -63,8 +78,47 @@ def sync_dataset_columns(
                 data_type=profile["data_type"],
                 missing_count=profile["missing_count"],
                 unique_count=profile["unique_count"],
+                variable_label=variable_label,
+                value_labels=value_labels,
             )
         )
+
+
+
+def _stored_labels(db: Session, dataset_id: int) -> Dict[str, Dict[str, Any]]:
+    """The labels recorded at upload, keyed by column name.
+
+    Labels belong to the *file*, so they are read back from ``dataset_columns``
+    rather than recomputed. A cleaning operation writes a Parquet version that
+    has no labels of its own, but the columns it inherited still carry the
+    labels from the original upload — which is the point: the researcher
+    described ``gender`` once, and that description survives every operation.
+    """
+    rows = db.query(DatasetColumn).filter(DatasetColumn.dataset_id == dataset_id).all()
+    result: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        if row.variable_label is None and row.value_labels is None:
+            continue
+        result[row.column_name] = {
+            "variable_label": row.variable_label,
+            "value_labels": row.value_labels,
+        }
+    return result
+
+
+def _attach_labels(
+    profiles: List[Dict[str, Any]], labels: Dict[str, Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Put each column's label on its profile, leaving the rest untouched."""
+    if not labels:
+        return profiles
+    for profile in profiles:
+        entry = labels.get(profile.get("name"))
+        if entry is None:
+            continue
+        profile["variable_label"] = entry.get("variable_label")
+        profile["value_labels"] = entry.get("value_labels")
+    return profiles
 
 
 def _upload_error(message: str) -> HTTPException:
@@ -117,7 +171,7 @@ def upload_dataset(
     stored_path = None
     try:
         stored_path, original_name = store_upload_file(file, user.id, dataset.id)
-        frame = read_dataframe(stored_path)
+        frame, labels = read_dataframe(stored_path, with_labels=True)
     except ValueError as exc:
         # ``store_upload_file`` cleans up its own partial file on error, but if
         # the file was written and then failed to *read*, we must remove it here
@@ -134,7 +188,7 @@ def upload_dataset(
     dataset.row_count = int(frame.shape[0])
     dataset.column_count = int(frame.shape[1])
     dataset.status = "uploaded"
-    sync_dataset_columns(db, dataset, profiles)
+    sync_dataset_columns(db, dataset, profiles, labels)
     db.commit()
     db.refresh(dataset)
 
@@ -189,7 +243,9 @@ def get_dataset(
     """Full dataset details plus the first rows as a preview."""
     dataset = get_owned_dataset(dataset_id, db, user, min_role=ORG_ROLE_VIEWER)
     version_record, frame = _load_current_frame(db, dataset)
-    profiles = profile_columns(frame)
+    profiles = _attach_labels(
+        profile_columns(frame), _stored_labels(db, dataset.id)
+    )
     return {
         "dataset": dataset.to_summary_dict(),
         "dataset_version": int(version_record.version),
@@ -282,10 +338,14 @@ def explore_dataset(
     """
     dataset = get_owned_dataset(dataset_id, db, user, min_role=ORG_ROLE_VIEWER)
     version_record, frame = _load_current_frame(db, dataset)
+    described = explore_frame(frame)
+    described["columns"] = _attach_labels(
+        described["columns"], _stored_labels(db, dataset.id)
+    )
     return {
         "dataset_id": dataset.id,
         "dataset_version": int(version_record.version),
-        **explore_frame(frame),
+        **described,
     }
 
 

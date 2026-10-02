@@ -114,6 +114,20 @@ def describe_variable(frame: pd.DataFrame, column: str) -> Dict[str, Any]:
                 np.sum(counts / max(int(non_null.size), 1) < 0.05)
             ),
         }
+    # The distinct values of a low-cardinality column, promoted to the top level.
+    #
+    # The studio needs these so a "type the value" field can become a select:
+    # the positive class of a binary target, the event value, the two levels a
+    # 0/1 column really has. Without them the only way to pick one is to type
+    # it exactly right, and a wrong guess fails deep inside the engine instead
+    # of at the point of choosing. Capped so a column with thousands of
+    # distinct values does not ship its whole domain to the browser.
+    distinct = int(non_null.nunique())
+    description["levels"] = (
+        [str(value) for value in non_null.astype(str).unique()[:20]]
+        if 0 < distinct <= 20
+        else None
+    )
     return description
 
 

@@ -414,6 +414,18 @@ class DatasetColumn(Base):
     missing_count = Column(Integer, default=0)
     unique_count = Column(Integer)
 
+    # The question this column answers, as the file's author wrote it
+    # ("Sex of respondent"). Only Stata and SPSS carry this; it is NULL for
+    # every other format and for an unlabelled column, which is the honest
+    # answer rather than a synthesised one.
+    variable_label = Column(String(500), nullable=True)
+
+    # The code -> word lookup for a labelled categorical, as a JSON object of
+    # strings on both sides so the same shape serves Stata (int codes) and
+    # SPSS (float codes). NULL means "not a labelled categorical", which is
+    # different from an empty object.
+    value_labels = Column(JSON, nullable=True)
+
     dataset = relationship("Dataset", back_populates="columns")
 
     def to_dict(self) -> dict:

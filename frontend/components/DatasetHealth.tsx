@@ -7,11 +7,7 @@ import { Card } from "./Card";
 import { Icon } from "./Icon";
 import type { ColumnProfile } from "@/lib/api";
 import type { ExploreColumn } from "@/lib/api";
-
-function formatNumber(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "—";
-  return value.toLocaleString("en-KE", { maximumFractionDigits: 2 });
-}
+import { useLanguage } from "@/lib/i18n";
 
 function formatPercent(ratio: number): string {
   return `${(ratio * 100).toFixed(ratio >= 0.995 || ratio === 0 ? 0 : 1)}%`;
@@ -19,6 +15,7 @@ function formatPercent(ratio: number): string {
 
 /** A completeness ring, so the headline number is a reading, not a claim. */
 function ScoreRing({ score }: { score: number }) {
+  const { t } = useLanguage();
   const percent = Math.max(0, Math.min(100, score * 100));
   const radius = 34;
   const circumference = 2 * Math.PI * radius;
@@ -31,7 +28,7 @@ function ScoreRing({ score }: { score: number }) {
         viewBox="0 0 80 80"
         className="h-24 w-24 -rotate-90"
         role="img"
-        aria-label={`Kamilifu ${percent.toFixed(0)}%`}
+        aria-label={`${t("health.completeness")} ${percent.toFixed(0)}%`}
       >
         <circle
           cx="40"
@@ -64,6 +61,7 @@ function ScoreRing({ score }: { score: number }) {
 
 /** Per-column completeness bars, sorted worst first so the gap is visible. */
 function CompletenessChart({ columns }: { columns: ExploreColumn[] }) {
+  const { t, formatNumber } = useLanguage();
   const rows = useMemo(
     () =>
       [...columns]
@@ -77,7 +75,7 @@ function CompletenessChart({ columns }: { columns: ExploreColumn[] }) {
     return (
       <p className="flex items-center gap-2 text-body text-success-700">
         <Icon name="check" size={16} />
-        Kila column imejaa kabisa. Hakuna cell iliyokosekana.
+        {t("health.allComplete")}
       </p>
     );
   }
@@ -103,7 +101,8 @@ function CompletenessChart({ columns }: { columns: ExploreColumn[] }) {
               {formatPercent(share)}
             </span>
             <span className="w-24 shrink-0 text-right font-mono text-caption text-ink-muted">
-              {column.missing_count.toLocaleString("en-KE")} zilizo
+              {formatNumber(column.missing_count, { maximumFractionDigits: 0 })}{" "}
+              {t("common.missing")}
             </span>
           </li>
         );
@@ -114,6 +113,7 @@ function CompletenessChart({ columns }: { columns: ExploreColumn[] }) {
 
 /** A distribution strip, the same div-drawn histogram used on Explore. */
 function DistributionStrip({ column }: { column: ExploreColumn }) {
+  const { t, formatNumber } = useLanguage();
   const bins = column.histogram ?? [];
   if (bins.length === 0) return null;
   const tallest = Math.max(...bins.map((bin) => bin.count), 1);
@@ -122,14 +122,14 @@ function DistributionStrip({ column }: { column: ExploreColumn }) {
     <div
       className="mt-2 flex h-10 items-end gap-px"
       role="img"
-      aria-label={`Mgawanyo wa ${column.name}`}
+      aria-label={t("health.distributionAlt", { name: column.name })}
     >
       {bins.map((bin) => (
         <div
           key={`${bin.start}-${bin.end}`}
           className="min-w-[2px] flex-1 rounded-t-sm bg-primary-200"
           style={{ height: `${Math.max((bin.count / tallest) * 100, 2)}%` }}
-          title={`${formatNumber(bin.start)} – ${formatNumber(bin.end)}: ${bin.count}`}
+          title={`${formatNumber(bin.start)} – ${formatNumber(bin.end)}: ${formatNumber(bin.count, { maximumFractionDigits: 0 })}`}
         />
       ))}
     </div>
@@ -165,6 +165,7 @@ export function DatasetHealth({
   explore,
   isOwnDataset,
 }: DatasetHealthProps) {
+  const { t, formatNumber } = useLanguage();
   const totalCells = rowCount * columnCount;
   const missingCells = columns.reduce(
     (sum, column) => sum + (column.missing_count || 0),
@@ -185,17 +186,17 @@ export function DatasetHealth({
 
   const verdict =
     missingCells === 0
-      ? { tone: "success" as const, label: "Hakuna mapengo", icon: "check" as const }
+      ? { tone: "success" as const, label: t("verdict.noGaps"), icon: "check" as const }
       : completeness >= 0.9
-        ? { tone: "success" as const, label: "Inaweza kutumika", icon: "check" as const }
+        ? { tone: "success" as const, label: t("verdict.usable"), icon: "check" as const }
         : completeness >= 0.7
-          ? { tone: "warning" as const, label: "Inahitaji kusafishwa", icon: "alert-triangle" as const }
-          : { tone: "danger" as const, label: "Hawezi kutumika bado", icon: "alert-circle" as const };
+          ? { tone: "warning" as const, label: t("verdict.needsCleaning"), icon: "alert-triangle" as const }
+          : { tone: "danger" as const, label: t("verdict.unusable"), icon: "alert-circle" as const };
 
   return (
     <Card
-      title="Afya ya dataset"
-      description="Kamilifu, cell zilizokosekana na muhtasari wa columns za nambari. Hesabiwa na engine, si kwa miongozo."
+      title={t("health.title")}
+      description={t("health.description")}
       icon="shield"
       padding="none"
       actions={
@@ -209,27 +210,30 @@ export function DatasetHealth({
           <ScoreRing score={completeness} />
           <dl className="space-y-1.5 text-caption">
             <div className="flex gap-2">
-              <dt className="text-ink-muted">Kamilifu</dt>
+              <dt className="text-ink-muted">{t("health.completeness")}</dt>
               <dd className="tabular font-mono font-medium text-ink">
                 {formatPercent(completeness)}
               </dd>
             </div>
             <div className="flex gap-2">
-              <dt className="text-ink-muted">Cell zilizokosekana</dt>
+              <dt className="text-ink-muted">{t("health.missingCells")}</dt>
               <dd className="tabular font-mono font-medium text-ink">
-                {missingCells.toLocaleString("en-KE")}
+                {formatNumber(missingCells, { maximumFractionDigits: 0 })}
               </dd>
             </div>
             <div className="flex gap-2">
-              <dt className="text-ink-muted">Cell zote</dt>
+              <dt className="text-ink-muted">{t("health.totalCells")}</dt>
               <dd className="tabular font-mono font-medium text-ink">
-                {totalCells.toLocaleString("en-KE")}
+                {formatNumber(totalCells, { maximumFractionDigits: 0 })}
               </dd>
             </div>
             <div className="flex gap-2">
-              <dt className="text-ink-muted">Columns zilizo na mapengo</dt>
+              <dt className="text-ink-muted">{t("health.columnsWithGaps")}</dt>
               <dd className="tabular font-mono font-medium text-ink">
-                {columnsWithGaps.length} / {columnCount}
+                {t("health.columnsWithGapsOf", {
+                  with: columnsWithGaps.length,
+                  total: columnCount,
+                })}
               </dd>
             </div>
           </dl>
@@ -237,7 +241,7 @@ export function DatasetHealth({
 
         <div className="min-w-0">
           <p className="text-overline uppercase tracking-wide text-ink-muted">
-            Mapengo kwa column
+            {t("health.gapsByColumn")}
           </p>
           <div className="mt-2">
             {explore ? (
@@ -284,7 +288,7 @@ export function DatasetHealth({
       {lead.length > 0 && (
         <div className="border-t border-surface-border px-4 py-4 sm:px-5">
           <p className="text-overline uppercase tracking-wide text-ink-muted">
-            Muhtasari wa columns za nambari
+            {t("health.numericSummary")}
           </p>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
             {lead.map((column) => (
@@ -298,14 +302,14 @@ export function DatasetHealth({
                   </span>
                   {column.missing_count > 0 && (
                     <Badge tone="warning" size="sm">
-                      {column.missing_count} hazina
+                      {t("health.countWithZilizo", { count: column.missing_count })}
                     </Badge>
                   )}
                 </div>
                 <dl className="mt-2 grid grid-cols-2 gap-2">
                   <div>
                     <dt className="text-overline uppercase tracking-wide text-ink-muted">
-                      Wastani
+                      {t("common.mean")}
                     </dt>
                     <dd className="tabular font-mono text-body text-ink">
                       {formatNumber(column.mean)}
@@ -313,7 +317,7 @@ export function DatasetHealth({
                   </div>
                   <div>
                     <dt className="text-overline uppercase tracking-wide text-ink-muted">
-                      Median
+                      {t("common.median")}
                     </dt>
                     <dd className="tabular font-mono text-body text-ink">
                       {formatNumber(column.median)}
@@ -330,19 +334,19 @@ export function DatasetHealth({
           </div>
           {numeric.length > lead.length && (
             <p className="mt-2 text-caption text-ink-muted">
-              +{numeric.length - lead.length} columns zingine za nambari zina muhtasari
-              kwenye hatua ya kuchunguza.
+              {t("health.moreNumeric", { count: numeric.length - lead.length })}
             </p>
           )}
         </div>
       )}
 
       <p className="border-t border-surface-border bg-surface-sunken px-4 py-3 text-caption text-ink-secondary sm:px-5">
-        Kamilifu ni sehemu zilizojaa za kati ya cell zote
-        {rowCount.toLocaleString("en-KE")} × {columnCount.toLocaleString("en-KE")}.{" "}
-        {isOwnDataset
-          ? "Fikilia kama hiyo ndiyo unayotaka kabla ya kuchambua."
-          : "Hii ni dataset ya mwanachama mwingine, hivyo matokeo yake yako yatamirika."}
+        {t(
+          isOwnDataset ? "health.definitionOwn" : "health.definitionShared",
+          {
+            total: `${formatNumber(rowCount, { maximumFractionDigits: 0 })} × ${formatNumber(columnCount, { maximumFractionDigits: 0 })}`,
+          },
+        )}
       </p>
     </Card>
   );

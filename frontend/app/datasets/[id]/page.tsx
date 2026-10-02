@@ -7,41 +7,61 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
-import { Card, EmptyState, Stat } from "@/components/Card";
+import { Card, EmptyState } from "@/components/Card";
+import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { DataTable, formatCell } from "@/components/DataTable";
 import { SelectInput } from "@/components/Field";
+import { Icon } from "@/components/Icon";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, DatasetDetailResponse, ExploreResponse, OrgProject } from "@/lib/api";
 import { DatasetHealth } from "@/components/DatasetHealth";
 import { VariableProfiles } from "@/components/VariableProfiles";
+import { useLanguage } from "@/lib/i18n";
 
-/** "Updated 18 min ago" the way the prototype reads it, falling back to a date. */
-function relativeTime(value: string | null | undefined): string {
-  if (!value) return "—";
-  const stamp = new Date(value).getTime();
-  if (!Number.isFinite(stamp)) return "—";
-  const seconds = Math.round((Date.now() - stamp) / 1000);
-  if (seconds < 60) return "sasa hivi";
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `kinyuma ${minutes} min`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `kinyuma ${hours} saa`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return `kinyuma ${days} siku`;
-  return new Date(value).toLocaleDateString("en-KE");
+/** The four reference sections that fold away, and whether each is open. */
+interface OpenSections {
+  preview: boolean;
+  profiles: boolean;
+  schema: boolean;
+  studio: boolean;
 }
 
 export default function DatasetDetailPage() {
   const params = useParams<{ id: string }>();
   const datasetId = Number(params?.id);
   const { showToast } = useToast();
+  const { t, formatNumber, formatDate, formatRelative } = useLanguage();
   const [detail, setDetail] = useState<DatasetDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<OrgProject[]>([]);
   const [meId, setMeId] = useState<number | null>(null);
   const [explore, setExplore] = useState<ExploreResponse | null>(null);
+
+  /*
+   * The preview is the one section that opens by default: a dataset page whose
+   * preview is folded looks empty, and people arrive here to see their rows.
+   * The other three are reference material, so they start folded.
+   */
+  const [open, setOpen] = useState<OpenSections>({
+    preview: true,
+    profiles: false,
+    schema: false,
+    studio: false,
+  });
+
+  const toggle = useCallback((key: keyof OpenSections) => {
+    setOpen((current) => ({ ...current, [key]: !current[key] }));
+  }, []);
+
+  const allOpen = open.preview && open.profiles && open.schema && open.studio;
+  const toggleAll = useCallback(() => {
+    setOpen((current) => {
+      const next = !current.preview && !current.profiles && !current.schema && !current.studio;
+      return { preview: next, profiles: next, schema: next, studio: next };
+    });
+  }, []);
 
   useEffect(() => {
     api.auth
@@ -104,8 +124,8 @@ export default function DatasetDetailPage() {
       await api.datasets.setProject(datasetId, projectId);
       showToast(
         projectId === null
-          ? "Data imerudi kuwa ya binafsi"
-          : "Data imewekwa kwenye mradi",
+          ? t("project.personal")
+          : t("project.assigned"),
         "success"
       );
       load();
@@ -120,230 +140,148 @@ export default function DatasetDetailPage() {
     () => (previewRows.length > 0 ? Object.keys(previewRows[0]) : []),
     [previewRows]
   );
-  const totalMissing = columns.reduce(
-    (sum, column) => sum + (column.missing_count || 0),
-    0
-  );
-  const columnsWithMissing = columns.filter((column) => column.missing_count > 0);
-  const numericColumns = columns
-    .filter((column) => column.data_type === "numeric")
-    .map((column) => column.name);
+  const exploreColumns = useMemo(() => explore?.columns ?? [], [explore]);
 
-  // The type row under each preview column name. The stored dtype is what the
-  // file actually holds; the explore kind is the richer reading of it, so use
-  // that when it is available and fall back to the profile.
+  const columnsWithMissing = useMemo(
+    () => columns.filter((column) => column.missing_count > 0),
+    [columns]
+  );
+
+  // The same rule the profiles card uses, counted here so its header badge can
+  // say how many columns need review before anyone opens it.
+  const warnCount = useMemo(
+    () =>
+      exploreColumns.filter(
+        (column) =>
+          column.missing_count > 0 ||
+          (column.unique_count !== null && column.unique_count <= 1)
+      ).length,
+    [exploreColumns]
+  );
+
+  const isOwnDataset = meId === null || detail?.dataset.user_id === meId;
+
+  // The type row under each preview column name, already translated. The stored
+  // dtype is what the file actually holds; the explore kind is the richer
+  // reading of it, so prefer that when it is loaded.
   const previewTypes = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const column of previewColumns) {
-      const kind = explore?.columns.find((entry) => entry.name === column)?.kind;
-      const stored = columns.find((entry) => entry.name === column)?.data_type;
-      if (kind) {
-        map[column] =
-          kind === "numeric"
-            ? "Numeric"
-            : kind === "categorical"
-              ? "Categorical"
-              : kind === "datetime"
-                ? "Date"
-                : kind === "boolean"
-                  ? "Yes/No"
-                  : "Text";
-      } else if (stored === "numeric") {
-        map[column] = "Numeric";
-      } else if (stored === "integer") {
-        map[column] = "Numeric";
-      } else {
-        map[column] = "Categorical";
-      }
+    for (const name of previewColumns) {
+      const kind = exploreColumns.find((entry) => entry.name === name)?.kind;
+      const stored = columns.find((entry) => entry.name === name)?.data_type;
+      if (kind === "numeric") map[name] = t("schema.numeric");
+      else if (kind === "categorical") map[name] = t("schema.categorical");
+      else if (kind === "datetime") map[name] = t("schema.date");
+      else if (kind === "boolean") map[name] = t("schema.boolean");
+      else if (kind === "text") map[name] = t("schema.text");
+      else if (stored === "numeric" || stored === "integer") map[name] = t("schema.numeric");
+      else map[name] = t("schema.categorical");
     }
     return map;
-  }, [previewColumns, explore, columns]);
-
+  }, [previewColumns, exploreColumns, columns, t]);
   return (
     <AppShell
-      title={detail?.dataset.original_filename ?? "Dataset"}
-      description={`Version ${detail?.dataset_version ?? 1} · Updated ${relativeTime(detail?.dataset.uploaded_at)}`}
+      title={detail?.dataset.original_filename ?? t("common.noResults")}
+      description={t("dataset.subtitle", {
+        version: `${t("common.version")} ${detail?.dataset_version ?? 1}`,
+        relative: formatRelative(detail?.dataset.uploaded_at),
+      })}
       actions={
         <>
           <Link href="/datasets">
             <Button variant="ghost" icon="arrow-right">
-              Orodha
+              {t("dataset.backToList")}
             </Button>
           </Link>
           <Link href={`/datasets/${datasetId}/studio`}>
             <Button variant="secondary" icon="sliders">
-              Data studio
+              {t("dataset.dataStudio")}
             </Button>
           </Link>
           <Link href={`/datasets/${datasetId}/ask`}>
             <Button variant="secondary" icon="sparkles">
-              Msaidizi
+              {t("dataset.assistant")}
             </Button>
           </Link>
           <Link href={`/datasets/${datasetId}/charts`}>
             <Button variant="secondary" icon="chart">
-              Chora chati
+              {t("dataset.drawChart")}
             </Button>
-          </Link>
-          <Link href={`/datasets/${datasetId}/statistics`}>
-            <Button icon="calculator">Chambua takwimu</Button>
           </Link>
         </>
       }
     >
       {loading ? (
-        <Card>
-          <TableSkeleton rows={8} columns={5} />
-        </Card>
+        <div className="space-y-6">
+          <TableSkeleton rows={4} columns={4} />
+          <TableSkeleton rows={6} columns={5} />
+        </div>
       ) : error ? (
-        <Card>
-          <EmptyState
-            title="Imeshindikana kupata dataset"
-            description={error}
-            icon="alert-circle"
-            action={
-              <Link href="/datasets">
-                <Button variant="secondary">Rudi kwenye orodha</Button>
-              </Link>
-            }
-          />
-        </Card>
-      ) : (
+        <EmptyState
+          title={t("dataset.error.title")}
+          description={error}
+          action={
+            <Button icon="refresh" onClick={load}>
+              {t("common.retry")}
+            </Button>
+          }
+          icon="alert-triangle"
+        />
+      ) : !detail ? null : (
         <>
-          {detail && (
-            <dl className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-md border border-surface-border bg-surface-panel px-4 py-3 text-caption">
-              <div className="flex items-center gap-1.5">
-                <dt className="text-ink-muted">Toleo</dt>
-                <dd className="font-mono font-medium text-ink">
-                  v{detail.dataset_version}
-                </dd>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <dt className="text-ink-muted">Aina</dt>
-                <dd className="font-medium uppercase text-ink">{detail.dataset.file_type}</dd>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <dt className="text-ink-muted">Imepakiwa</dt>
-                <dd className="text-ink">
-                  {detail.dataset.uploaded_at
-                    ? new Date(detail.dataset.uploaded_at).toLocaleString()
-                    : "—"}
-                </dd>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <dt className="text-ink-muted">Hali</dt>
-                <dd>
-                  <Badge tone={detail.dataset.status === "ready" ? "success" : "warning"}>
-                    {detail.dataset.status}
-                  </Badge>
-                </dd>
-              </div>
-              <div className="ml-auto flex items-center gap-1.5">
-                <dt className="text-ink-muted">Ufikiaji</dt>
-                <dd>
-                  {detail.dataset.project_name ? (
-                    <Badge tone="info" icon="folder">
-                      {detail.dataset.project_name}
-                    </Badge>
-                  ) : (
-                    <Badge tone="neutral">Binafsi</Badge>
-                  )}
-                </dd>
-              </div>
+          {/*
+            A compact identity strip. These facts answer "which file, which
+            version, whose is it" without scrolling. They are facts rather than
+            controls, so they stay clear of the health verdict below.
+          */}
+          <Card
+            title={t("overview.title")}
+            icon="info"
+            description={formatDate(detail.dataset.uploaded_at)}
+            actions={
+              <Badge tone="neutral" icon={detail.dataset.project_id ? "folder" : "lock"}>
+                {detail.dataset.project_id ? t("project.assigned") : t("common.private")}
+              </Badge>
+            }
+          >
+            <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                { label: t("overview.version"), value: `v${detail.dataset_version ?? 1}` },
+                { label: t("overview.type"), value: (detail.dataset.file_type ?? "—").toUpperCase() },
+                {
+                  label: t("common.rows"),
+                  value: formatNumber(detail.dataset.row_count ?? 0, { maximumFractionDigits: 0 }),
+                },
+                { label: t("overview.status"), value: detail.dataset.status ?? "—" },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-sm border border-surface-border bg-surface-sunken px-3.5 py-3"
+                >
+                  <dt className="text-overline uppercase tracking-wide text-ink-muted">
+                    {item.label}
+                  </dt>
+                  <dd className="tabular mt-1 font-mono text-body font-medium text-ink">
+                    {item.value}
+                  </dd>
+                </div>
+              ))}
             </dl>
-          )}
 
-          <Card
-            title="Preview ya data"
-            description={`Rows ${previewRows.length} za kwanza kama zilivyo sasa. Aina ya kila column iko chini ya jina lake.`}
-            icon="table"
-            footer={`${detail?.dataset.row_count.toLocaleString() ?? 0} rows · ${detail?.dataset.column_count ?? 0} columns`}
-          >
-            {previewRows.length === 0 ? (
-              <EmptyState
-                title="Hakuna data ya kutosha"
-                description="Faili linaonekana halina rows."
-                icon="table"
-              />
-            ) : (
-              <DataTable
-                caption="Dataset preview"
-                columns={previewColumns}
-                rows={previewRows}
-                numericColumns={numericColumns}
-                columnTypes={previewTypes}
-                missingDisplay="dot"
-                typeRowTone={(column) =>
-                  (columns.find((entry) => entry.name === column)?.missing_count ?? 0) > 0
-                    ? "warning"
-                    : "default"
-                }
-                maxHeight="28rem"
-              />
-            )}
-          </Card>
-
-          {detail && (
-            <DatasetHealth
-              rowCount={detail.dataset.row_count}
-              columnCount={detail.dataset.column_count}
-              columns={columns}
-              explore={explore?.columns ?? null}
-              isOwnDataset={meId === null || detail.dataset.user_id === meId}
-            />
-          )}
-
-          {explore && (
-            <VariableProfiles
-              columns={explore.columns}
-              rowCount={explore.row_count}
-            />
-          )}
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Safu (rows)" value={detail?.dataset.row_count.toLocaleString()} />
-            <Stat label="Columns" value={detail?.dataset.column_count} />
-            <Stat
-              label="Missing values"
-              value={totalMissing.toLocaleString()}
-              hint={
-                columnsWithMissing.length === 0
-                  ? "Hakuna missing values"
-                  : `Katika columns ${columnsWithMissing.length}`
-              }
-            />
-            <Stat
-              label="Columns za namba"
-              value={numericColumns.length}
-              hint={numericColumns.slice(0, 3).join(", ") || "Hakuna"}
-            />
-          </div>
-
-          <Card
-            title="Ufikiaji wa data"
-            description="Data ya binafsi ni yawewe pekee. Ukiiweka kwenye mradi, wanachama wa shirika hilo wataweza kuiona kulingana na kiwango chao."
-            icon="folder"
-          >
-            {meId !== null && detail?.dataset.user_id !== meId ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <Badge tone="primary" icon="folder">
-                  {detail?.dataset.project_name ?? "Mradi"}
-                </Badge>
-                <p className="text-body text-ink-secondary">
-                  Dataset hii ni ya mwanachama mwingine. Unaweza kuiangalia na
-                  kuichambua kama kiwango chako kinaruhusu.
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="min-w-[220px] flex-1">
+            {/*
+              The project picker is offered only to the owner. A member of
+              someone else's organisation can see that a dataset is shared, but
+              must not be able to move it between projects.
+            */}
+            {isOwnDataset && (
+              <div className="mt-4 border-t border-surface-border pt-4">
+                <div className="mt-1.5 max-w-sm">
                   <SelectInput
-                    id="dataset_project"
-                    label="Mradi"
-                    value={detail?.dataset.project_id ?? ""}
+                    label={t("project.label")}
+                    value={detail.dataset.project_id ? String(detail.dataset.project_id) : ""}
                     onChange={(event) => handleProjectChange(event.target.value)}
                     options={[
-                      { value: "", label: "Data ya binafsi" },
+                      { value: "", label: t("project.personal") },
                       ...projects.map((project) => ({
                         value: String(project.id),
                         label: project.name,
@@ -351,98 +289,258 @@ export default function DatasetDetailPage() {
                     ]}
                   />
                 </div>
-                {detail?.dataset.project_id ? (
-                  <Badge tone="info" icon="users">
-                    Inashirikishwa na shirika
-                  </Badge>
-                ) : (
-                  <Badge tone="neutral" icon="lock">
-                    Binafsi
-                  </Badge>
-                )}
+                <p className="mt-2 text-caption text-ink-muted">
+                  {detail.dataset.project_id
+                    ? t("project.sharedBody")
+                    : t("project.personalBody")}
+                </p>
               </div>
             )}
           </Card>
 
+          {/*
+            The health verdict is the first analysis card on the page and it is
+            never folded. Every other decision here — clean it, read the rows,
+            look at one column — depends on whether the data is sound, so the
+            verdict is read first and the detail sits underneath it.
+          */}
+          <DatasetHealth
+            rowCount={detail.dataset.row_count ?? 0}
+            columnCount={detail.dataset.column_count ?? 0}
+            columns={columns}
+            explore={exploreColumns}
+            isOwnDataset={isOwnDataset}
+          />
+
           {columnsWithMissing.length > 0 && (
             <Card
-              title="Tahadhari: missing values"
+              title={t("warning.title")}
               icon="alert-triangle"
               tone="warning"
               actions={
                 <Link href={`/datasets/${datasetId}/studio`}>
                   <Button variant="secondary" size="small" icon="sliders">
-                    Safisha
+                    {t("warning.clean")}
                   </Button>
                 </Link>
               }
             >
-              <p className="mb-3 text-body text-ink-secondary">
-                Columns zifuata zina thamani zilizo-kosekana. Safisha katika data studio
-                kabla ya kuchambua ili matokeo yaweze sahihi.
+              <p className="text-body text-ink-secondary">
+                {t("warning.description")}
               </p>
-              <div className="flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 {columnsWithMissing.map((column) => (
                   <Badge key={column.name} tone="warning">
-                    {column.name}: {column.missing_count}
+                    {column.name}:{" "}
+                    {formatNumber(column.missing_count, { maximumFractionDigits: 0 })}
                   </Badge>
                 ))}
               </div>
             </Card>
           )}
 
-          <Card
-            title="Muundo wa columns"
-            description="Aina ya data, missing values na unique values kwa kila column."
-            icon="table"
-          >
-            <DataTable
-              caption="Muundo wa columns"
-              columns={["name", "data_type", "missing_count", "unique_count", "min", "max"]}
-              columnLabels={{
-                name: "Jina",
-                data_type: "Aina ya data",
-                missing_count: "Zilizokosekana",
-                unique_count: "Thamani unique",
-                min: "Chini kabisa",
-                max: "Juu kabisa",
-              }}
-              rows={columns as unknown as Record<string, unknown>[]}
-              numericColumns={["missing_count", "unique_count", "min", "max"]}
-              renderCell={(column, value) => {
-                if (column === "data_type") {
-                  return (
-                    <Badge tone={value === "numeric" ? "primary" : "neutral"}>
-                      {String(value ?? "—")}
-                    </Badge>
-                  );
-                }
-                if (column === "missing_count" && Number(value) > 0) {
-                  return <Badge tone="warning">{String(value)}</Badge>;
-                }
-                if (column === "name") {
-                  return <span className="font-mono text-caption">{String(value)}</span>;
-                }
-                return formatCell(value);
-              }}
-            />
-          </Card>
+          {/*
+            Everything below is on demand. A 16-column preview and a schema
+            table are reference material: useful when wanted, noise the rest of
+            the time. Each header carries its own counts and verdicts, so a
+            folded card still says whether opening it is worth it.
+          */}
+          <section className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-h3 text-ink">{t("overview.title")}</h2>
+              <Button
+                variant="ghost"
+                size="small"
+                icon={allOpen ? "chevron-up" : "chevron-down"}
+                onClick={toggleAll}
+              >
+                {allOpen ? t("common.collapseAll") : t("common.expandAll")}
+              </Button>
+            </div>
 
-          <Card
-            title="Safisha na badilisha data"
-            description="Data studio huunda version mpya kwa kila hatua hakuna data inayopotea."
-            icon="sliders"
-            actions={
-              <Link href={`/datasets/${datasetId}/studio`}>
-                <Button icon="sliders">Fungua data studio</Button>
-              </Link>
-            }
-          >
-            <p className="text-body text-ink-secondary">
-              Safisha missing values, duplicates na aina za columns, kisha
-              badilisha (filter, group, calculate) kabla ya kuchambua.
-            </p>
-          </Card>
+            <CollapsibleCard
+              title={t("preview.title")}
+              description={t("preview.description", { count: previewRows.length })}
+              icon="table"
+              badge={
+                <Badge tone="neutral">
+                  {formatNumber(detail.dataset.row_count ?? 0, { maximumFractionDigits: 0 })}{" "}
+                  {t("common.rows")}
+                </Badge>
+              }
+              open={open.preview}
+              onToggle={() => toggle("preview")}
+              footer={t("preview.footer", {
+                rows: formatNumber(detail.dataset.row_count ?? 0, { maximumFractionDigits: 0 }),
+                columns: detail.dataset.column_count ?? 0,
+              })}
+            >
+              {previewRows.length === 0 ? (
+                <div className="px-4 py-4 sm:px-5">
+                  <EmptyState
+                    title={t("preview.empty.title")}
+                    description={t("preview.empty.description")}
+                    icon="table"
+                  />
+                </div>
+              ) : (
+                <div className="px-4 pb-4 sm:px-5">
+                  <DataTable
+                    caption={t("preview.title")}
+                    columns={previewColumns}
+                    columnLabels={Object.fromEntries(
+                      previewColumns.map((column) => [column, column]),
+                    )}
+                    rows={previewRows as unknown as Record<string, unknown>[]}
+                    columnTypes={previewTypes}
+                    typeRowTone={(column) =>
+                      columnsWithMissing.some((entry) => entry.name === column)
+                        ? "warning"
+                        : "default"
+                    }
+                    renderCell={(column, value) =>
+                      column === previewColumns[0] ? (
+                        <span className="font-mono text-caption">
+                          {String(value ?? "—")}
+                        </span>
+                      ) : value === null || value === undefined || value === "" ? (
+                        <span className="text-caption text-ink-muted">
+                          <span aria-hidden="true">•</span> {t("common.valueMissing")}
+                        </span>
+                      ) : (
+                        formatCell(value)
+                      )
+                    }
+                  />
+                  <p className="mt-3 flex items-start gap-2 text-caption text-ink-muted">
+                    <Icon name="info" size={14} className="mt-0.5 shrink-0" />
+                    <span>{t("preview.moreHint")}</span>
+                  </p>
+                </div>
+              )}
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title={t("profiles.title")}
+              description={t("profiles.description")}
+              icon="sliders"
+              badge={
+                warnCount > 0 ? (
+                  <Badge tone="warning" icon="alert-triangle">
+                    {t("profiles.needReview", { count: warnCount })}
+                  </Badge>
+                ) : (
+                  <Badge tone="success" icon="check">
+                    {t("profiles.allClean")}
+                  </Badge>
+                )
+              }
+              open={open.profiles}
+              onToggle={() => toggle("profiles")}
+            >
+              {exploreColumns.length === 0 ? (
+                <div className="px-4 py-4 sm:px-5">
+                  <EmptyState title={t("profiles.empty")} icon="sliders" />
+                </div>
+              ) : (
+                <VariableProfiles
+                  columns={exploreColumns}
+                  rowCount={detail.dataset.row_count ?? 0}
+                />
+              )}
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title={t("schema.title")}
+              description={t("schema.description")}
+              icon="table"
+              badge={
+                <Badge tone="neutral">
+                  {columns.length} {t("common.columns")}
+                </Badge>
+              }
+              open={open.schema}
+              onToggle={() => toggle("schema")}
+              footer={t("schema.expandHint")}
+            >
+              <DataTable
+                caption={t("schema.title")}
+                columns={[
+                  "name",
+                  "variable_label",
+                  "data_type",
+                  "missing_count",
+                  "unique_count",
+                  "min",
+                  "max",
+                ]}
+                columnLabels={{
+                  name: t("common.name"),
+                  variable_label: t("label.column"),
+                  data_type: t("common.type"),
+                  missing_count: t("common.missing"),
+                  unique_count: t("common.uniqueValues"),
+                  min: t("common.min"),
+                  max: t("common.max"),
+                }}
+                rows={columns as unknown as Record<string, unknown>[]}
+                numericColumns={["missing_count", "unique_count", "min", "max"]}
+                renderCell={(column, value) => {
+                  if (column === "variable_label") {
+                    // Only a labelled column has something to say here. An
+                    // empty cell is the honest answer for every other file.
+                    if (value === null || value === undefined || value === "") {
+                      return (
+                        <span className="text-caption text-ink-muted">
+                          {t("label.none")}
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="text-caption text-ink-secondary">
+                        {String(value)}
+                      </span>
+                    );
+                  }
+                  if (column === "data_type") {
+                    return (
+                      <Badge tone={value === "numeric" ? "primary" : "neutral"}>
+                        {String(value ?? "—")}
+                      </Badge>
+                    );
+                  }
+                  if (column === "missing_count" && Number(value) > 0) {
+                    return (
+                      <Badge tone="warning">
+                        {formatNumber(Number(value), { maximumFractionDigits: 0 })}
+                      </Badge>
+                    );
+                  }
+                  if (column === "name") {
+                    return <span className="font-mono text-caption">{String(value)}</span>;
+                  }
+                  return formatCell(value);
+                }}
+              />
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title={t("studio.title")}
+              description={t("studio.description")}
+              icon="sliders"
+              open={open.studio}
+              onToggle={() => toggle("studio")}
+            >
+              <div className="px-4 pb-4 pt-4 sm:px-5">
+                <p className="text-body text-ink-secondary">{t("studio.body")}</p>
+                <div className="mt-3">
+                  <Link href={`/datasets/${datasetId}/studio`}>
+                    <Button icon="sliders">{t("studio.open")}</Button>
+                  </Link>
+                </div>
+              </div>
+            </CollapsibleCard>
+          </section>
         </>
       )}
     </AppShell>

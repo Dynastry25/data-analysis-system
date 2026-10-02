@@ -96,6 +96,30 @@ export interface ColumnProfile {
   unique_count: number | null;
   min: unknown;
   max: unknown;
+  /**
+   * The question this column answers, as the file's author wrote it. Present
+   * for Stata and SPSS files, which declare their own columns; null for every
+   * other format, and for an unlabelled column.
+   */
+  variable_label?: string | null;
+  /**
+   * Code -> word for a labelled categorical, e.g. `{ "1": "Male", "2": "Female" }`.
+   * The stored value is the code: the platform never replaces it with the word,
+   * because a numeric code has to stay numeric to be analysable. null means the
+   * column carries no such lookup, which is different from an empty one.
+   */
+  value_labels?: Record<string, string> | null;
+}
+
+/** How a stored code reads in the file's own words, or falls back to itself. */
+export function labelForValue(
+  value: unknown,
+  valueLabels: Record<string, string> | null | undefined,
+): string {
+  if (!valueLabels) return String(value);
+  // The backend normalises every code to a string key, so a number and a string
+  // that mean the same code both land on the same entry here.
+  return valueLabels[String(value)] ?? String(value);
 }
 
 export interface DatasetSummary {
@@ -174,6 +198,10 @@ export interface ExploreColumn {
   quantiles?: Record<string, number>;
   top_values?: { value: unknown; count: number }[];
   histogram?: { start: number; end: number; count: number }[];
+  /** As on ColumnProfile: declared by Stata/SPSS, null elsewhere. */
+  variable_label?: string | null;
+  /** As on ColumnProfile: the code -> word lookup, when the column has one. */
+  value_labels?: Record<string, string> | null;
 }
 
 export interface ExplorePair {
@@ -770,6 +798,8 @@ export interface PlanningVariable {
   semantic_type: string;
   missing_count: number;
   unique_count: number;
+  /** Distinct values, when the column has 20 or fewer. Drives value selects. */
+  levels?: string[] | null;
   characteristics?: Record<string, unknown>;
   [key: string]: unknown;
 }

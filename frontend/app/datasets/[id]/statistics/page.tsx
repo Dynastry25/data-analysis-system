@@ -37,8 +37,122 @@ const COLUMN_PARAMS = new Set([
   "row_column",
   "column_column",
   "target",
+  // Named columns. These are as much dataset columns as "target" is, and
+  // leaving them as text boxes is how a typo reaches the engine and comes
+  // back as "column not found" instead of an impossible choice.
+  "exposure_column",
+  "expected",
+  "time_column",
+  "event_column",
+  "before_column",
+  "after_column",
+  "second_group_column",
 ]);
-const MULTI_COLUMN_PARAMS = new Set(["features", "columns"]);
+/**
+ * Parameters that take several columns at once. These are the ones the guide
+ * calls "variables you want to use", so they are a checkbox list of the real
+ * column names rather than something to be typed.
+ */
+const MULTI_COLUMN_PARAMS = new Set([
+  "features",
+  "columns",
+  "items",
+  "controls",
+  "raters",
+]);
+
+/**
+ * Parameters whose value is one of a column's own levels.
+ *
+ * These used to be free-text boxes, which meant typing "yes" to describe the
+ * positive class of a target. A near-miss -- "Yes", "1" where the data holds
+ * "ndiyo" -- is accepted by the form and then fails deep inside the engine, or
+ * worse, silently codes the wrong class. Offering the actual levels turns a
+ * guess into a choice.
+ */
+const VALUE_PARAMS: Record<string, string> = {
+  positive_value: "target",
+  positive_category: "target",
+  event_value: "target",
+  censor_type: "",
+  penalty: "",
+  distribution: "",
+};
+
+/** Parameters that are a fixed set of words, so a select is the only control. */
+const ENUM_OPTIONS: Record<string, { value: string; label: string }[]> = {
+  censor_type: [
+    { value: "right", label: "right (ceiling)" },
+    { value: "left", label: "left (floor)" },
+  ],
+  penalty: [
+    { value: "ridge", label: "ridge" },
+    { value: "lasso", label: "lasso" },
+    { value: "elastic_net", label: "elastic net" },
+  ],
+  distribution: [
+    { value: "poisson", label: "poisson" },
+    { value: "nb", label: "negative binomial" },
+  ],
+  event_coding: [
+    { value: "right", label: "right - tukio kinachofikia mwisho" },
+    { value: "left", label: "left - tukio kinachofikia mwanzoni" },
+  ],
+  how: [
+    { value: "left", label: "left - kila row ya dataset hii" },
+    { value: "inner", label: "inner - tu zinazopatikana kote mbili" },
+    { value: "right", label: "right - kila row ya dataset ya pili" },
+    { value: "outer", label: "outer - zote mbili" },
+  ],
+  keep: [
+    { value: "first", label: "first" },
+    { value: "last", label: "last" },
+  ],
+  strategy: [
+    { value: "mean", label: "mean" },
+    { value: "median", label: "median" },
+    { value: "mode", label: "mode" },
+    { value: "zero", label: "zero" },
+    { value: "constant", label: "constant" },
+    { value: "drop", label: "drop" },
+  ],
+  type: [
+    { value: "numeric", label: "numeric" },
+    { value: "integer", label: "integer" },
+    { value: "text", label: "text" },
+    { value: "date", label: "date" },
+    { value: "boolean", label: "boolean" },
+  ],
+};
+
+/**
+ * Parameters that are a number, so a text box invites "sixty percent" and
+ * then sends a string the engine has to reject.
+ */
+/** Explains the number, so the field is not a mystery box. */
+const NUMBER_HINTS: Record<string, string> = {
+  threshold: "Mkataba wa uamuzi (0-1). Default 0.5",
+  mu: "Wastani inayoratibiwa",
+  sigma: "Kipeo cha mabadhi",
+  folds: "Idi ya folds za cross-validation (2-10)",
+  seed: "Nambari ya mbegu (random seed)",
+  value: "Thamani",
+  level: "Kiwango",
+  quantiles: "Orodha ya taquantile, k.m. 0.1, 0.5, 0.9",
+};
+
+
+const NUMBER_PARAMS = new Set([
+  "threshold",
+  "mu",
+  "sigma",
+  "folds",
+  "seed",
+  "value",
+  "level",
+  "quantiles",
+]);
+
 
 const PARAM_LABELS: Record<string, string> = {
   x: "X axis (column)",
@@ -389,6 +503,25 @@ export default function StatisticsPage() {
     });
   }
 
+  /**
+   * The distinct values of a column, so a "which value?" parameter can be a
+   * select of the real levels. Empty when the column has more than 20, in
+   * which case the field falls back to a text box rather than pretending to be
+   * a closed list.
+   */
+  function levelsFor(column: string): string[] {
+    if (!column) return [];
+    const variable = profile?.variables?.find((entry) => entry.name === column);
+    return variable?.levels ?? [];
+  }
+
+  /**
+   * The distinct values of a column, so a "which value?" parameter can be a
+   * select of the real levels. Empty when the column has more than 20, in
+   * which case the field falls back to a text box rather than pretending to be
+   * a closed list.
+   */
+
   function columnOptions(name: string): string[] {
     if (name === "target" || name === "value_column" || name === "x" || name === "y") {
       return numericColumns.length > 0 ? numericColumns : allColumns;
@@ -430,6 +563,66 @@ export default function StatisticsPage() {
           placeholder="— chagua column —"
           value={String(value || "")}
           options={columnOptions(name).map((column) => ({ value: column, label: column }))}
+          onChange={(event) =>
+            setParamValues((previous) => ({ ...previous, [name]: event.target.value }))
+          }
+        />
+      );
+    }
+
+    // A value taken from another column: offer that column's actual levels
+    // rather than asking the reader to type one exactly right.
+    const sourceColumn = VALUE_PARAMS[name];
+    if (sourceColumn) {
+      const chosen = String(paramValues[sourceColumn] || "");
+      const levels = levelsFor(chosen);
+      return (
+        <SelectInput
+          label={label}
+          optionalLabel={requirement.optional ? "hiari" : undefined}
+          required={!requirement.optional}
+          error={error}
+          placeholder={
+            levels.length > 0 ? "\u2014 chagua thamani \u2014" : "chagua target kwanza"
+          }
+          value={String(value ?? "")}
+          options={levels.map((level) => ({ value: level, label: level }))}
+          onChange={(event) =>
+            setParamValues((previous) => ({ ...previous, [name]: event.target.value }))
+          }
+        />
+      );
+    }
+
+    const enumOptions = ENUM_OPTIONS[name];
+    if (enumOptions) {
+      return (
+        <SelectInput
+          label={label}
+          optionalLabel={requirement.optional ? "hiari" : undefined}
+          required={!requirement.optional}
+          error={error}
+          placeholder="\u2014 chagua \u2014"
+          value={String(value ?? "")}
+          options={enumOptions}
+          onChange={(event) =>
+            setParamValues((previous) => ({ ...previous, [name]: event.target.value }))
+          }
+        />
+      );
+    }
+
+    if (NUMBER_PARAMS.has(name)) {
+      return (
+        <TextInput
+          label={label}
+          optionalLabel={requirement.optional ? "hiari" : undefined}
+          required={!requirement.optional}
+          error={error}
+          type="number"
+          step="any"
+          value={String(value ?? "")}
+          hint={NUMBER_HINTS[name]}
           onChange={(event) =>
             setParamValues((previous) => ({ ...previous, [name]: event.target.value }))
           }

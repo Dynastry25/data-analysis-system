@@ -1,11 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { Data, Layout } from "plotly.js";
+
+import Plotly from "plotly.js";
 
 import { ChartData, ChartFormat } from "@/lib/api";
 import { paletteFor } from "@/lib/constants";
+import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { ChartSkeleton } from "./Skeleton";
 
@@ -15,11 +18,20 @@ const Plot = dynamic(() => import("react-plotly.js"), {
   loading: () => <ChartSkeleton />,
 });
 
+/** What the chart was drawn from, so a reader can check it. */
+interface ChartSource {
+  dataset_name?: string;
+  dataset_version?: number;
+  rows_total?: number;
+}
+
 interface ChartViewProps {
   data: ChartData | null;
   height?: number;
   /** Saved presentation choices (Visualization Studio). */
   format?: ChartFormat | null;
+  /** Overrides the auto title when the surrounding card already names it. */
+  title?: string;
 }
 
 const GRID_COLOR = "#E2E8F0";
@@ -42,7 +54,7 @@ const HOVER = {
 } as const;
 
 /** Plotly chart fed by the backend's `chart_data` payload. */
-export function ChartView({ data, height = 380, format }: ChartViewProps) {
+export function ChartView({ data, height = 380, format, title }: ChartViewProps) {
   const traces = useMemo<Data[]>(() => {
     if (!data?.series?.length) return [];
     const palette = paletteFor(format?.palette);
@@ -102,6 +114,49 @@ export function ChartView({ data, height = 380, format }: ChartViewProps) {
     });
   }, [data, format]);
 
+  const [showTable, setShowTable] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const hostRef = useRef<HTMLDivElement>(null);
+
+  // Source attribution travels in `meta`; a chart that cannot name the version
+  // it came from cannot be checked against the data.
+  const source = (data?.meta ?? undefined) as ChartSource | undefined;
+  const pointsAvailable =
+    data?.series?.reduce((total, series) => total + (series.x?.length ?? 0), 0) ?? 0;
+  const pointsDrawn = pointsAvailable;
+
+  const exportImage = useCallback(async () => {
+    const graph = hostRef.current?.firstElementChild as any;
+    if (!graph || typeof Plotly === "undefined") return;
+    try {
+      const url = await Plotly.toImage(graph, {
+        format: "png",
+        height,
+        width: graph.clientWidth || 900,
+      });
+      // toImage resolves to a data URL; the download name lives on the anchor,
+      // because plotly has no filename option of its own.
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "statflow-chart.png";
+      link.click();
+    } catch {
+      // Export is a convenience: a failure here must not take the chart down.
+    }
+  }, [height]);
+
+  const tableRows = useMemo(() => {
+    if (!data?.series?.length) return [];
+    const first = data.series[0];
+    return (first.x ?? []).map((x, index) => [
+      x,
+      ...data.series.map((series) => {
+        const value = series.y?.[index];
+        return value === null || value === undefined ? null : value;
+      }),
+    ]);
+  }, [data]);
+
   if (!data || traces.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-surface-border-strong bg-surface-sunken px-6 py-10 text-center">
@@ -156,21 +211,113 @@ export function ChartView({ data, height = 380, format }: ChartViewProps) {
     `${data.series.length} series, ${data.series[0]?.x?.length ?? 0} points.`;
 
   return (
-    <div role="img" aria-label={description}>
-      <Plot
-        data={traces}
-        layout={layout}
-        config={{
-          responsive: true,
-          displaylogo: false,
-          displayModeBar: false,
-          modeBarButtonsToRemove: ["select2d", "lasso2d", "autoScale2d", "toggleSpikelines"],
-        }}
-        style={{ width: "100%", height }}
-        useResizeHandler
-      />
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-body font-medium text-ink">
+            {title || `${data.y_label} by ${data.x_label}`}
+          </p>
+          <p className="text-caption text-ink-muted">
+            {data.chart_type}
+            {pointsDrawn > 0 && ` · ${pointsDrawn} points plotted`}
+            {pointsDrawn < pointsAvailable && ` · ${pointsAvailable - pointsDrawn} not shown`}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            variant="ghost"
+            size="small"
+            icon="table"
+            onClick={() => setShowTable((current) => !current)}
+            aria-pressed={showTable}
+          >
+            Data
+          </Button>
+          <Button
+            variant="ghost"
+            size="small"
+            icon="download"
+            onClick={exportImage}
+            aria-label="Pakua chati kama picha"
+          >
+            PNG
+          </Button>
+          <Button
+            variant="ghost"
+            size="small"
+            icon={expanded ? "close" : "eye"}
+            onClick={() => setExpanded((current) => !current)}
+            aria-pressed={expanded}
+            aria-label={expanded ? "Fungua chati" : "Onyesha chati nzima"}
+          />
+        </div>
+      </div>
+
+      <div
+        role="img"
+        aria-label={description}
+        className={expanded ? "fixed inset-0 z-50 overflow-auto bg-surface-panel p-6" : ""}
+      >
+        <div ref={hostRef} className="h-full w-full">
+        <Plot
+          data={traces}
+          layout={layout}
+          config={{
+            responsive: true,
+            displaylogo: false,
+            // Plotly's own modebar is off: it duplicates the toolbar above and
+            // the design rules ask for a clean surface. The buttons that are
+            // kept are the ones the rules require -- export and zoom -- and
+            // they are provided deliberately rather than inherited.
+            displayModeBar: false,
+            modeBarButtonsToRemove: ["select2d", "lasso2d", "autoScale2d", "toggleSpikelines"],
+          }}
+          style={{ width: "100%", height: expanded ? Math.max(height, 520) : height }}
+          useResizeHandler
+        />
+        </div>
+      </div>
+
+      {showTable && (
+        <div className="max-h-64 overflow-auto rounded-md border border-surface-border">
+          <table className="w-full text-caption">
+            <thead className="sticky top-0 bg-surface-sunken text-left">
+              <tr>
+                <th scope="col" className="px-3 py-2 font-medium text-ink-secondary">
+                  {data.x_label}
+                </th>
+                {data.series.map((series) => (
+                  <th key={series.name} scope="col" className="px-3 py-2 font-medium text-ink-secondary">
+                    {series.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {tableRows.map((row, index) => (
+                <tr key={index} className="border-t border-surface-border">
+                  <td className="px-3 py-1.5 text-ink-secondary">{String(row[0])}</td>
+                  {data.series.map((series) => (
+                    <td key={series.name} className="px-3 py-1.5 font-mono text-ink">
+                      {row[1] === null || row[1] === undefined ? "—" : String(row[1])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {source && (
+        <p className="text-caption text-ink-muted">
+          Chanzo: {source.dataset_name}
+          {source.dataset_version ? ` · version v${source.dataset_version}` : ""}
+          {source.rows_total ? ` · ${source.rows_total} rows` : ""}
+        </p>
+      )}
     </div>
   );
 }
-
 export default ChartView;

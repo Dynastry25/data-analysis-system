@@ -106,7 +106,15 @@ def clean_version_2(client, headers: dict, dataset_id: int, label: str) -> None:
 
 
 def write_stata(path: Path) -> Path:
-    SAMPLE.to_stata(path, write_index=False)
+    # Labels written alongside the data, because a Stata file that describes its
+    # own columns is the normal case, not an exotic one.
+    SAMPLE.to_stata(
+        path,
+        write_index=False,
+        data_label="Household survey",
+        variable_labels={"amount": "Sale amount", "gender": "Sex of respondent"},
+        value_labels={"gender": {1: "kiume", 2: "dame"}},
+    )
     return path
 
 
@@ -140,11 +148,23 @@ def run_checks(client) -> int:
 
     print("\n2) Stata .dta")
     stata_path = write_stata(TEST_ROOT / "survey.dta")
-    frame = read_stata_file(stata_path)
+    frame, stata_labels = read_stata_file(stata_path)
     check(list(frame.columns) == ["amount", "gender", "region"], "Stata columns read")
     check(
         pd.api.types.is_numeric_dtype(frame["gender"]),
         "Stata value labels stay numeric codes",
+    )
+    check(
+        stata_labels.variable_labels.get("gender") == "Sex of respondent",
+        f"the Stata variable label is kept ({stata_labels.variable_labels})",
+    )
+    check(
+        stata_labels.value_labels.get("gender") == {"1": "kiume", "2": "dame"},
+        f"the Stata value labels are kept and normalised ({stata_labels.value_labels})",
+    )
+    check(
+        stata_labels.file_label == "Household survey",
+        "the Stata file label is kept",
     )
 
     response = upload(client, headers, stata_path)
@@ -163,7 +183,53 @@ def run_checks(client) -> int:
     check(type_of(detail, "amount") == "numeric", ".dta numeric column is numeric")
     check(type_of(detail, "gender") == "numeric", ".dta coded column is numeric")
     check(type_of(detail, "region") == "text", ".dta text column is text")
+
+    # The point of the whole change: what the file said about its columns has to
+    # come back out of the API, not just out of the reader.
+    by_name = {column["name"]: column for column in detail["columns"]}
+    check(
+        by_name["gender"].get("variable_label") == "Sex of respondent",
+        f"the uploaded .dta keeps its variable label ({by_name['gender']})",
+    )
+    check(
+        by_name["gender"].get("value_labels") == {"1": "kiume", "2": "dame"},
+        f"the uploaded .dta keeps its value labels ({by_name['gender']})",
+    )
+    check(
+        by_name["amount"].get("variable_label") == "Sale amount",
+        "a labelled numeric column keeps its label too",
+    )
+    check(
+        by_name["region"].get("variable_label") is None,
+        "an unlabelled column reports no label rather than an invented one",
+    )
+    check(
+        by_name["region"].get("value_labels") is None,
+        "an unlabelled column reports no value labels",
+    )
+
+    explore = client.get(f"/api/datasets/{stata_id}/explore", headers=headers).json()
+    explored = {column["name"]: column for column in explore["columns"]}
+    check(
+        explored["gender"].get("variable_label") == "Sex of respondent",
+        "explore carries the variable label as well",
+    )
+    check(
+        explored["gender"].get("value_labels") == {"1": "kiume", "2": "dame"},
+        "explore carries the value labels as well",
+    )
+    check(
+        explored["gender"]["kind"] == "categorical",
+        f"a coded column is still classified as categorical ({explored['gender']['kind']})",
+    )
+
     clean_version_2(client, headers, stata_id, ".dta")
+    after = client.get(f"/api/datasets/{stata_id}", headers=headers).json()
+    cleaned = {column["name"]: column for column in after["columns"]}
+    check(
+        cleaned["gender"].get("value_labels") == {"1": "kiume", "2": "dame"},
+        "labels survive a cleaning operation, which writes a new Parquet version",
+    )
 
     print("\n3) SPSS .sav / .por")
     try:
@@ -172,11 +238,19 @@ def run_checks(client) -> int:
         print(f"  skipped: {exc}")
     else:
         sav_path = write_spss(TEST_ROOT / "survey.sav", pyreadstat.write_sav)
-        spss_frame = read_spss_file(sav_path)
+        spss_frame, spss_labels = read_spss_file(sav_path)
         check(spss_frame.shape == (ROWS, 3), ".sav shape preserved")
         check(
             pd.api.types.is_numeric_dtype(spss_frame["gender"]),
             ".sav value labels stay numeric codes",
+        )
+        check(
+            spss_labels.value_labels.get("gender") == {"1": "kiume", "2": "dame"},
+            f"the .sav value labels survive as normalised codes ({spss_labels.value_labels})",
+        )
+        check(
+            spss_labels.variable_labels.get("amount") == "sale amount",
+            f"the .sav variable labels survive ({spss_labels.variable_labels})",
         )
 
         response = upload(client, headers, sav_path)
@@ -190,6 +264,15 @@ def run_checks(client) -> int:
         check(type_of(detail, "amount") == "numeric", ".sav numeric column is numeric")
         check(type_of(detail, "gender") == "numeric", ".sav coded column is numeric")
         check(type_of(detail, "region") == "text", ".sav text column is text")
+        sav_columns = {column["name"]: column for column in detail["columns"]}
+        check(
+            sav_columns["gender"].get("value_labels") == {"1": "kiume", "2": "dame"},
+            f"the uploaded .sav keeps its value labels ({sav_columns['gender']})",
+        )
+        check(
+            sav_columns["amount"].get("variable_label") == "sale amount",
+            "the uploaded .sav keeps its variable labels",
+        )
         clean_version_2(client, headers, sav_id, ".sav")
 
         por_path = TEST_ROOT / "survey.por"
@@ -261,7 +344,7 @@ def run_checks(client) -> int:
         )
     check(
         all(
-            column in read_stata_file(stata_path).columns
+            column in read_stata_file(stata_path)[0].columns
             for column in ("amount", "gender", "region")
         ),
         "the version store can read the stored .dta path back",

@@ -68,6 +68,13 @@ class ColumnProfile(BaseModel):
     unique_count: Optional[int] = None
     min: Any = None
     max: Any = None
+    # The question this column answers, as the file's author wrote it. None when
+    # the source format carries no labels (CSV, Excel, Parquet) or the column is
+    # unlabelled.
+    variable_label: Optional[str] = None
+    # code -> word, for a labelled categorical. None means "not a labelled
+    # categorical", which is not the same as an empty mapping.
+    value_labels: Optional[Dict[str, str]] = None
 
 
 class UploadResponse(BaseModel):
@@ -168,6 +175,9 @@ class ExploreColumn(BaseModel):
     # Categorical only.
     top_values: List[Dict[str, Any]] = []
     histogram: List[Dict[str, Any]] = []
+    # From the source file, when it carried any. See ColumnProfile.
+    variable_label: Optional[str] = None
+    value_labels: Optional[Dict[str, str]] = None
 
 
 class ExplorePair(BaseModel):
