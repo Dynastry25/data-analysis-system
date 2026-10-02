@@ -153,6 +153,50 @@ def _normalise_variable_labels(raw: Any) -> Dict[str, str]:
     return result
 
 
+def _stata_value_labels(reader: Any) -> Dict[str, Dict[str, str]]:
+    """Read a Stata reader's value labels keyed by **column** name.
+
+    ``StataReader.value_labels()`` is keyed by *label-set name*, not by column.
+    Those two are not the same thing and confusing them silently loses every
+    value label in a real-world file:
+
+    - a file written by ``pyreadstat`` (and by Stata itself) names the set
+      ``gender0`` — the column name plus the label-set index — so the result is
+      ``{"gender0": {...}}``;
+    - a file written by ``DataFrame.to_stata`` names the set ``gender``, so the
+      same file reads back as ``{"gender": {...}}``.
+
+    A test that only ever round-trips the second kind passes while the first
+    kind drops its labels. ``reader._lbllist`` is the per-column list of
+    label-set names, so it is what maps one to the other. The column name is
+    used directly when it already appears among the keys, which keeps the
+    ``to_stata`` shape working even if ``_lbllist`` is ever absent.
+
+    The suffix is stripped only when the bare name is not itself a label set,
+    so a genuine column called ``gender`` and a label set called ``gender0``
+    both resolve rather than colliding.
+    """
+    raw = _normalise_value_labels(reader.value_labels())
+    lbllist = getattr(reader, "_lbllist", None) or []
+    resolved: Dict[str, Dict[str, str]] = {}
+    for index, set_name in enumerate(lbllist):
+        if not set_name or set_name not in raw:
+            continue
+        if index < len(reader._varlist):
+            column = str(reader._varlist[index])
+            if column in raw:
+                # The label set is itself named after the column.
+                resolved.setdefault(column, raw[column])
+                continue
+            if column not in resolved:
+                resolved[column] = raw[set_name]
+    # Anything not described by _lbllist (an unusual writer, or a reader
+    # without it) is kept under its own key rather than dropped.
+    for set_name, mapping in raw.items():
+        resolved.setdefault(set_name, mapping)
+    return resolved
+
+
 def _drop_labels_for_absent_columns(
     frame: pd.DataFrame,
     variable_labels: Dict[str, str],
@@ -207,7 +251,7 @@ def read_stata_file(path: Path) -> Tuple[pd.DataFrame, VariableLabels]:
         raise ValueError(f"Could not read the Stata file: {exc}") from exc
 
     try:
-        value_labels = _normalise_value_labels(reader.value_labels())
+        value_labels = _stata_value_labels(reader)
     except Exception:  # noqa: BLE001 - a file with no value-label block
         value_labels = {}
     variable_labels = _normalise_variable_labels(reader.variable_labels())

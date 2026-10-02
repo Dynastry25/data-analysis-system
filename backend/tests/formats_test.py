@@ -118,6 +118,25 @@ def write_stata(path: Path) -> Path:
     return path
 
 
+def write_stata_pyreadstat(path: Path) -> Path:
+    """The same file written the way pyreadstat (and Stata) writes one.
+
+    ``DataFrame.to_stata`` names a value-label set after its column ("gender");
+    pyreadstat appends the label-set index ("gender0"). Both are real shapes,
+    so both are covered.
+    """
+    import pyreadstat
+
+    pyreadstat.write_dta(
+        SAMPLE,
+        str(path),
+        file_label="Household survey",
+        column_labels=["Sale amount", "Sex of respondent", "Region code"],
+        variable_value_labels={"gender": {1: "kiume", 2: "dame"}},
+    )
+    return path
+
+
 def write_spss(path: Path, writer) -> Path:
     writer(
         SAMPLE,
@@ -165,6 +184,22 @@ def run_checks(client) -> int:
     check(
         stata_labels.file_label == "Household survey",
         "the Stata file label is kept",
+    )
+
+    # A file written by pyreadstat (and by Stata itself) names the value-label
+    # set "gender0" rather than "gender", so it exercises a different mapping in
+    # StataReader. Without this the value-label test above can pass on a file
+    # shape that never occurs in practice, and every real file drops its labels.
+    pyreadstat_path = write_stata_pyreadstat(TEST_ROOT / "survey_pyreadstat.dta")
+    _, pyreadstat_labels = read_stata_file(pyreadstat_path)
+    check(
+        pyreadstat_labels.value_labels.get("gender") == {"1": "kiume", "2": "dame"},
+        "a pyreadstat/Stata 'gender0' label set resolves to the gender column "
+        f"({pyreadstat_labels.value_labels})",
+    )
+    check(
+        pyreadstat_labels.variable_labels.get("gender") == "Sex of respondent",
+        "a pyreadstat file keeps its variable labels too",
     )
 
     response = upload(client, headers, stata_path)
