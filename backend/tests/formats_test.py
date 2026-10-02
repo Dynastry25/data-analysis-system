@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pandas as pd  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app.config import ALLOWED_EXTENSIONS  # noqa: E402
+from app.config import ALLOWED_EXTENSIONS, MAX_BATCH_FILES  # noqa: E402
 from app.main import app  # noqa: E402
 from app.services.data_service import read_dataframe, validate_extension  # noqa: E402
 from app.services.stat_file_readers import (  # noqa: E402
@@ -383,6 +383,80 @@ def run_checks(client) -> int:
             for column in ("amount", "gender", "region")
         ),
         "the version store can read the stored .dta path back",
+    )
+
+    print("\n7) Batch upload")
+
+    # Two good files and one that is not readable, uploaded together. The point
+    # of the batch is that one bad file does not cost the user the good ones, so
+    # that is exactly what is asserted.
+    batch_good_a = TEST_ROOT / "batch_a.csv"
+    batch_good_b = TEST_ROOT / "batch_b.csv"
+    batch_bad = TEST_ROOT / "batch_bad.csv"
+    pd.DataFrame({"a": [1, 2, 3]}).to_csv(batch_good_a, index=False)
+    pd.DataFrame({"b": [4, 5]}).to_csv(batch_good_b, index=False)
+    batch_bad.write_text("this,is,not\na,real\nheader,,,\n1,2,3\n", encoding="utf-8")
+
+    def as_part(path: Path):
+        with path.open("rb") as handle:
+            return ("files", (path.name, handle.read(), "application/octet-stream"))
+
+    batch = client.post(
+        "/api/datasets/upload-batch",
+        files=[as_part(batch_good_a), as_part(batch_good_b), as_part(batch_bad)],
+        headers=headers,
+    )
+    check(batch.status_code == 200, f"a batch upload returns 200 ({batch.status_code})")
+    payload = batch.json()
+    check(
+        payload["uploaded_count"] == 2 and payload["failed_count"] == 1,
+        "two files land and the unreadable one is reported, not fatal "
+        f"({payload['uploaded_count']}/{payload['failed_count']})",
+    )
+    by_name = {item["filename"]: item for item in payload["results"]}
+    check(
+        by_name[batch_bad.name]["status"] == "failed"
+        and bool(by_name[batch_bad.name].get("detail")),
+        "the failed file carries a reason rather than just a status",
+    )
+    check(
+        all(
+            by_name[good.name]["status"] == "uploaded"
+            and by_name[good.name]["row_count"] > 0
+            for good in (batch_good_a, batch_good_b)
+        ),
+        "each uploaded file reports its own row count",
+    )
+    check(
+        len({item["dataset_id"] for item in payload["results"] if item["dataset_id"]})
+        == 2,
+        "each uploaded file becomes its own dataset",
+    )
+    check(
+        len(payload["results"]) == 3,
+        "every submitted file appears in the results, in order",
+    )
+
+    # A single file must still take the old endpoint: it is used by every other
+    # test and by any client that never learned about batching.
+    single = client.post(
+        "/api/datasets/upload",
+        files={"file": (batch_good_a.name, batch_good_a.read_bytes(), "text/csv")},
+        headers=headers,
+    )
+    check(
+        single.status_code == 201 and single.json()["original_filename"] == batch_good_a.name,
+        f"the single-file endpoint still works after the refactor ({single.status_code})",
+    )
+
+    too_many = client.post(
+        "/api/datasets/upload-batch",
+        files=[as_part(batch_good_a) for _ in range(MAX_BATCH_FILES + 1)],
+        headers=headers,
+    )
+    check(
+        too_many.status_code == 400,
+        f"a batch over the file limit is refused ({too_many.status_code})",
     )
 
     print(f"\n{PASSED} checks passed")

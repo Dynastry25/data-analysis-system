@@ -146,6 +146,24 @@ export interface UploadResponse {
   status: string;
 }
 
+export interface BatchUploadResult {
+  status: "uploaded" | "failed";
+  filename: string;
+  dataset_id?: number;
+  project_id?: number | null;
+  row_count?: number;
+  column_count?: number;
+  columns?: ColumnProfile[];
+  /** Why this file failed, when it did. */
+  detail?: string;
+}
+
+export interface BatchUploadResponse {
+  uploaded_count: number;
+  failed_count: number;
+  results: BatchUploadResult[];
+}
+
 export interface DatasetDetailResponse {
   dataset: DatasetSummary;
   dataset_version: number;
@@ -478,6 +496,27 @@ export const api = {
       }
       return http
         .post<UploadResponse>("/datasets/upload", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+          onUploadProgress,
+        } as AxiosRequestConfig)
+        .then((r) => r.data);
+    },
+    uploadBatch: (
+      files: File[],
+      onUploadProgress?: (event: AxiosProgressEvent) => void,
+      projectId?: number | null
+    ) => {
+      const formData = new FormData();
+      // The field name must be "files" (plural) to match the endpoint; a single
+      // entry under the wrong name arrives as an empty list and 422s.
+      for (const file of files) {
+        formData.append("files", file);
+      }
+      if (projectId) {
+        formData.append("project_id", String(projectId));
+      }
+      return http
+        .post<BatchUploadResponse>("/datasets/upload-batch", formData, {
           headers: { "Content-Type": "multipart/form-data" },
           onUploadProgress,
         } as AxiosRequestConfig)

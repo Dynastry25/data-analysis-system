@@ -87,6 +87,27 @@ class UploadResponse(BaseModel):
     status: str = "uploaded"
 
 
+class BatchUploadResult(BaseModel):
+    """One file's outcome inside a batch."""
+
+    status: str
+    filename: str
+    # Present when the file was read; absent when it failed.
+    dataset_id: Optional[int] = None
+    project_id: Optional[int] = None
+    row_count: Optional[int] = None
+    column_count: Optional[int] = None
+    columns: List[ColumnProfile] = []
+    # Why this file failed, when it did.
+    detail: Optional[str] = None
+
+
+class BatchUploadResponse(BaseModel):
+    uploaded_count: int
+    failed_count: int
+    results: List[BatchUploadResult]
+
+
 class DatasetSummary(BaseModel):
     id: int
     user_id: int

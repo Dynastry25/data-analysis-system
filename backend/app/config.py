@@ -30,6 +30,11 @@ STAT_EXTENSIONS = {".dta", ".sav", ".zsav", ".por", ".rdata", ".rds", ".rda"}
 ALLOWED_EXTENSIONS = TABLE_EXTENSIONS | STAT_EXTENSIONS
 MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50MB
 
+# How many files one /datasets/upload-batch request may carry. A batch is held
+# in one request body, so an unbounded count is a way to exhaust memory; this is
+# generous for a folder of survey exports and low enough to stay honest.
+MAX_BATCH_FILES = 20
+
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 

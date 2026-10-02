@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
+from app.config import MAX_BATCH_FILES
 from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
 from app.models import (
@@ -22,6 +23,7 @@ from app.models import (
 )
 from app.rbac import ORG_ROLE_ANALYST, ORG_ROLE_VIEWER, require_org_role
 from app.schemas import (
+    BatchUploadResponse,
     DatasetDetailResponse,
     DatasetProjectRequest,
     DatasetSummary,
@@ -141,20 +143,103 @@ def upload_dataset(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """Upload a CSV/XLSX file, profile it and register it in the database."""
+    """Upload one CSV/XLSX/Stata/SPSS/R file, profile it and register it."""
+    return _ingest_upload(db, user, file, project_id)
+
+
+@router.post("/upload-batch", response_model=BatchUploadResponse)
+def upload_datasets_batch(
+    files: List[UploadFile] = File(...),
+    project_id: int | None = Form(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Upload several files at once.
+
+    Each file is ingested independently and its outcome reported separately, so
+    one unreadable file does not discard the ones that were fine. A batch is a
+    convenience, not a transaction: rolling back four good uploads because the
+    fifth had a broken header would be a worse answer than uploading four and
+    saying plainly what happened to the fifth.
+
+    Files are processed one after another rather than concurrently. Each read
+    holds a whole table in memory, so parallel reads on a large batch would
+    trade a slower upload for an out-of-memory failure.
+    """
+    if not files:
+        raise _upload_error("No files were uploaded")
+    if len(files) > MAX_BATCH_FILES:
+        raise _upload_error(
+            f"Too many files at once. The maximum is {MAX_BATCH_FILES}."
+        )
+
+    _check_project_permission(db, user, project_id)
+
+    results: List[Dict[str, Any]] = []
+    for upload in files:
+        # A per-file failure is recorded, not raised: the loop must continue so
+        # the remaining files still get their chance.
+        try:
+            outcome = _ingest_upload(db, user, upload, project_id)
+        except HTTPException as exc:
+            db.rollback()
+            results.append(
+                {
+                    "filename": Path(upload.filename or "dataset").name,
+                    "status": "failed",
+                    "detail": str(exc.detail),
+                }
+            )
+            continue
+        results.append({"status": "uploaded", **outcome})
+
+    uploaded = [r for r in results if r["status"] == "uploaded"]
+    if not uploaded:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "message": "No file could be uploaded",
+                "results": results,
+            },
+        )
+    return {
+        "uploaded_count": len(uploaded),
+        "failed_count": len(results) - len(uploaded),
+        "results": results,
+    }
+
+
+def _check_project_permission(
+    db: Session, user: User, project_id: Optional[int]
+) -> None:
+    """Validate the target project once, before any file is written."""
+    if project_id is None:
+        return
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    require_org_role(db, project.organization_id, user, ORG_ROLE_ANALYST)
+
+
+def _ingest_upload(
+    db: Session,
+    user: User,
+    file: UploadFile,
+    project_id: Optional[int],
+) -> Dict[str, Any]:
+    """Store, read, profile and register one uploaded file.
+
+    Shared by the single-file and batch endpoints so both go through exactly
+    the same validation, size limit, label handling and rollback path. Two
+    copies of this would drift, and the batch is the one nobody tests by hand.
+    """
     original_name = Path(file.filename or "").name
     try:
         extension = validate_extension(original_name)
     except ValueError as exc:
         raise _upload_error(str(exc))
 
-    organization_id = None
-    if project_id is not None:
-        project = db.get(Project, project_id)
-        if project is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        organization_id = project.organization_id
-        require_org_role(db, organization_id, user, ORG_ROLE_ANALYST)
+    _check_project_permission(db, user, project_id)
 
     dataset = Dataset(
         user_id=user.id,
@@ -193,8 +278,13 @@ def upload_dataset(
     db.refresh(dataset)
 
     return {
-        "dataset_id": dataset.id,
+        # Both spellings are returned on purpose: UploadResponse (single file)
+        # and BatchUploadResult (batch) name this field differently, and one
+        # dict now feeds both. Dropping either key makes one endpoint 500 on
+        # response validation.
+        "filename": dataset.original_filename,
         "original_filename": dataset.original_filename,
+        "dataset_id": dataset.id,
         "project_id": dataset.project_id,
         "row_count": dataset.row_count,
         "column_count": dataset.column_count,
