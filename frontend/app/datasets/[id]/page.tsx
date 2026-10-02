@@ -142,6 +142,36 @@ export default function DatasetDetailPage() {
   );
   const exploreColumns = useMemo(() => explore?.columns ?? [], [explore]);
 
+  /*
+   * The code -> word lookups, keyed by column, exactly as the source file
+   * declared them. Only columns that actually carry a lookup are passed on, so
+   * DataTable gives a switch to those columns alone and leaves the rest of the
+   * table exactly as it was.
+   */
+  const previewValueLabels = useMemo(() => {
+    const map: Record<string, Record<string, string>> = {};
+    for (const column of columns) {
+      const lookup = column.value_labels;
+      if (lookup && Object.keys(lookup).length > 0) map[column.name] = lookup;
+    }
+    return map;
+  }, [columns]);
+
+  /*
+   * The variable label goes under the column name rather than replacing it.
+   * The column name is what every statistic and every filter refers to, so it
+   * has to stay the thing you read; "Sex of respondent" is an annotation on it.
+   */
+  const previewNotes = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const column of columns) {
+      if (column.variable_label) map[column.name] = column.variable_label;
+    }
+    return map;
+  }, [columns]);
+
+  const labelledCount = Object.keys(previewValueLabels).length;
+
   const columnsWithMissing = useMemo(
     () => columns.filter((column) => column.missing_count > 0),
     [columns]
@@ -393,6 +423,12 @@ export default function DatasetDetailPage() {
                     )}
                     rows={previewRows as unknown as Record<string, unknown>[]}
                     columnTypes={previewTypes}
+                    valueLabels={previewValueLabels}
+                    columnNotes={previewNotes}
+                    labelToggleTitles={{
+                      showLabel: t("labels.showLabel"),
+                      showCode: t("labels.showCode"),
+                    }}
                     typeRowTone={(column) =>
                       columnsWithMissing.some((entry) => entry.name === column)
                         ? "warning"
@@ -412,6 +448,19 @@ export default function DatasetDetailPage() {
                       )
                     }
                   />
+                  {/*
+                   * Only said when the file actually carries labels. A file
+                   * without them has nothing to explain, and a note about
+                   * labels on a file that has none is just noise.
+                   */}
+                  {labelledCount > 0 && (
+                    <p className="mt-3 flex items-start gap-2 text-caption text-ink-muted">
+                      <Icon name="tag" size={14} className="mt-0.5 shrink-0" />
+                      <span>
+                        {t("labels.hint", { count: formatNumber(labelledCount, { maximumFractionDigits: 0 }) })}
+                      </span>
+                    </p>
+                  )}
                   <p className="mt-3 flex items-start gap-2 text-caption text-ink-muted">
                     <Icon name="info" size={14} className="mt-0.5 shrink-0" />
                     <span>{t("preview.moreHint")}</span>

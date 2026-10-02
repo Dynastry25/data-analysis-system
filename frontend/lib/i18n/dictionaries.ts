@@ -143,6 +143,13 @@ export const en = {
   "preview.moreHint":
     "Scroll the table sideways to reach every column, or open Explore for the full schema.",
 
+  // Labels carried by the source file (Stata/SPSS)
+  "labels.showLabel": "Show the labels from the file",
+  "labels.showCode": "Show the numbers",
+  "labels.hint":
+    "{count} columns carry labels from the file. Use the switch on a column header to read its numbers instead.",
+  "labels.badge": "Labelled",
+
   // Profiles
   "profiles.title": "Variable profiles",
   "profiles.description":
@@ -345,6 +352,13 @@ export const sw: Record<TranslationKey, string> = {
   "preview.empty.description": "Faili linaonekana halina rows.",
   "preview.moreHint":
     "Sogeza meza kando ili kuona kila column, au fungua Uchunguzi kupata muundo kamili.",
+
+  // Labels carried by the source file (Stata/SPSS)
+  "labels.showLabel": "Onyesha majina yaliyo kwenye faili",
+  "labels.showCode": "Onyesha nambari",
+  "labels.hint":
+    "Columns {count} zina majina yaliyo kwenye faili. Tumia kitufe kwenye kichwa cha column ili kuona nambari badala yake.",
+  "labels.badge": "Imewekwa lebo",
 
   // Profiles
   "profiles.title": "Profiles za variables",

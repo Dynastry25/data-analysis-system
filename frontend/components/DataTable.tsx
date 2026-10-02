@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useCallback, useMemo, useState } from "react";
 
 import { Icon } from "./Icon";
 
@@ -81,6 +81,23 @@ interface DataTableProps {
   columnTypes?: Record<string, string>;
   /** Highlight columns whose cells are mostly empty, in the type row. */
   typeRowTone?: (column: string) => "default" | "warning";
+  /**
+   * Code -> word per column, as the file's author wrote them:
+   * `{ gender: { "1": "kiume", "2": "dame" } }`.
+   *
+   * Only the columns present here get a switch. A column with no lookup has
+   * nothing to switch to, so it is left exactly as it was.
+   */
+  valueLabels?: Record<string, Record<string, string>>;
+  /**
+   * A short line under the column name, for the variable's own name in the
+   * source file ("Sex of respondent"). This is what ties a set of codes to the
+   * question they answer, so it belongs next to the codes rather than in a
+   * table the reader has to go and find.
+   */
+  columnNotes?: Record<string, string>;
+  /** Tooltip for the per-column switch; `{ action }` is the other action's name. */
+  labelToggleTitles?: { showLabel: string; showCode: string };
 }
 
 const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
@@ -152,9 +169,42 @@ export function DataTable({
   missingDisplay = "badge",
   columnTypes,
   typeRowTone,
+  valueLabels,
+  columnNotes,
+  labelToggleTitles,
 }: DataTableProps) {
   const [sort, setSort] = useState<SortState | null>(null);
   const numeric = useMemo(() => new Set(numericColumns), [numericColumns]);
+
+  /*
+   * Which columns are currently showing words instead of codes. Default is
+   * "show the label", because a reader who opened a labelled survey file
+   * wants to read what the codes mean; the codes are one click away. Storing
+   * only the columns that were flipped keeps the default live, so a dataset
+   * loaded after a toggle does not inherit a stale choice.
+   */
+  const [codeMode, setCodeMode] = useState<Record<string, boolean>>({});
+
+  const labelsByColumn = useMemo(() => valueLabels ?? {}, [valueLabels]);
+
+  /** True when this column has a lookup to show and is not currently in code mode. */
+  const showsLabels = useCallback(
+    (column: string) => {
+      const lookup = labelsByColumn[column];
+      return !!lookup && Object.keys(lookup).length > 0 && !codeMode[column];
+    },
+    [labelsByColumn, codeMode],
+  );
+
+  const toggleColumnMode = useCallback((column: string) => {
+    setCodeMode((current) => ({ ...current, [column]: !current[column] }));
+  }, []);
+
+  /** Whether this column has a code lookup worth switching between. */
+  const hasLabels = useCallback(
+    (column: string) => Object.keys(labelsByColumn[column] ?? {}).length > 0,
+    [labelsByColumn],
+  );
   const locked = useMemo(() => new Set(unsortableColumns), [unsortableColumns]);
 
   const sorted = useMemo(() => {
@@ -183,7 +233,12 @@ export function DataTable({
     value: unknown,
     row: Record<string, unknown>,
   ): ReactNode => {
-    if (renderCell) return renderCell(column, value, row);
+    if (renderCell) {
+      const labelled = renderLabelled(column, value);
+      return labelled ?? renderCell(column, value, row);
+    }
+    const labelled = renderLabelled(column, value);
+    if (labelled) return labelled;
     if (isMissingValue(value)) {
       return missingDisplay === "dot" ? <MissingDot /> : <MissingBadge />;
     }
@@ -201,6 +256,25 @@ export function DataTable({
       );
     }
     return formatCell(value);
+  };
+
+  /**
+   * The cell as it reads once a column's labels are applied. Kept separate from
+   * renderValue so the preview page can keep its own first-column styling while
+   * still honouring the switch: that page passes a renderCell, which would
+   * otherwise bypass the label lookup entirely.
+   */
+  const renderLabelled = (column: string, value: unknown): ReactNode => {
+    if (!showsLabels(column) || isMissingValue(value)) return null;
+    const code = formatCell(value);
+    const word = labelsByColumn[column][code] ?? code;
+    if (word === code) return null;
+    return (
+      <span title={`${word} (${code})`}>
+        {word}
+        <span className="ml-1 font-mono text-caption text-ink-muted">{code}</span>
+      </span>
+    );
   };
 
   if (rows.length === 0) {
@@ -270,36 +344,69 @@ export function DataTable({
                     scope="col"
                     aria-sort={isSortable ? ariaSortFor(column) : undefined}
                     className={`border-b border-surface-border px-3 py-0 text-overline uppercase tracking-wide ${
-                      isNumeric ? "text-right" : "text-left"
+                      isNumeric && !showsLabels(column) ? "text-right" : "text-left"
                     } ${active ? "text-primary-700" : "text-ink-muted"}`}
                   >
-                    {isSortable ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleSort(column)}
-                        className={`flex w-full items-center gap-1 whitespace-nowrap py-2.5 transition-colors duration-150 ease-standard hover:text-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary-600 ${
-                          isNumeric ? "justify-end" : "justify-start"
-                        }`}
-                      >
-                        <span className="truncate">
+                    <div
+                      className={`flex items-center gap-1 py-2.5 ${
+                        isNumeric && !showsLabels(column) ? "justify-end" : "justify-start"
+                      }`}
+                    >
+                      {isSortable ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleSort(column)}
+                          className={`flex min-w-0 items-center gap-1 whitespace-nowrap transition-colors duration-150 ease-standard hover:text-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary-600 ${
+                            isNumeric && !showsLabels(column)
+                              ? "justify-end"
+                              : "justify-start"
+                          }`}
+                        >
+                          <span className="truncate">
+                            {columnLabels[column] ?? column}
+                          </span>
+                          <Icon
+                            name={
+                              !active
+                                ? "chevrons-up-down"
+                                : sort.direction === "asc"
+                                  ? "chevron-up"
+                                  : "chevron-down"
+                            }
+                            size={13}
+                            className={active ? "shrink-0" : "shrink-0 opacity-40"}
+                          />
+                        </button>
+                      ) : (
+                        <span className="min-w-0 truncate">
                           {columnLabels[column] ?? column}
                         </span>
-                        <Icon
-                          name={
-                            !active
-                              ? "chevrons-up-down"
-                              : sort.direction === "asc"
-                                ? "chevron-up"
-                                : "chevron-down"
+                      )}
+                      {hasLabels(column) && (
+                        <button
+                          type="button"
+                          onClick={() => toggleColumnMode(column)}
+                          title={
+                            showsLabels(column)
+                              ? labelToggleTitles?.showCode
+                              : labelToggleTitles?.showLabel
                           }
-                          size={13}
-                          className={active ? "shrink-0" : "shrink-0 opacity-40"}
-                        />
-                      </button>
-                    ) : (
-                      <span className="block py-2.5">
-                        {columnLabels[column] ?? column}
-                      </span>
+                          aria-pressed={showsLabels(column)}
+                          className="shrink-0 rounded-pill border border-surface-border bg-surface-panel px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal text-ink-muted transition-colors duration-150 ease-standard hover:border-primary-300 hover:text-primary-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
+                        >
+                          {showsLabels(column) ? "123" : "Aa"}
+                        </button>
+                      )}
+                    </div>
+                    {columnNotes?.[column] && (
+                      /*
+                       * The variable's own name in the source file, lowercase and
+                       * unstyled, so it reads as an annotation on the column
+                       * rather than as a second column name competing with it.
+                       */
+                      <p className="-mt-1.5 truncate pb-2 text-[11px] font-normal normal-case tracking-normal text-ink-muted/80">
+                        {columnNotes[column]}
+                      </p>
                     )}
                   </th>
                 );
@@ -351,14 +458,21 @@ export function DataTable({
                     numeric.has(column) ||
                     (typeof value === "number" && !Number.isNaN(value));
                   const isMissing = isMissingValue(value);
+                  /*
+                   * A cell showing a word is text even when the code it came
+                   * from was a number, so it is aligned as text. Keeping the
+                   * right alignment would put "kiume" against the edge of the
+                   * column, which reads as a number that happens to be spelled
+                   * out rather than as a category.
+                   */
+                  const alignRight =
+                    isNumeric && (!showsLabels(column) || isMissing);
                   return (
                     <td
                       key={column}
                       scope={columnIndex === 0 ? "row" : undefined}
                       className={`border-b border-surface-border px-3 py-2 ${
-                        isNumeric
-                          ? "numeric-table text-right"
-                          : "text-left text-ink"
+                        alignRight ? "numeric-table text-right" : "text-left text-ink"
                       } ${columnIndex === 0 ? "font-medium text-ink" : ""} ${
                         isMissing ? "text-ink-muted" : ""
                       }`}
