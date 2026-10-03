@@ -34,9 +34,15 @@ interface ChartViewProps {
   title?: string;
 }
 
-const GRID_COLOR = "#E2E8F0";
-const AXIS_LINE_COLOR = "#CBD5E1";
-const AXIS_FONT = { family: "Inter, Segoe UI, sans-serif", size: 12, color: "#475569" };
+/*
+ * Chart colours are hardcoded rather than themed: a canvas SVG cannot read a
+ * Tailwind class, and a chart whose axes match neither the page nor the data
+ * palette is worse than one that at least matches the page. These mirror the
+ * StatFlow design tokens.
+ */
+const GRID_COLOR = "#E7E5EB";
+const AXIS_LINE_COLOR = "#D4D1DA";
+const AXIS_FONT = { family: "DM Sans, Segoe UI, sans-serif", size: 12, color: "#777482" };
 const VALUE_FONT = { family: "IBM Plex Mono, ui-monospace, monospace", size: 11, color: "#334155" };
 
 function formatNumber(value: unknown): string {
@@ -47,9 +53,9 @@ function formatNumber(value: unknown): string {
 }
 
 const HOVER = {
-  bgcolor: "#0F172A",
-  bordercolor: "#0F172A",
-  font: { family: "Inter, Segoe UI, sans-serif", size: 12, color: "#F8FAFC" },
+  bgcolor: "#17151F",
+  bordercolor: "#17151F",
+  font: { family: "DM Sans, Segoe UI, sans-serif", size: 12, color: "#F5F6FA" },
   namelength: -1,
 } as const;
 
@@ -181,7 +187,7 @@ export function ChartView({ data, height = 380, format, title }: ChartViewProps)
     margin: { l: 64, r: 24, t: 28, b: 64 },
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
-    font: { family: "Inter, Segoe UI, sans-serif", size: 12, color: "#0F172A" },
+    font: { family: "DM Sans, Segoe UI, sans-serif", size: 12, color: "#17151F" },
     hovermode: "closest",
     hoverlabel: HOVER,
     xaxis: {

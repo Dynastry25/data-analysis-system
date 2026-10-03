@@ -3,20 +3,20 @@
 @tailwind utilities;
 
 :root {
-  --surface-canvas: #f8fafc;
+  --surface-canvas: #f5f6fa;
   --surface-panel: #ffffff;
-  --surface-sunken: #f1f5f9;
-  --border-default: #e2e8f0;
-  --border-strong: #cbd5e1;
-  --sidebar: #111827;
-  --sidebar-deep: #0b1020;
-  --sidebar-active: #172554;
-  --ink-default: #0f172a;
-  --ink-secondary: #475569;
-  --ink-muted: #64748b;
-  --brand: #4f46e5;
-  --brand-strong: #4338ca;
-  --focus-ring: 0 0 0 3px rgb(79 70 229 / 0.28);
+  --surface-sunken: #f8f8fb;
+  --border-default: #e7e5eb;
+  --border-strong: #d4d1da;
+  --sidebar: #111019;
+  --sidebar-deep: #0b0a11;
+  --sidebar-active: #292434;
+  --ink-default: #17151f;
+  --ink-secondary: #4a4753;
+  --ink-muted: #777482;
+  --brand: #6c4bf4;
+  --brand-strong: #5a38d6;
+  --focus-ring: 0 0 0 3px rgb(108 75 244 / 0.24);
   --header-height: 56px;
 }
 
@@ -41,14 +41,19 @@ button {
 }
 
 ::selection {
-  background-color: #c7d2fe;
-  color: #312e81;
+  background-color: #ded5ff;
+  color: #33206f;
 }
 
+/*
+ * 3px at 24% opacity, matching the prototype's focus treatment. A 2px solid
+ * outline is easier to miss on a dense table, where most keyboard users are
+ * tabbing through cells rather than filling a form.
+ */
 :focus-visible {
-  outline: 2px solid var(--brand);
+  outline: 3px solid rgb(108 75 244 / 0.24);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 .numeric-table {

@@ -154,7 +154,7 @@ export function ResidualDiagnostic({
                     x2={WIDTH - PAD_RIGHT}
                     y1={geometry.sy(tick)}
                     y2={geometry.sy(tick)}
-                    stroke={tick === 0 ? "#94A3B8" : "#E2E8F0"}
+                    stroke={tick === 0 ? "#A6A3AD" : "#E7E5EB"}
                     strokeWidth={tick === 0 ? 1.5 : 1}
                     strokeDasharray={tick === 0 ? "4 3" : undefined}
                   />
