@@ -660,6 +660,7 @@ export default function StudioPage() {
 
   return (
     <AppShell
+      eyebrow="Eneo la kazi"
       title="Data studio"
       description="Profile, safisha na badilisha zinaishi kwenye ukurasa mmoja â€” kila hatua ina kazi na matokeo yake mwenyewe."
       actions={
@@ -669,17 +670,21 @@ export default function StudioPage() {
       }
     >
       <div className="mb-6">
-        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Hatua za studio">
+        <div
+          className="inline-flex flex-wrap gap-0.5 rounded-[7px] border border-surface-border bg-surface-sunken p-0.5"
+          role="tablist"
+          aria-label="Hatua za studio"
+        >
           {STUDIO_SECTIONS.map((entry) => (
             <Link
               key={entry.key}
               href={`/datasets/${datasetId}/studio?stage=${entry.key}`}
               role="tab"
               aria-selected={section === entry.key}
-              className={`rounded-md px-3.5 py-2 text-body transition-colors duration-150 ease-standard ${
+              className={`rounded-[5px] px-3.5 py-1.5 text-body transition-all duration-150 ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 ${
                 section === entry.key
-                  ? "bg-primary-50 font-medium text-primary-800"
-                  : "text-ink-secondary hover:bg-surface-sunken"
+                  ? "bg-surface-panel font-semibold text-ink shadow-card"
+                  : "font-medium text-ink-muted hover:bg-surface-panel hover:text-ink"
               }`}
             >
               {entry.label}
@@ -773,9 +778,17 @@ export default function StudioPage() {
         </Card>
       ) : (
         <>
+            {/*
+             One connected workspace, not two cards with a gap. The rail and the
+             operation panel are a single surface in the prototype, and splitting
+             them drew a gap plus two borders that made them read as unrelated
+             panels. The container owns the border and the divider; the children
+             give theirs up.
+           */}
             {(section === "clean" || section === "transform") && (
-              <div className="grid gap-4 lg:grid-cols-[15rem_1fr]">
+              <div className="overflow-hidden rounded-xl border border-surface-border bg-surface-panel shadow-card lg:grid lg:grid-cols-[15rem_1fr]">
                 <OperationRail
+                  framed
                   catalog={catalog}
                   selected={selectedOp}
                   onSelect={(type) => {
@@ -786,6 +799,7 @@ export default function StudioPage() {
                 />
 
                 <Card
+                  className="rounded-none border-0 shadow-none hover:shadow-none"
                   title={currentOperation?.label ?? "Chagua operation"}
                   icon="sliders"
                   description="Jaza parameters, kisha tumia. Version mpya itatengenezwa na asili hubaki kubadilika."

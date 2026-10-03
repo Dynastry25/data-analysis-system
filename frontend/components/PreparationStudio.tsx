@@ -137,6 +137,13 @@ interface OperationRailProps {
   catalog: OperationCatalogEntry[];
   selected: string;
   onSelect: (type: string) => void;
+  /**
+   * Draws the rail as the left column of a connected workspace, with a shared
+   * border and a sunken background instead of its own card. The rail and the
+   * operation panel are one surface in the prototype, and separating them with
+   * a gap plus two borders made them read as unrelated panels.
+   */
+  framed?: boolean;
 }
 
 /**
@@ -146,9 +153,20 @@ interface OperationRailProps {
  * the engine really has. A family with nothing behind it says so instead of
  * offering a dead click.
  */
-export function OperationRail({ catalog, selected, onSelect }: OperationRailProps) {
+export function OperationRail({
+  catalog,
+  selected,
+  onSelect,
+  framed = false,
+}: OperationRailProps) {
   return (
-    <div className="rounded-lg border border-surface-border bg-surface-panel shadow-card">
+    <div
+      className={
+        framed
+          ? "bg-surface-sunken lg:border-r lg:border-surface-border"
+          : "rounded-lg border border-surface-border bg-surface-panel shadow-card"
+      }
+    >
       <p className="border-b border-surface-border px-3.5 py-2.5 text-overline uppercase tracking-wide text-ink-muted">
         Operations
       </p>
