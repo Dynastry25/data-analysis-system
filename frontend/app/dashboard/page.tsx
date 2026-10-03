@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { ActivityChart } from "@/components/ActivityChart";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
 import { Icon } from "@/components/Icon";
 import { MetricCard } from "@/components/MetricCard";
+import { QualityPanel } from "@/components/QualityPanel";
 import { QuickActions, QuickAction } from "@/components/QuickActions";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
@@ -40,6 +42,8 @@ interface DatasetActivity {
   analyses: number;
   charts: number;
   reports: number;
+  /** created_at of each analysis run, used to bucket the activity chart. */
+  dates: string[];
 }
 
 function StageDots({ done, total = 6 }: { done: number; total?: number }) {
@@ -86,21 +90,37 @@ export default function DashboardPage() {
       const results = await Promise.allSettled(
         list.map(async (dataset) => {
           const [analyses, charts, reports] = await Promise.all([
-            statflowApi.analysisRuns(dataset.id).then((runs) => runs.length),
+            statflowApi
+              .analysisRuns(dataset.id)
+              .then((runs) => ({
+                count: runs.length,
+                // Keep the timestamps so the activity chart can bucket real runs
+                // by week instead of plotting an invented trend.
+                dates: runs
+                  .map((run) => run.created_at)
+                  .filter((value): value is string => Boolean(value)),
+              })),
             api.charts.listForDataset(dataset.id).then((chartsList) => chartsList.length),
             api.reports.listForDataset(dataset.id).then((reportsList) => reportsList.length),
           ]);
-          return { id: dataset.id, analyses, charts, reports };
+          return {
+            id: dataset.id,
+            analyses: analyses.count,
+            charts,
+            reports,
+            dates: analyses.dates,
+          };
         })
       );
       const next = new Map<number, DatasetActivity>();
       for (const result of results) {
         if (result.status === "fulfilled") {
           next.set(result.value.id, {
-            analyses: result.value.analyses,
-            charts: result.value.charts,
-            reports: result.value.reports,
-          });
+              analyses: result.value.analyses,
+              charts: result.value.charts,
+              reports: result.value.reports,
+              dates: result.value.dates,
+            });
         }
       }
       setActivity(next);
@@ -127,6 +147,34 @@ export default function DashboardPage() {
 
   const firstName = user?.full_name?.trim().split(/\s+/)[0] ?? "";
   const latestDataset = datasets[0] ?? null;
+
+  // Trend figures are derived from the data we already hold, not invented:
+  // the dashboard previously carried a hardcoded "92%" quality score.
+  // Quality is derived from how far each dataset has actually progressed, rather
+  // than asserted. The prototype hardcodes 91/94/86, which would be fiction here.
+  const quality = useMemo(() => {
+    const total = datasets.length;
+    if (total === 0) return { score: 0, complete: 0, valued: 0, unique: 0 };
+    const analyzed = datasets.filter((d) => d.status === "analyzed").length;
+    const cleaned = datasets.filter((d) => d.status === "cleaned").length;
+    const withRows = datasets.filter((d) => d.row_count > 0).length;
+    const staged = analyzed + cleaned;
+    const complete = Math.round((staged / total) * 100);
+    const valued = Math.round((withRows / total) * 100);
+    return {
+      score: Math.round((complete + valued + staged) / 3),
+      complete,
+      valued,
+      unique: staged,
+    };
+  }, [datasets]);
+
+  const nowMs = Date.now();
+  const addedThisMonth = datasets.filter((dataset) => {
+    if (!dataset.uploaded_at) return false;
+    const parsed = new Date(dataset.uploaded_at).getTime();
+    return !Number.isNaN(parsed) && nowMs - parsed <= 30 * 24 * 60 * 60 * 1000;
+  }).length;
 
   // Same opening row as the design: a greeting that matches the time of day,
   // then the real clock reading rather than an invented one.
@@ -202,6 +250,7 @@ export default function DashboardPage() {
 
   return (
     <AppShell
+      eyebrow="Muhtasari wa kazi"
       title={greeting}
       description={nowLabel ? `${nowLabel} · ${summary}` : summary}
       actions={
@@ -219,9 +268,12 @@ export default function DashboardPage() {
           icon="database"
           tone="primary"
           accent="bg-primary-600"
-          label="Total Projects"
+          label="Datasets"
           value={loading ? "…" : datasets.length}
-          hint="Miradi yote"
+          hint={addedThisMonth > 0 ? `${addedThisMonth} added this month` : "Zote zilizo hivi karibuni"}
+          trend={
+            addedThisMonth > 0 ? { value: `+${addedThisMonth}` } : undefined
+          }
         />
         <MetricCard
           icon="layers"
@@ -230,14 +282,6 @@ export default function DashboardPage() {
           label="Active Analyses"
           value={loading ? "…" : totalAnalyses + totalCharts}
           hint={`${totalAnalyses} takwimu · ${totalCharts} chati`}
-        />
-        <MetricCard
-          icon="chart"
-          tone="success"
-          accent="bg-success"
-          label="Avg Data Quality"
-          value={loading ? "…" : "92%"}
-          hint="Ubora wa data kwa wastani"
         />
         <MetricCard
           icon="file-text"
@@ -249,8 +293,43 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Prototype page-02 main grid: Recent Analyses + Data Quality / AI Insight */}
+      {/* Prototype main grid: activity chart (2fr) beside data health (1fr). */}
       <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <ActivityChart
+            loading={loading}
+            dates={Array.from(activity.values()).flatMap((entry) => entry.dates)}
+          />
+        </div>
+
+        <QualityPanel
+          score={quality.score}
+          caption={
+            datasets.length === 0
+              ? "Hakuna data"
+              : quality.score >= 80
+                ? "Inazofanya vizuri"
+                : quality.score >= 50
+                  ? "Inahitaji kazi"
+                  : "Haijalianishwa"
+          }
+          subtitle={`Kati ya datasets ${datasets.length} zinazoendelea`}
+          bars={[
+            { label: "Kamili", value: quality.complete, color: "#24A36A" },
+            { label: "Ina thamani", value: quality.valued, color: "#6C4BF4" },
+            { label: "Imefanywa kazi", value: quality.unique, color: "#3B82F6" },
+          ]}
+          action={
+            <Link
+              href="/datasets"
+              className="inline-flex shrink-0 items-center gap-0.5 text-caption font-semibold text-primary-600 hover:text-primary-700"
+            >
+              Ripoti
+              <Icon name="chevron-right" size={13} />
+            </Link>
+          }
+        />
+
         <Card title="Recent Analyses" icon="layers" className="lg:col-span-2">
           {loading ? (
             <div className="space-y-3">
@@ -310,28 +389,76 @@ export default function DashboardPage() {
           )}
         </Card>
 
-        <div className="flex flex-col gap-4">
-          <section className="rounded-md bg-[#151B34] p-5 text-white shadow-card">
-            <p className="font-mono text-h1 tabular">92%</p>
-            <p className="mt-1 text-overline uppercase tracking-wide text-neutral-300">
-              Data Quality · +3.4% this month
-            </p>
-          </section>
-          <Card title="✦ AI Insight" icon="sparkles">
-            <p className="text-body text-ink-secondary">
-              Imputing income before the next regression could recover 84
-              usable rows.
-            </p>
-            {latestDataset && (
-              <Link
-                href={`/datasets/${latestDataset.id}/ask`}
-                className="mt-3 inline-block text-caption font-medium text-primary-700 hover:underline"
-              >
-                Uliza Msaidizi wa AI →
-              </Link>
-            )}
-          </Card>
-        </div>
+        {/*
+          Replaces two cards that were here before: a dark navy "92%" tile, the
+          last element still carrying the old indigo palette, and an "AI Insight"
+          card asserting a specific recoverable row count that nothing computed.
+          This shows the one real next step instead.
+        */}
+        <Card title="Hatua inayofuata" icon="target" className="lg:col-span-3">
+          {latestDataset ? (
+            <ul className="flex flex-col gap-2.5">
+              {[
+                {
+                  done: latestDataset.status === "analyzed",
+                  label: "Kukagua na kusafisha data",
+                  href: `/datasets/${latestDataset.id}/studio`,
+                  detail: latestDataset.original_filename,
+                },
+                {
+                  done: (activity.get(latestDataset.id)?.analyses ?? 0) > 0,
+                  label: "Kuendesha takwimu",
+                  href: `/datasets/${latestDataset.id}/statistics`,
+                  detail: `${activity.get(latestDataset.id)?.analyses ?? 0} takwimu zimekamilika`,
+                },
+                {
+                  done: (activity.get(latestDataset.id)?.charts ?? 0) > 0,
+                  label: "Kutengeneza chati",
+                  href: `/datasets/${latestDataset.id}/charts`,
+                  detail: `${activity.get(latestDataset.id)?.charts ?? 0} chati zimeundwa`,
+                },
+              ].map((step) => (
+                <li key={step.label}>
+                  <Link
+                    href={step.href}
+                    className="group flex items-start gap-3 rounded-md p-2 transition-colors hover:bg-surface-sunken focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
+                  >
+                    <span
+                      className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border ${
+                        step.done
+                          ? "border-success bg-success-bg text-success"
+                          : "border-surface-border bg-surface-sunken text-ink-faint"
+                      }`}
+                    >
+                      <Icon name={step.done ? "check" : "chevron-right"} size={12} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-body font-medium text-ink group-hover:text-primary-700">
+                        {step.label}
+                      </span>
+                      <span className="block text-caption text-ink-muted">
+                        {step.detail}
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState
+              title="Hakuna hatua bado"
+              description="Pakia dataset ili mtiririko wa kazi uanze."
+              action={
+                <Link href="/upload">
+                  <Button>
+                    <Icon name="upload" size={16} />
+                    Pakia data
+                  </Button>
+                </Link>
+              }
+            />
+          )}
+        </Card>
       </div>
 
       {/* Quick actions */}

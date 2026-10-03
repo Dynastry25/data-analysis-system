@@ -19,6 +19,13 @@ interface MetricCardProps {
   hint?: string;
   tone?: MetricTone;
   accent?: string;
+  /**
+   * Change against the previous period, e.g. "+18.4%". Rendered as a green chip
+   * on the hint row. `direction` only picks the arrow; a falling number is still
+   * green when falling is the good outcome (fewer errors), so we never let the
+   * arrow imply a negative verdict on its own.
+   */
+  trend?: { value: string; direction?: "up" | "down" };
 }
 
 export function MetricCard({
@@ -28,6 +35,7 @@ export function MetricCard({
   hint,
   tone = "primary",
   accent,
+  trend,
 }: MetricCardProps) {
   /*
  * The prototype's metric card: a 36px tinted icon in the top-left, the label
@@ -58,7 +66,16 @@ return (
         {value}
       </p>
       {hint && (
-        <p className="col-span-2 mt-1 flex items-center gap-1.5 text-caption text-ink-muted">
+        <p className="col-span-2 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-ink-muted">
+          {trend && (
+            <span className="inline-flex items-center gap-0.5 font-semibold text-success">
+              <Icon
+                name={trend.direction === "down" ? "chevron-down" : "chevron-up"}
+                size={11}
+              />
+              {trend.value}
+            </span>
+          )}
           {hint}
         </p>
       )}

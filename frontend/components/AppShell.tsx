@@ -141,6 +141,8 @@ function activeNavKey(pathname: string, stage: number | null): string | null {
 interface AppShellProps {
   title: string;
   description?: string;
+  /** Small caps label above the title, e.g. "WORKSPACE OVERVIEW". */
+  eyebrow?: string;
   actions?: React.ReactNode;
   children: React.ReactNode;
 }
@@ -215,7 +217,13 @@ function Breadcrumbs({ datasetId, pathname }: { datasetId: number; pathname: str
  *   so the links never hide their target. With no datasets at all every phase
  *   resolves to `/upload`, which is the truth.
  */
-export function AppShell({ title, description, actions, children }: AppShellProps) {
+export function AppShell({
+  title,
+  description,
+  eyebrow,
+  actions,
+  children,
+}: AppShellProps) {
   const ready = useAuthGuard();
   const pathname = usePathname();
   const { t } = useLanguage();
@@ -488,6 +496,11 @@ export function AppShell({ title, description, actions, children }: AppShellProp
               )}
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
+                  {eyebrow && (
+                    <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-primary-600">
+                      {eyebrow}
+                    </span>
+                  )}
                   <h1 className="font-display text-h1 tracking-[-0.015em] text-ink">
                     {title}
                   </h1>
