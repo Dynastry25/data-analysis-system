@@ -49,6 +49,7 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
   const [openMenu, setOpenMenu] = useState<MenuKey | null>(null);
   const [query, setQuery] = useState("");
   const [searchActive, setSearchActive] = useState(false);
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
   const trimmedQuery = query.trim().toLowerCase();
   const matches = trimmedQuery
@@ -74,9 +75,19 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
     }
     document.addEventListener("mousedown", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
+    // Ctrl/Cmd+K focuses search, matching the hint rendered beside the field.
+    function focusSearch(event: KeyboardEvent) {
+      if (event.key.toLowerCase() !== "k") return;
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      searchRef.current?.focus();
+      setSearchActive(true);
+    }
+    document.addEventListener("keydown", focusSearch);
     return () => {
       document.removeEventListener("mousedown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("keydown", focusSearch);
     };
   }, []);
 
@@ -132,6 +143,7 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
           <Icon name="search" size={16} />
         </span>
         <input
+          ref={searchRef}
           type="search"
           value={query}
           onChange={(event) => {
@@ -141,8 +153,15 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
           onFocus={() => setSearchActive(true)}
           placeholder="Search projects, datasets, analyses…"
           aria-label="Search projects, datasets, analyses"
-          className="h-[37px] w-full rounded-md border border-transparent bg-surface-sunken pl-8 pr-3 text-body text-ink transition-colors duration-200 ease-standard placeholder:text-ink-muted focus:border-[#CFC7F8] focus:bg-surface-panel focus:outline-none focus:ring-0"
+          className="h-[37px] w-full rounded-md border border-transparent bg-surface-sunken pl-8 pr-14 text-body text-ink transition-colors duration-200 ease-standard placeholder:text-ink-muted focus:border-[#CFC7F8] focus:bg-surface-panel focus:outline-none focus:ring-0 [&::-webkit-search-cancel-button]:appearance-none"
         />
+        {/*
+          Keyboard hint. Wired to the real shortcut rather than left as
+          decoration: a badge that lies about a binding is worse than none.
+        */}
+        <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded border border-surface-border bg-surface-panel px-1.5 py-0.5 font-mono text-[10px] text-ink-muted sm:inline-flex">
+          Ctrl K
+        </kbd>
 
         {showResults && (
           <div className="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-md border border-surface-border bg-surface-panel shadow-overlay">

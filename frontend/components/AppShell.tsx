@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { useAuthGuard } from "@/lib/useAuth";
+import { AiSidePanel } from "./AiSidePanel";
 import { api, DatasetSummary, UserProfile } from "@/lib/api";
 import {
   PIPELINE_PHASES,
@@ -147,18 +148,44 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
+/**
+ * The logo mark: four squares on the violet accent, rotated slightly.
+ *
+ * Built from spans rather than an icon because the prototype's mark is a
+ * four-cell grid with graduated opacity. Approximating it with a glyph would
+ * lose the only piece of brand imagery the product has.
+ */
+function LogoMark() {
+  return (
+    <span
+      aria-hidden="true"
+      className="grid h-[27px] w-[27px] -rotate-6 grid-cols-2 gap-0.5 rounded-lg bg-primary-600 p-[5px] shadow-[0_6px_18px_rgba(108,75,244,0.4)]"
+    >
+      <span className="rounded-[1.5px] bg-white" />
+      <span className="rounded-[1.5px] bg-white opacity-70" />
+      <span className="rounded-[1.5px] bg-white opacity-50" />
+      <span className="rounded-[1.5px] bg-white opacity-85" />
+    </span>
+  );
+}
+
 function Brand() {
   return (
     <Link href="/dashboard" className="flex items-center gap-2.5">
-      <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-600 text-white">
-        <Icon name="chart-line" size={20} />
-      </span>
-      <span>
-        <span className="block text-h3 leading-tight text-white">StatFlow</span>
-        <span className="block text-caption text-neutral-400">Data Analysis</span>
+      <LogoMark />
+      <span className="font-display text-[20px] font-bold leading-none tracking-[-0.5px] text-white">
+        StatFlow
       </span>
     </Link>
   );
+}
+
+/** Initials for the workspace and profile avatars, from any name. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 function Breadcrumbs({ datasetId, pathname }: { datasetId: number; pathname: string }) {
@@ -373,6 +400,30 @@ export function AppShell({
           </button>
         </div>
 
+        {/*
+          Workspace switcher. It links to the organisations page rather than
+          opening a picker: this build has no "active workspace" concept, so a
+          dropdown here would imply a scope that does not exist. It names the
+          signed-in user's organisations area instead.
+        */}
+        <Link
+          href="/organizations"
+          className="mx-3 mb-6 grid grid-cols-[32px_1fr_auto] items-center gap-2.5 rounded-[11px] border border-white/10 bg-[#1C1A25] px-2.5 py-2.5 transition-colors duration-200 ease-standard hover:border-[#494453] hover:bg-[#211F2B]"
+        >
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#393247] text-[11px] font-bold text-[#D9CEFF]">
+            {initialsOf(user?.full_name ?? "StatFlow")}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-[12px] font-semibold text-white">
+              {user?.full_name ?? "StatFlow"}
+            </span>
+            <span className="mt-0.5 block truncate text-[10px] text-[#898491]">
+              {user?.email ?? ""}
+            </span>
+          </span>
+          <Icon name="chevron-down" size={15} className="shrink-0 text-[#898491]" />
+        </Link>
+
         <nav aria-label="Urambazaji kuu" className="flex-1 overflow-y-auto px-3 pb-4">
           <ul className="space-y-1">
             {FIXED_NAV.map((item) => {
@@ -426,6 +477,16 @@ export function AppShell({
                   >
                     <Icon name={PHASE_ICON[phase.key]} size={20} />
                     {phase.label}
+                    {/*
+                      The prototype badges the AI phase BETA. It keeps that
+                      marker here because the assistant is the one part of the
+                      pipeline whose answers are generated rather than computed.
+                    */}
+                    {phase.key === "explain" && (
+                      <span className="ml-auto shrink-0 rounded border border-[#493E68] px-1 py-0.5 text-[7px] font-bold uppercase tracking-[0.6px] text-[#A98CFF]">
+                        Beta
+                      </span>
+                    )}
                   </Link>
                 </li>
               );
@@ -461,6 +522,12 @@ export function AppShell({
           </ul>
         </nav>
 
+        {/*
+          Profile row, matching the prototype's pinned identity block. It sits
+          below the language switcher and admin link rather than replacing them:
+          both are working navigation in this build and the prototype has no
+          equivalent, so removing them would lose function.
+        */}
         <div className="border-t border-white/10 p-3">
           <LanguageSwitcher className="mb-2 w-full [&>button]:flex-1" />
           {user?.system_role && (
@@ -472,23 +539,51 @@ export function AppShell({
               {t("nav.admin")}
             </Link>
           )}
+          <Link
+            href="/profile"
+            className="mt-2 grid grid-cols-[30px_1fr] items-center gap-2.5 rounded-lg border-t border-white/10 px-2 pt-3 transition-colors duration-150 ease-standard hover:bg-white/[0.06]"
+          >
+            <span className="grid h-[30px] w-[30px] place-items-center rounded-full bg-[#E0B478] text-[10px] font-bold text-[#4B3114]">
+              {initialsOf(user?.full_name ?? "StatFlow")}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-[12px] font-semibold text-white">
+                {user?.full_name ?? "StatFlow"}
+              </span>
+              <span className="mt-0.5 block truncate text-[10px] text-[#898491]">
+                {user?.email ?? ""}
+              </span>
+            </span>
+            {/*
+              The prototype puts an overflow icon here. This icon set has no
+              menu glyph, and a link that opens nothing is worse than one that
+              looks like it would, so the row simply goes to the profile page
+              where it actually leads.
+            */}
+          </Link>
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TopBar
-          user={user}
-          datasets={datasets}
-          onOpenMenu={() => setDrawerOpen(true)}
-        />
+      {/*
+          Content and assistant panel side by side, the prototype's three-column
+          shell. The panel goes after the page column, not inside it, so it sits
+          outside the max-width measure and stays pinned while content scrolls.
+        */}
+        <div className="flex min-w-0 flex-1">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <TopBar
+              user={user}
+              datasets={datasets}
+              onOpenMenu={() => setDrawerOpen(true)}
+            />
 
-        <WorkflowStrip
-          datasetId={targetDatasetId}
-          currentStage={pipeline.stage}
-          contextLabel={contextLabel}
-        />
+            <WorkflowStrip
+              datasetId={targetDatasetId}
+              currentStage={pipeline.stage}
+              contextLabel={contextLabel}
+            />
 
-        <main id="main-content" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
+            <main id="main-content" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-content">
             <header className="mb-5">
               {pipeline.datasetId !== null && (
@@ -525,9 +620,20 @@ export function AppShell({
             )}
 
             <div className="space-y-6">{children}</div>
+            </div>
+          </main>
           </div>
-        </main>
-      </div>
+
+          {/*
+            The panel returns null when there is no dataset to ground it in, so
+            a new account sees the shell exactly as it was before this existed.
+          */}
+          <AiSidePanel
+            datasets={datasets}
+            activeDatasetId={pipeline.datasetId ?? latestDataset?.id ?? null}
+            activeVersion={activeDataset?.current_version ?? null}
+          />
+        </div>
     </div>
   );
 }
