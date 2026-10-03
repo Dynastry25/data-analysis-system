@@ -1850,6 +1850,76 @@ def test_filter_conditions_and_frontend_parity() -> None:
 
 
 
+def test_set_values_edits() -> None:
+    """A hand-edited cell writes a value and is recorded with its old one.
+
+    This is the operation behind the browse table's edit mode. The parts worth
+    asserting are the ones a spreadsheet gets wrong: the summary must be
+    JSON-serialisable (numpy scalars are not), clearing a cell must produce a
+    real missing value, and every malformed request must be refused rather than
+    silently editing the wrong cell.
+    """
+    import json
+
+    frame = pd.DataFrame(
+        {
+            # Deliberately integer-typed. A numpy float64 subclasses Python's
+            # float, so json.dumps accepts it and a float fixture would pass
+            # even with the cast removed; a numpy int64 does not, and that is
+            # the case that 500s in the browser.
+            "household_id": [1, 2, 3],
+            "amount": [100.0, 200.0, 300.0],
+            "region": ["Dar", "Arusha", "Mwanza"],
+        }
+    )
+    result, summary, warnings = operations.apply_operation(
+        frame,
+        "set_values",
+        {
+            "edits": [
+                {"row": 0, "column": "amount", "value": 150},
+                {"row": 0, "column": "household_id", "value": 42},
+                {"row": 1, "column": "region", "value": ""},
+            ]
+        },
+    )
+    check(summary["edited_cells"] == 3, "every edit is counted")
+    check(result["amount"].iloc[0] == 150, "the edited number is written")
+    check(
+        result["household_id"].iloc[0] == 42,
+        "an integer column can be edited too",
+    )
+    check(pd.isna(result["region"].iloc[1]), "an emptied cell becomes missing, not an empty string")
+    check(
+        summary["edits"][1]["previous"] == 1,
+        f"the previous integer is recorded as a plain int ({summary['edits'][1]['previous']!r})",
+    )
+    # The whole summary travels into the API response, so a single numpy scalar
+    # anywhere in it is a 500 rather than a value.
+    encoded = json.dumps(summary)
+    check("42" in encoded, f"the summary is JSON-serialisable ({encoded[:100]})")
+    check(len(frame) == 3, "the original frame is untouched")
+    check(warnings == [], "editing a cell is not a warning")
+
+    for bad, why in [
+        ({"edits": []}, "an empty edit list"),
+        ({"edits": [{"row": 99, "column": "amount", "value": 1}]}, "a row past the end"),
+        ({"edits": [{"row": 0, "column": "nope", "value": 1}]}, "an unknown column"),
+        ({"edits": [{"row": 0, "column": "amount"}]}, "an edit with no value"),
+        ({"edits": [{"row": -1, "column": "amount", "value": 1}]}, "a negative row"),
+    ]:
+        try:
+            operations.apply_operation(frame, "set_values", bad)
+            check(False, f"{why} is refused")
+        except operations.OperationError:
+            check(True, f"{why} is refused")
+
+    check(
+        operations.operation_group("set_values") == operations.CLEAN,
+        "set_values is a clean operation, so it goes through /clean",
+    )
+
+
 def main() -> int:
     test_catalogue()
     test_stage_plans()
@@ -1865,6 +1935,7 @@ def main() -> int:
     test_zero_inflated_and_hurdle()
     test_reliability_statistics()
     test_join_clean_and_analyse()
+    test_set_values_edits()
     test_api_surface()
     test_filter_conditions_and_frontend_parity()
     print(f"\nALL METHODS TESTS PASSED ({PASSED} checks)")

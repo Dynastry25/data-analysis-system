@@ -106,6 +106,26 @@ def _column_profile(frame: pd.DataFrame) -> Dict[str, Any]:
     }
 
 
+def _plain(value: Any) -> Any:
+    """A value the JSON encoder will accept.
+
+    Anything read out of a frame is a numpy scalar or a Timestamp, neither of
+    which ``json.dumps`` knows. ``item()`` maps numpy scalars to Python ones;
+    a timestamp becomes an ISO string, which is what the rest of the API does
+    with dates.
+    """
+    if hasattr(value, "item"):
+        try:
+            value = value.item()
+        except (ValueError, AttributeError):  # pragma: no cover - defensive
+            pass
+    if isinstance(value, (pd.Timestamp,)):
+        return value.isoformat()
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
+
+
 def _diff_profile(before: Dict[str, Any], after: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "rows_before": before["row_count"],
@@ -116,6 +136,92 @@ def _diff_profile(before: Dict[str, Any], after: Dict[str, Any]) -> Dict[str, An
         "missing_cells_before": before["missing_cells"],
         "missing_cells_after": after["missing_cells"],
     }
+
+
+def op_set_values(frame: pd.DataFrame, config: Dict[str, Any]) -> OperationResult:
+    """Write values into individual cells, identified by row position.
+
+    This is what "edit mode" on the browse table calls. It is an operation like
+    any other, so it writes a new version rather than mutating the current one:
+    a hand-corrected cell is a data change, and hiding it in place would make
+    the version history lie about what the file contains.
+
+    Rows are addressed by position, not by an id column. The platform does not
+    require a dataset to have a unique key, so an addressable row has to be the
+    index itself. The consequence is stated in the summary: a later operation
+    that drops or reorders rows can move what position 42 pointed at, which is
+    why the write is recorded with the column, row and old value.
+    """
+    edits = config.get("edits")
+    if not isinstance(edits, list) or not edits:
+        raise OperationError("No edits were supplied.")
+
+    row_count = len(frame)
+    cleaned = frame.copy()
+    applied: List[Dict[str, Any]] = []
+
+    for edit in edits:
+        if not isinstance(edit, dict):
+            raise OperationError("Each edit must be an object with row, column and value.")
+        column = edit.get("column")
+        if column not in cleaned.columns:
+            raise OperationError(f"Not in this dataset: {column}")
+        # "value" must be present, even as null: an omitted key is a malformed
+        # request, not an instruction to clear the cell.
+        if "value" not in edit:
+            raise OperationError(
+                f"The edit to {column} (row {edit.get('row')}) has no value."
+            )
+        row = edit.get("row")
+        if not isinstance(row, int) or isinstance(row, bool):
+            raise OperationError("Each edit needs a whole-number 'row' position.")
+        if row < 0 or row >= row_count:
+            raise OperationError(
+                f"Row {row} is outside this dataset, which has {row_count} rows."
+            )
+        # An empty string means "clear this cell", which is None rather than the
+        # empty string: the platform already reports a missing value as null, so
+        # writing "" would invent a second way to spell "no value" that no
+        # later operation knows how to count.
+        raw = edit.get("value")
+        value = None if (isinstance(raw, str) and raw.strip() == "") else raw
+        position = cleaned.columns.get_loc(column)
+        previous = cleaned.iat[row, position]
+        # Setting through the column rather than ``iat`` lets pandas widen a
+        # column whose dtype rejects the new value, instead of raising and
+        # losing every other edit in the batch.
+        try:
+            cleaned.iat[row, position] = value
+        except (TypeError, ValueError):
+            cleaned[column] = cleaned[column].astype(object)
+            cleaned.iat[row, position] = value
+        applied.append(
+            {
+                "row": row,
+                "column": str(column),
+                # Cast to plain Python: a numpy int/float/Timestamp is not
+                # JSON-serialisable, and the summary travels straight into the
+                # operation record the API returns.
+                "previous": None if pd.isna(previous) else _plain(previous),
+                "current": None if value is None else _plain(value),
+            }
+        )
+
+    try:
+        cleaned = cleaned.infer_objects()
+    except Exception:  # noqa: BLE001 - a mixed edit must not lose the writes
+        pass
+
+    return (
+        cleaned,
+        {
+            "edited_cells": len(applied),
+            "edits": applied,
+            "rows_before": row_count,
+            "rows_after": int(cleaned.shape[0]),
+        },
+        [],
+    )
 
 
 def op_drop_duplicates(frame: pd.DataFrame, config: Dict[str, Any]) -> OperationResult:
@@ -865,6 +971,12 @@ def append_frames(
 
 
 OPERATION_CATALOG: Dict[str, Dict[str, Any]] = {
+    "set_values": {
+        "group": CLEAN,
+        "label": "Edit cell values",
+        "handler": op_set_values,
+        "parameters": ["edits [{row, column, value}]"],
+    },
     "drop_duplicates": {
         "group": CLEAN,
         "label": "Remove duplicate rows",

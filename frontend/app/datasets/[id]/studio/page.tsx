@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { BrowseData } from "@/components/BrowseData";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
@@ -67,10 +68,10 @@ type LastResult = {
  * silently drops rows looks like a successful filter.
  */
 const JOIN_OPTIONS = [
-  { value: "left", label: "left — kila row ya dataset hii (recommended)" },
-  { value: "inner", label: "inner — tu rows zinazopatikana kwenye zote mbili" },
-  { value: "right", label: "right — kila row ya dataset ya pili" },
-  { value: "outer", label: "outer — zote mbili" },
+  { value: "left", label: "left â€” kila row ya dataset hii (recommended)" },
+  { value: "inner", label: "inner â€” tu rows zinazopatikana kwenye zote mbili" },
+  { value: "right", label: "right â€” kila row ya dataset ya pili" },
+  { value: "outer", label: "outer â€” zote mbili" },
 ];
 
 const KEEP_OPTIONS = [
@@ -87,7 +88,7 @@ const TYPE_OPTIONS = ["numeric", "integer", "text", "date", "boolean"].map((valu
 
 /** Profiling min/max arrive as `any`, so render them rather than trusting the type. */
 function formatCell(value: unknown): string {
-  if (value === null || value === undefined) return "—";
+  if (value === null || value === undefined) return "â€”";
   if (typeof value === "number" || typeof value === "string") return String(value);
   return String(value);
 }
@@ -228,6 +229,12 @@ export default function StudioPage() {
   const [columns, setColumns] = useState<ColumnProfile[]>([]);
   const [previewRows, setPreviewRows] = useState<Record<string, unknown>[]>([]);
   const [rowCount, setRowCount] = useState(0);
+  /**
+   * The version currently loaded. An edit sends this with the operation so the
+   * server can refuse a write aimed at a version the user was not looking at,
+   * which is what stops two tabs silently overwriting each other.
+   */
+  const [datasetVersion, setDatasetVersion] = useState(1);
   const [catalog, setCatalog] = useState<OperationCatalogEntry[]>([]);
   const [history, setHistory] = useState<OperationsHistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -275,6 +282,7 @@ export default function StudioPage() {
       setColumns(detail.columns);
       setPreviewRows(detail.preview_rows);
       setRowCount(detail.dataset.row_count);
+      setDatasetVersion(detail.dataset_version);
       setCatalog(operationsCatalog);
       setHistory(operationsHistory);
       // A dataset cannot be merged with itself, so it is filtered out here
@@ -406,6 +414,7 @@ export default function StudioPage() {
         setColumns(detail.columns);
         setPreviewRows(detail.preview_rows);
         setRowCount(detail.dataset.row_count);
+        setDatasetVersion(detail.dataset_version);
         setHistory(operationsHistory);
         setLastResult({
           version: result.version,
@@ -478,7 +487,7 @@ export default function StudioPage() {
         });
         await refreshAfterOperation(response, currentOperation.type, before);
         showToast(
-          `Version v${response.version} imetengenezwa (${response.row_count} rows · ${response.column_count} columns)`,
+          `Version v${response.version} imetengenezwa (${response.row_count} rows Â· ${response.column_count} columns)`,
           "success"
         );
         setLabel("");
@@ -503,7 +512,7 @@ export default function StudioPage() {
       // describe what is left, not what was there before.
       await refreshAfterOperation(response, currentOperation.type, before);
       showToast(
-        `Version v${response.version} imetengenezwa (${response.row_count} rows × ${response.column_count} columns)`,
+        `Version v${response.version} imetengenezwa (${response.row_count} rows Ã— ${response.column_count} columns)`,
         "success"
       );
       setLabel("");
@@ -588,7 +597,7 @@ export default function StudioPage() {
           label={field.label}
           required={field.required}
           error={error}
-          placeholder="— chagua dataset —"
+          placeholder="â€” chagua dataset â€”"
           value={String(value || "")}
           options={options}
           onChange={(event) =>
@@ -603,7 +612,7 @@ export default function StudioPage() {
           label={field.label}
           required={field.required}
           error={error}
-          placeholder="— chagua column —"
+          placeholder="â€” chagua column â€”"
           value={String(value || "")}
           options={columnNames.map((name) => ({ value: name, label: name }))}
           onChange={(event) =>
@@ -618,7 +627,7 @@ export default function StudioPage() {
           label={field.label}
           required={field.required}
           error={error}
-          placeholder="— chagua —"
+          placeholder="â€” chagua â€”"
           value={String(value || "")}
           options={field.options ?? []}
           onChange={(event) =>
@@ -652,7 +661,7 @@ export default function StudioPage() {
   return (
     <AppShell
       title="Data studio"
-      description="Profile, safisha na badilisha zinaishi kwenye ukurasa mmoja — kila hatua ina kazi na matokeo yake mwenyewe."
+      description="Profile, safisha na badilisha zinaishi kwenye ukurasa mmoja â€” kila hatua ina kazi na matokeo yake mwenyewe."
       actions={
         <Link href={`/datasets/${datasetId}`}>
           <Button variant="secondary">Rudi kwenye dataset</Button>
@@ -680,6 +689,38 @@ export default function StudioPage() {
         <p className="mt-2 text-caption text-ink-muted">{sectionHint}</p>
       </div>
 
+
+      {/*
+       * Browsing the rows comes before the column table on purpose: "what does
+       * this data look like" is the question that arrives first, and "what is
+       * this column" is the follow-up once the rows make sense.
+       */}
+      {section === "profile" && (
+        <Card
+          title="Angalia data"
+          icon="table"
+          description="Tazama rows zako na, kwa kubadilisha, sahihisha thamani moja kwa moja. Kila uhifadhi hujenga version mpya."
+        >
+          {loading ? (
+            <TableSkeleton rows={6} columns={4} />
+          ) : previewRows.length === 0 ? (
+            <EmptyState
+              title="Hakuna rows za kuonyesha"
+              description="Dataset hili haina rows za kuangalia."
+            />
+          ) : (
+            <BrowseData
+              datasetId={datasetId}
+              rows={previewRows as unknown as Record<string, unknown>[]}
+              columns={columns}
+              totalRows={rowCount}
+              version={datasetVersion}
+              onSaved={load}
+            />
+          )}
+        </Card>
+      )}
+
       {section === "profile" && (
         <Card
           title="Profile ya kila column"
@@ -700,22 +741,18 @@ export default function StudioPage() {
                     <th className="py-2 pr-4 font-medium">Aina</th>
                     <th className="py-2 pr-4 font-medium">Hazina thamani</th>
                     <th className="py-2 pr-4 font-medium">Tofauti</th>
-                    <th className="py-2 font-medium">Min → Max</th>
+                    <th className="py-2 font-medium">Min &rarr; Max</th>
                   </tr>
                 </thead>
                 <tbody>
                   {columns.map((column) => (
                     <tr key={column.name} className="border-b border-surface-border last:border-0">
                       <td className="py-2.5 pr-4 font-medium text-ink">{column.name}</td>
-                      <td className="py-2.5 pr-4 text-ink-secondary">{column.data_type ?? "—"}</td>
-                      <td className="py-2.5 pr-4 text-ink-secondary">
-                        {column.missing_count}
-                      </td>
-                      <td className="py-2.5 pr-4 text-ink-secondary">
-                        {column.unique_count ?? "—"}
-                      </td>
+                      <td className="py-2.5 pr-4 text-ink-secondary">{column.data_type ?? "â€”"}</td>
+                      <td className="py-2.5 pr-4 text-ink-secondary">{column.missing_count}</td>
+                      <td className="py-2.5 pr-4 text-ink-secondary">{column.unique_count ?? "â€”"}</td>
                       <td className="py-2.5 font-mono text-caption text-ink-secondary">
-                        {formatCell(column.min)} → {formatCell(column.max)}
+                        {formatCell(column.min)} &rarr; {formatCell(column.max)}
                       </td>
                     </tr>
                   ))}
@@ -995,10 +1032,10 @@ export default function StudioPage() {
                             </Badge>
                             <span className="text-caption text-ink-muted">
                               <span className="font-mono font-medium text-ink">
-                                v{operation.source_version} → v{operation.version}
+                                v{operation.source_version} â†’ v{operation.version}
                               </span>
                               {operation.created_at
-                                ? ` · ${new Date(operation.created_at).toLocaleString()}`
+                                ? ` Â· ${new Date(operation.created_at).toLocaleString()}`
                                 : ""}
                             </span>
                           </div>
