@@ -105,6 +105,10 @@ export const en = {
   "overview.uploaded": "Uploaded",
   "overview.status": "Status",
   "overview.access": "Access",
+  // The section below the health verdict holds the preview and schema tables.
+  // It needs its own heading: reusing overview.title printed "Overview" twice
+  // on one page, once as the identity card and again above the tables.
+  "overview.detail": "Detailed view",
 
   // Health
   "health.title": "Data health",
@@ -315,6 +319,7 @@ export const sw: Record<TranslationKey, string> = {
   "overview.uploaded": "Imepakiwa",
   "overview.status": "Hali",
   "overview.access": "Ufikiaji",
+  "overview.detail": "Maelezo kamili",
 
   // Health
   "health.title": "Afya ya data",

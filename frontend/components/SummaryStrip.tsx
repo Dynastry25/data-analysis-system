@@ -10,6 +10,8 @@ export interface SummaryItem {
 
 interface SummaryStripProps {
   items: SummaryItem[];
+  /** For embedding the strip inside an existing bordered panel. */
+  className?: string;
 }
 
 /**
@@ -23,11 +25,11 @@ interface SummaryStripProps {
  * The divider is drawn on every cell but the last via `divide-x`, so it sits on
  * the shared border and cannot double up with the container edge.
  */
-export function SummaryStrip({ items }: SummaryStripProps) {
+export function SummaryStrip({ items, className = "" }: SummaryStripProps) {
   return (
     <section
       aria-label="Muhtasari"
-      className="mb-4 grid grid-cols-2 overflow-hidden rounded-xl border border-surface-border bg-surface-panel shadow-card lg:grid-cols-4"
+      className={`mb-4 grid grid-cols-2 overflow-hidden rounded-xl border border-surface-border bg-surface-panel shadow-card lg:grid-cols-4 ${className}`}
     >
       {items.map((item) => (
         <div

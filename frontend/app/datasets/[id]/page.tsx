@@ -12,6 +12,7 @@ import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { DataTable, formatCell } from "@/components/DataTable";
 import { SelectInput } from "@/components/Field";
 import { Icon } from "@/components/Icon";
+import { SummaryStrip } from "@/components/SummaryStrip";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, DatasetDetailResponse, ExploreResponse, OrgProject } from "@/lib/api";
@@ -263,40 +264,52 @@ export default function DatasetDetailPage() {
             A compact identity strip. These facts answer "which file, which
             version, whose is it" without scrolling. They are facts rather than
             controls, so they stay clear of the health verdict below.
+
+            Uses the same SummaryStrip as the dataset library, so the two pages
+            read as one system. It previously nested four bordered boxes inside
+            a bordered card, which drew five borders around four numbers and
+            made a plain fact list look like a set of widgets.
           */}
-          <Card
-            title={t("overview.title")}
-            icon="info"
-            description={formatDate(detail.dataset.uploaded_at)}
-            actions={
-              <Badge tone="neutral" icon={detail.dataset.project_id ? "folder" : "lock"}>
+          <div className="overflow-hidden rounded-xl border border-surface-border bg-surface-panel shadow-card">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border px-4 py-3">
+              <div className="min-w-0">
+                <h2 className="font-display text-body font-semibold text-ink">
+                  {t("overview.title")}
+                </h2>
+                <p className="mt-0.5 text-caption text-ink-muted">
+                  {formatDate(detail.dataset.uploaded_at)}
+                </p>
+              </div>
+              <Badge
+                tone="neutral"
+                icon={detail.dataset.project_id ? "folder" : "lock"}
+              >
                 {detail.dataset.project_id ? t("project.assigned") : t("common.private")}
               </Badge>
-            }
-          >
-            <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                { label: t("overview.version"), value: `v${detail.dataset_version ?? 1}` },
-                { label: t("overview.type"), value: (detail.dataset.file_type ?? "—").toUpperCase() },
+            </div>
+            <SummaryStrip
+              className="mb-0 rounded-none border-0 shadow-none"
+              items={[
+                {
+                  label: t("overview.version"),
+                  value: `v${detail.dataset_version ?? 1}`,
+                },
+                {
+                  label: t("overview.type"),
+                  value: (detail.dataset.file_type ?? "—").toUpperCase(),
+                },
                 {
                   label: t("common.rows"),
-                  value: formatNumber(detail.dataset.row_count ?? 0, { maximumFractionDigits: 0 }),
+                  value: formatNumber(detail.dataset.row_count ?? 0, {
+                    maximumFractionDigits: 0,
+                  }),
                 },
-                { label: t("overview.status"), value: detail.dataset.status ?? "—" },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="rounded-sm border border-surface-border bg-surface-sunken px-3.5 py-3"
-                >
-                  <dt className="text-overline uppercase tracking-wide text-ink-muted">
-                    {item.label}
-                  </dt>
-                  <dd className="tabular mt-1 font-mono text-body font-medium text-ink">
-                    {item.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+                {
+                  label: t("overview.status"),
+                  value: detail.dataset.status ?? "—",
+                },
+              ]}
+            />
 
             {/*
               The project picker is offered only to the owner. A member of
@@ -326,7 +339,7 @@ export default function DatasetDetailPage() {
                 </p>
               </div>
             )}
-          </Card>
+          </div>
 
           {/*
             The health verdict is the first analysis card on the page and it is
@@ -377,7 +390,7 @@ export default function DatasetDetailPage() {
           */}
           <section className="space-y-4">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-h3 text-ink">{t("overview.title")}</h2>
+              <h2 className="text-h3 text-ink">{t("overview.detail")}</h2>
               <Button
                 variant="ghost"
                 size="small"
