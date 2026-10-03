@@ -102,7 +102,7 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
   return (
     <header
       ref={headerRef}
-      className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-surface-border bg-surface-panel px-3 sm:gap-3 sm:px-4 lg:px-6"
+      className="sticky top-0 z-30 flex h-[70px] items-center gap-2 border-b border-surface-border bg-surface-panel/90 px-4 backdrop-blur-[14px] sm:gap-3 sm:px-6 lg:px-[27px]"
     >
       <button
         type="button"
@@ -141,7 +141,7 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
           onFocus={() => setSearchActive(true)}
           placeholder="Search projects, datasets, analyses…"
           aria-label="Search projects, datasets, analyses"
-          className="h-9 w-full rounded-sm border border-surface-border bg-surface-sunken pl-8 pr-3 text-body text-ink transition-colors duration-150 ease-standard focus:border-primary-500 focus:bg-surface-panel focus:outline-none focus:ring-2 focus:ring-primary-500/25"
+          className="h-[37px] w-full rounded-md border border-transparent bg-surface-sunken pl-8 pr-3 text-body text-ink transition-colors duration-200 ease-standard placeholder:text-ink-muted focus:border-[#CFC7F8] focus:bg-surface-panel focus:outline-none focus:ring-0"
         />
 
         {showResults && (

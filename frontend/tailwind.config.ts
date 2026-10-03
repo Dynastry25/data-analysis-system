@@ -143,7 +143,10 @@ const config: Config = {
         "focus-ring": "0 0 0 3px rgb(108 75 244 / 0.24)",
       },
       maxWidth: {
-        content: "1440px",
+        // The prototype caps its page at 1280px. Wider than that and the
+        // horizontal padding stops framing the content, so the eye runs off
+        // the edge of a wide monitor instead of finding the margin.
+        content: "1280px",
       },
       transitionTimingFunction: {
         standard: "cubic-bezier(0.2, 0, 0, 1)",

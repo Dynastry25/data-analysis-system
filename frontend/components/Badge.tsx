@@ -5,8 +5,8 @@ import { Icon, IconName } from "./Icon";
 type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger" | "primary";
 
 const TONES: Record<BadgeTone, string> = {
-  neutral: "border-surface-border bg-surface-sunken text-ink-secondary",
-  primary: "bg-primary-50 text-primary-800 border-primary-200",
+  neutral: "border-surface-border bg-surface-sunken text-ink-muted",
+  primary: "bg-primary-50 text-primary-700 border-primary-200",
   info: "bg-info-bg text-info-700 border-info/30",
   success: "bg-success-bg text-success-700 border-success/30",
   warning: "bg-warning-bg text-warning-700 border-warning/30",

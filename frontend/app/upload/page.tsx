@@ -248,7 +248,7 @@ export default function UploadPage() {
           className={`rounded-md border-2 border-dashed px-6 py-12 text-center transition-colors duration-200 ease-standard ${
             dragging
               ? "border-primary-500 bg-primary-50"
-              : "border-surface-border-strong bg-surface-sunken"
+              : "border-[#D4D1DA] bg-surface-sunken"
           }`}
         >
           <span

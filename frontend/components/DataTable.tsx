@@ -343,7 +343,7 @@ export function DataTable({
                     key={column}
                     scope="col"
                     aria-sort={isSortable ? ariaSortFor(column) : undefined}
-                    className={`border-b border-surface-border px-3 py-0 text-overline uppercase tracking-wide ${
+                    className={`border-b border-surface-border bg-surface-sunken px-3 py-2.5 text-overline uppercase tracking-[0.07em] ${
                       isNumeric && !showsLabels(column) ? "text-right" : "text-left"
                     } ${active ? "text-primary-700" : "text-ink-muted"}`}
                   >
@@ -450,7 +450,7 @@ export function DataTable({
             {sorted.map((row, rowIndex) => (
               <tr
                 key={rowIndex}
-                className="odd:bg-surface-panel even:bg-surface-sunken transition-colors duration-150 ease-standard hover:bg-primary-50/60"
+                className="odd:bg-surface-panel/60 even:bg-white hover:bg-primary-50/50"
               >
                 {columns.map((column, columnIndex) => {
                   const value = row[column];

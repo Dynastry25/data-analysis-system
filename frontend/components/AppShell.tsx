@@ -349,11 +349,11 @@ export function AppShell({ title, description, actions, children }: AppShellProp
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col bg-sidebar transition-transform duration-300 ease-standard lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[232px] transform flex-col bg-sidebar transition-transform duration-300 ease-standard lg:static lg:translate-x-0 ${
           drawerOpen ? "translate-x-0 shadow-drawer" : "-translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between px-4 py-5">
+        <div className="flex items-center justify-between px-4 py-6">
           <Brand />
           <button
             type="button"
@@ -378,10 +378,10 @@ export function AppShell({ title, description, actions, children }: AppShellProp
                     href={item.href}
                     aria-current={active ? "page" : undefined}
                     title={t(item.descriptionKey)}
-                    className={`flex min-h-[44px] items-center gap-3 rounded-sm py-2 pl-4 pr-3 text-body transition-colors duration-150 ease-standard ${
+                    className={`flex min-h-[39px] items-center gap-[11px] rounded-md py-2 pl-[11px] pr-[11px] text-[12.5px] transition-colors duration-150 ease-standard ${
                       active
-                        ? "bg-sidebar-active font-medium text-white"
-                        : "text-neutral-300 hover:bg-white/10 hover:text-white"
+                        ? "bg-sidebar-active font-medium text-white shadow-[inset_3px_0_0_0_var(--brand)]"
+                        : "text-neutral-300 hover:bg-white/[0.06] hover:text-white"
                     }`}
                   >
                     <Icon name={item.icon} size={20} />
@@ -410,10 +410,10 @@ export function AppShell({ title, description, actions, children }: AppShellProp
                     href={hrefForPhase(phase.key, targetDatasetId)}
                     aria-current={active ? "page" : undefined}
                     title={stageList.map((stage) => stage.fullLabel).join(" · ")}
-                    className={`flex min-h-[44px] items-center gap-3 rounded-sm py-2 pl-4 pr-3 text-body transition-colors duration-150 ease-standard ${
+                    className={`flex min-h-[39px] items-center gap-[11px] rounded-md py-2 pl-[11px] pr-[11px] text-[12.5px] transition-colors duration-150 ease-standard ${
                       active
-                        ? "bg-sidebar-active font-medium text-white"
-                        : "text-neutral-300 hover:bg-white/10 hover:text-white"
+                        ? "bg-sidebar-active font-medium text-white shadow-[inset_3px_0_0_0_var(--brand)]"
+                        : "text-neutral-300 hover:bg-white/[0.06] hover:text-white"
                     }`}
                   >
                     <Icon name={PHASE_ICON[phase.key]} size={20} />
@@ -438,10 +438,10 @@ export function AppShell({ title, description, actions, children }: AppShellProp
                     href={item.href}
                     aria-current={active ? "page" : undefined}
                     title={t(item.descriptionKey)}
-                    className={`flex min-h-[44px] items-center gap-3 rounded-sm py-2 pl-4 pr-3 text-body transition-colors duration-150 ease-standard ${
+                    className={`flex min-h-[39px] items-center gap-[11px] rounded-md py-2 pl-[11px] pr-[11px] text-[12.5px] transition-colors duration-150 ease-standard ${
                       active
-                        ? "bg-sidebar-active font-medium text-white"
-                        : "text-neutral-300 hover:bg-white/10 hover:text-white"
+                        ? "bg-sidebar-active font-medium text-white shadow-[inset_3px_0_0_0_var(--brand)]"
+                        : "text-neutral-300 hover:bg-white/[0.06] hover:text-white"
                     }`}
                   >
                     <Icon name={item.icon} size={20} />
@@ -488,9 +488,11 @@ export function AppShell({ title, description, actions, children }: AppShellProp
               )}
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <h1 className="text-h1 text-ink">{title}</h1>
+                  <h1 className="font-display text-h1 tracking-[-0.015em] text-ink">
+                    {title}
+                  </h1>
                   {description && (
-                    <p className="mt-1 max-w-3xl text-body-lg text-ink-secondary">
+                    <p className="mt-1.5 max-w-3xl text-body text-ink-muted">
                       {description}
                     </p>
                   )}

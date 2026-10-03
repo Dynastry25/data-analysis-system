@@ -67,19 +67,25 @@ button {
 
 @layer components {
   .control {
-    @apply h-10 w-full rounded border border-surface-border bg-white px-3 text-body text-ink transition-colors duration-150 ease-standard;
+    @apply h-10 w-full rounded-md border border-surface-border bg-white px-3 text-body text-ink transition-colors duration-150 ease-standard;
   }
 
   .control::placeholder {
-    @apply text-neutral-400;
+    @apply text-ink-muted;
   }
 
   .control:hover:not(:disabled) {
-    @apply border-surface-border-strong;
+    @apply border-[#D6D2DD];
   }
 
+  /*
+   * A violet border plus a soft brand ring, matching the prototype's focus
+   * treatment. The previous ring-primary-500/25 sat on a solid border that was
+   * already changing colour, which made the focused state hard to see on a
+   * field that had already been touched.
+   */
   .control:focus {
-    @apply border-primary-500 outline-none ring-2 ring-primary-500/25;
+    @apply border-[#CFC7F8] outline-none ring-2 ring-primary-600/20;
   }
 
   .control:disabled {
@@ -113,13 +119,13 @@ button {
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
+  background-color: #d4d1da;
   border: 2px solid var(--surface-sunken);
   border-radius: 999px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8;
+  background-color: #a6a3ad;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -136,7 +142,7 @@ button {
 .skeleton-shimmer {
   position: relative;
   overflow: hidden;
-  background-color: #e2e8f0;
+  background-color: #e7e5eb;
 }
 
 .skeleton-shimmer::after {

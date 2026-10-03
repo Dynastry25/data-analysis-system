@@ -6,7 +6,7 @@ type CardPadding = "default" | "compact" | "none";
 type CardTone = "default" | "muted" | "warning" | "danger" | "success";
 
 const PADDING_CLASSES: Record<CardPadding, string> = {
-  default: "p-4 sm:p-5",
+  default: "p-4 sm:p-[19px]",
   compact: "p-3",
   none: "p-0",
 };
@@ -45,7 +45,7 @@ export function Card({
   const headerless = !title && !actions && !description;
   return (
     <section
-      className={`rounded-md border shadow-card ${TONE_CLASSES[tone]} ${className}`}
+      className={`rounded-lg border shadow-card transition-shadow duration-200 ease-standard hover:shadow-raised ${TONE_CLASSES[tone]} ${className}`}
     >
       {headerless ? (
         <div className={PADDING_CLASSES[padding]}>{children}</div>
@@ -63,9 +63,13 @@ export function Card({
                 </span>
               )}
               <div className="min-w-0">
-                {title && <h2 className="text-h3 text-ink">{title}</h2>}
+                {title && (
+                  <h2 className="font-display text-h3 tracking-[-0.01em] text-ink">
+                    {title}
+                  </h2>
+                )}
                 {description && (
-                  <p className="mt-0.5 text-body text-ink-secondary">{description}</p>
+                  <p className="mt-1 text-caption text-ink-muted">{description}</p>
                 )}
               </div>
             </div>
