@@ -12,6 +12,8 @@ interface MethodPickerProps {
   /** The engine analysis_type currently chosen, if any. */
   selected: string;
   onSelect: (method: AnalysisMethod) => void;
+  /** For embedding the picker as a column of a connected workspace. */
+  className?: string;
 }
 
 /**
@@ -31,7 +33,12 @@ interface MethodPickerProps {
 /** Rows are capped so a filter that matches everything stays scrollable. */
 const MAX_ROWS = 40;
 
-export function MethodPicker({ catalog, selected, onSelect }: MethodPickerProps) {
+export function MethodPicker({
+  catalog,
+  selected,
+  onSelect,
+  className = "",
+}: MethodPickerProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [goal, setGoal] = useState("all");
@@ -68,6 +75,7 @@ export function MethodPicker({ catalog, selected, onSelect }: MethodPickerProps)
 
   return (
     <Card
+      className={className}
       title="Chagua method ya uchambuzi"
       icon="sliders"
       description={`Mwongozo kamili: ${catalog.counts.methods} methods katika ${catalog.categories.length} makundi. ${catalog.counts.implemented} zina hesabu inayofanyika kwenye data yako sasa hivi.`}

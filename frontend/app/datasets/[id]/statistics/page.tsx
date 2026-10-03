@@ -646,6 +646,7 @@ export default function StatisticsPage() {
 
   return (
     <AppShell
+      eyebrow="Injini ya takwimu"
       title="Statistical Analysis Studio"
       description="Endesha uchambuzi wowote wa engine moja ya takwimu — matokeo yote yana muundo mmoja."
       actions={
@@ -679,29 +680,47 @@ export default function StatisticsPage() {
             onRun={runAnalysis}
           />
 
-          {catalog && (
-            <MethodPicker
-              catalog={catalog}
-              selected={analysisType}
-              onSelect={chooseMethod}
-            />
-          )}
+          {/*
+            Method list and configuration form are one workspace, as in the
+            prototype. The columns stack on narrow screens rather than switching
+            to a fixed two-column grid, because a 22rem method list beside a form
+            is unusable at that width.
 
-          <Card
-            title="Endesha uchambuzi"
-            icon="calculator"
-            description={
-              profile
-                ? `Version v${profile.meta.dataset_version ?? 1} · ${profile.sample_size} rows · ${profile.variable_count} columns`
-                : undefined
-            }
+            The wrapper renders whether or not a catalog loaded: the form is the
+            part that has to work, so it must not disappear with the list beside
+            it. Without a catalog the form spans the full width.
+          */}
+          <div
+            className={`overflow-hidden rounded-xl border border-surface-border bg-surface-panel shadow-card ${
+              catalog ? "xl:grid xl:grid-cols-[22rem_1fr]" : ""
+            }`}
           >
-            <p className="mb-2 text-overline uppercase tracking-wide text-ink-muted">
-              Research question
-            </p>
-            <p className="mb-4 text-body text-ink-secondary">
-              What is the effect of onboarding completion on 90-day retention?
-            </p>
+            {catalog && (
+              <div className="xl:border-r xl:border-surface-border">
+                <MethodPicker
+                  className="rounded-none border-0 shadow-none hover:shadow-none"
+                  catalog={catalog}
+                  selected={analysisType}
+                  onSelect={chooseMethod}
+                />
+              </div>
+            )}
+            <Card
+              className="rounded-none border-0 shadow-none hover:shadow-none"
+                title="Endesha uchambuzi"
+                icon="calculator"
+                description={
+                  profile
+                    ? `Version v${profile.meta.dataset_version ?? 1} · ${profile.sample_size} rows · ${profile.variable_count} columns`
+                    : undefined
+                }
+              >
+            {/*
+            The research question used to be echoed here as a hardcoded English
+            sentence. ResearchBrief already renders it as an editable field
+            directly above, so this repeated a fixed example on every dataset and
+            made it look like the engine had read the question -- it had not.
+          */}
             <p className="mb-3 text-overline uppercase tracking-wide text-ink-muted">
               Variables
             </p>
@@ -750,6 +769,7 @@ export default function StatisticsPage() {
               )}
             </div>
           </Card>
+          </div>
 
           {selectedMethod && selectedStages.length > 0 && (
             <AnalysisStageRail
