@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
+import { ChartTypeGrid, ChartTypeOption } from "@/components/ChartTypeGrid";
 import { ChartView } from "@/components/ChartView";
 import { SelectInput, TextInput } from "@/components/Field";
 import { Skeleton } from "@/components/Skeleton";
@@ -23,8 +24,10 @@ import {
 } from "@/lib/api";
 import { CHART_PALETTES } from "@/lib/constants";
 
-const CHART_TYPE_OPTIONS: { value: ChartType; label: string; use: string }[] = [
-  { value: "bar", label: "Chati ya mistari", use: "Kulinganisha makundi" },
+const CHART_TYPE_OPTIONS: ChartTypeOption[] = [
+  // "bar" was labelled "Chati ya mistari", which is a line chart in Swahili --
+  // the same word the line type uses. Bar is safu; line is mstari.
+  { value: "bar", label: "Chati ya safu", use: "Kulinganisha makundi" },
   { value: "line", label: "Chati ya mstari", use: "Mwenendo kwa muda" },
   { value: "scatter", label: "Chati ya alama", use: "Uhusiano wa variables mbili" },
   { value: "histogram", label: "Histograma", use: "Mgawanyo wa data" },
@@ -132,6 +135,7 @@ export default function ChartsPage() {
 
   return (
     <AppShell
+      eyebrow="Mjenzi wa vizualisasi"
       title="Visualization Studio"
       description="Chagua X na Y, aina ya chati, na uone preview papo hapo."
       actions={
@@ -148,22 +152,25 @@ export default function ChartsPage() {
         </>
       }
     >
+      <Card
+          title="Aina ya chati"
+          icon="chart"
+          description="Chagua aina inayolingana na swali lako."
+        >
+          <ChartTypeGrid
+            options={CHART_TYPE_OPTIONS}
+            value={chartType}
+            onChange={setChartType}
+          />
+        </Card>
+
       <Card title="Mipangilio ya chati" icon="chart">
         <p className="mb-3 text-overline uppercase tracking-wide text-ink-muted">
           Variable mapping
         </p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <SelectInput
-            label="Aina ya chati"
-            value={chartType}
-            hint={CHART_TYPE_OPTIONS.find((option) => option.value === chartType)?.use}
-            options={CHART_TYPE_OPTIONS.map((option) => ({
-              value: option.value,
-              label: `${option.label} — ${option.use}`,
-            }))}
-            onChange={(event) => setChartType(event.target.value as ChartType)}
-          />
-
+          {/* Chart type moved to the grid above; a select here would be a
+              second control for the same value. */}
           <SelectInput
             label="X axis"
             value={xColumn}
