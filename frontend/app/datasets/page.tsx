@@ -6,9 +6,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
-import { Card, EmptyState } from "@/components/Card";
+import { EmptyState } from "@/components/Card";
 import { Icon } from "@/components/Icon";
-import { MetricCard } from "@/components/MetricCard";
+import { InlineSearch } from "@/components/InlineSearch";
+import { SummaryStrip } from "@/components/SummaryStrip";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, DatasetSummary } from "@/lib/api";
@@ -85,6 +86,7 @@ export default function DatasetsPage() {
     }
   }
 
+  const [query, setQuery] = useState("");
   const projectNames = useMemo(() => {
     const names = new Map<string, number>();
     for (const dataset of datasets) {
@@ -94,21 +96,42 @@ export default function DatasetsPage() {
     return [...names.entries()].sort((a, b) => b[1] - a[1]);
   }, [datasets]);
   const [activeProject, setActiveProject] = useState<string>("all");
-  const filteredDatasets =
-    activeProject === "all"
-      ? datasets
-      : datasets.filter(
-          (dataset) => (dataset.project_name?.trim() || "Binafsi") === activeProject
-        );
+  const filteredDatasets = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return datasets.filter((dataset) => {
+      if (
+        activeProject !== "all" &&
+        (dataset.project_name?.trim() || "Binafsi") !== activeProject
+      ) {
+        return false;
+      }
+      if (!needle) return true;
+      // Match the filename and the project, since users often recall one and
+      // search for the other.
+      return (
+        dataset.original_filename.toLowerCase().includes(needle) ||
+        (dataset.project_name?.toLowerCase().includes(needle) ?? false) ||
+        dataset.file_type.toLowerCase().includes(needle)
+      );
+    });
+  }, [datasets, activeProject, query]);
 
   const totalRows = datasets.reduce((sum, d) => sum + (d.row_count || 0), 0);
-  const cleanedCount = datasets.filter((d) => d.status === "cleaned").length;
-  const analyzedCount = datasets.filter((d) => d.status === "analyzed").length;
+  const totalColumns = datasets.reduce((sum, d) => sum + (d.column_count || 0), 0);
+
+  // The strip reports what we can actually count. The prototype shows a storage
+  // figure and an average quality score; neither is available from this API, so
+  // variables and projects stand in rather than inventing either.
+  const projectCount = new Set(
+    datasets.map((dataset) => dataset.project_name?.trim() || "Binafsi")
+  ).size;
 
   return (
     <AppShell
       title="Projects & Datasets"
-      description={`${datasets.length} projects · ${datasets.length} datasets`}
+      description={`${projectCount} ${
+        projectCount === 1 ? "mradi" : "miradi"
+      } · ${datasets.length} ${datasets.length === 1 ? "dataset" : "datasets"}`}
       actions={
         <>
           <Link href="/dashboard">
@@ -125,36 +148,22 @@ export default function DatasetsPage() {
         </>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          icon="database"
-          tone="primary"
-          label="Datasets"
-          value={datasets.length}
-          hint="Faili zilizopakiwa na zilizoshirikishwa"
-        />
-        <MetricCard
-          icon="layers"
-          tone="info"
-          label="Jumla ya safu"
-          value={totalRows.toLocaleString()}
-          hint="Rows katika datasets zote"
-        />
-        <MetricCard
-          icon="clipboard"
-          tone="success"
-          label="Zilizosafishwa"
-          value={cleanedCount + analyzedCount}
-          hint="Safisha imefanyika"
-        />
-        <MetricCard
-          icon="calculator"
-          tone="warning"
-          label="Zimechambuliwa"
-          value={analyzedCount}
-          hint="Uchambuzi umekamilika"
-        />
-      </div>
+      <SummaryStrip
+        items={[
+          {
+            icon: "database",
+            value: datasets.length.toLocaleString(),
+            label: "Datasets zote",
+          },
+          { value: totalRows.toLocaleString(), label: "Jumla ya safu" },
+          { value: totalColumns.toLocaleString(), label: "Jumla ya vigezo" },
+          {
+            icon: "folder",
+            value: projectCount.toLocaleString(),
+            label: "Miradi",
+          },
+        ]}
+      />
 
       {/* Project filter chips — prototype page-03 groups datasets under projects */}
       {projectNames.length > 1 && (
@@ -189,74 +198,131 @@ export default function DatasetsPage() {
         </div>
       )}
 
-      <Card
-        title={activeProject === "all" ? "Datasets zako" : activeProject}
-        icon="database"
-        description={
-          datasets.length > 0
-            ? `${datasets.length} datasets · jumla ya ${totalRows.toLocaleString()} safu`
-            : "Faili ulizopakia na data iliyoshirikishwa na wanachama wa mashirika yako."
-        }
-      >
+      {/* Prototype library toolbar: search on the left, count on the right. */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <InlineSearch
+          value={query}
+          onChange={setQuery}
+          placeholder="Tafuta datasets..."
+          label="Tafuta datasets"
+        />
+        <p className="text-caption text-ink-muted" aria-live="polite">
+          {loading
+            ? "Inapakia..."
+            : `Inaonyesha ${filteredDatasets.length} kati ya ${datasets.length}`}
+        </p>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-surface-border bg-surface-panel shadow-card">
         {loading ? (
-          <TableSkeleton rows={5} columns={5} />
+          <div className="p-4">
+            <TableSkeleton rows={5} columns={5} />
+          </div>
         ) : datasets.length === 0 ? (
-          <EmptyState
-            title="Hakuna dataset bado"
-            description="Anza kwa kupakia faili la CSV, Excel, JSON, Stata, SPSS au R."
-            icon="database"
-            action={
-              <Link href="/upload">
-                <Button size="large">
-                  <Icon name="upload" size={16} />
-                  Pakia data
+          <div className="p-6">
+            <EmptyState
+              title="Hakuna dataset bado"
+              description="Anza kwa kupakia faili la CSV, Excel, JSON, Stata, SPSS au R."
+              icon="database"
+              action={
+                <Link href="/upload">
+                  <Button size="large">
+                    <Icon name="upload" size={16} />
+                    Pakia data
+                  </Button>
+                </Link>
+              }
+            />
+          </div>
+        ) : filteredDatasets.length === 0 ? (
+          <div className="p-6">
+            <EmptyState
+              title="Hakuna matokeo"
+              description="Hakuna dataset inayolingana na kichujio hiki."
+              icon="search"
+              action={
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setQuery("");
+                    setActiveProject("all");
+                  }}
+                >
+                  Onyesha zote
                 </Button>
-              </Link>
-            }
-          />
+              }
+            />
+          </div>
         ) : (
-          <ul className="space-y-3">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse whitespace-nowrap">
+              <thead>
+                <tr>
+                  {[
+                    "Dataset",
+                    "Format",
+                    "Safu",
+                    "Vigezo",
+                    "Hali",
+                    "Toleo",
+                    "Imebadilishwa",
+                    "Hatua",
+                    "",
+                  ].map((heading, index) => (
+                    <th
+                      key={heading || index}
+                      scope="col"
+                      className="border-b border-surface-border bg-surface-sunken px-3 py-2.5 text-left text-overline font-semibold uppercase tracking-[0.06em] text-ink-muted"
+                    >
+                      {heading}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
             {filteredDatasets.map((dataset) => {
               const done = completedStageCount({ status: dataset.status });
               const confirming = pendingDelete === dataset.id;
               const canDelete = meId === null || dataset.user_id === meId;
               return (
-                <li
+                <tr
                   key={dataset.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-surface-border bg-surface-panel p-4 shadow-card transition-shadow duration-150 ease-standard hover:shadow-raised"
+                  className="transition-colors duration-150 ease-standard hover:bg-primary-50/40"
                 >
-                  <div className="flex min-w-[240px] flex-1 items-center gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-primary-50 text-primary-600">
-                      <Icon name="database" size={20} />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-body-lg font-medium text-ink">
-                        {dataset.original_filename}
-                      </p>
-                      <p className="mt-1 flex flex-wrap items-center gap-x-2 text-caption text-ink-muted">
-                        <span className="font-mono tabular">DATASET SIZE</span>
-                        <span aria-hidden="true">·</span>
-                        <span>
-                          Safu {dataset.row_count.toLocaleString()} · Columns{" "}
-                          {dataset.column_count}
-                        </span>
-                      </p>
-                      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-caption text-ink-muted">
-                        <span className="font-mono tabular">UPDATED</span>
-                        <span aria-hidden="true">·</span>
-                        <span>{formatDate(dataset.uploaded_at)}</span>
-                      </p>
+                  <td className="border-b border-surface-border px-3 py-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-50 text-primary-600">
+                        <Icon name="database" size={16} />
+                      </span>
+                      <div className="min-w-0">
+                        <Link
+                          href={`/datasets/${dataset.id}`}
+                          className="block max-w-[240px] truncate font-medium text-ink hover:text-primary-700 hover:underline"
+                        >
+                          {dataset.original_filename}
+                        </Link>
+                        {dataset.project_name && (
+                          <span className="block max-w-[240px] truncate text-caption text-ink-muted">
+                            {dataset.project_name}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className="hidden flex-col items-end gap-1 sm:flex"
-                      title={`Hatua ${done} kati ya 6 zimekamilika`}
-                    >
-                      <StageDots done={done} />
+                  </td>
+                  <td className="border-b border-surface-border px-3 py-2.5">
+                    <span className="rounded bg-surface-sunken px-1.5 py-0.5 text-caption font-semibold uppercase text-ink-secondary">
+                      {dataset.file_type}
                     </span>
+                  </td>
+                  <td className="tabular border-b border-surface-border px-3 py-2.5 text-body text-ink-secondary">
+                    {dataset.row_count.toLocaleString()}
+                  </td>
+                  <td className="tabular border-b border-surface-border px-3 py-2.5 text-body text-ink-secondary">
+                    {dataset.column_count}
+                  </td>
+                  <td className="border-b border-surface-border px-3 py-2.5">
                     <Badge
+                      size="sm"
                       tone={
                         dataset.status === "analyzed"
                           ? "success"
@@ -267,22 +333,33 @@ export default function DatasetsPage() {
                     >
                       {dataset.status}
                     </Badge>
-                    {dataset.project_id ? (
-                      <Badge tone="primary" icon="folder">
-                        {dataset.project_name ?? "Mradi"}
-                      </Badge>
-                    ) : (
-                      <Badge tone="neutral" icon="lock">
-                        Binafsi
-                      </Badge>
-                    )}
-                    <Link href={`/datasets/${dataset.id}`}>
-                      <Button size="small">
-                        <Icon name="eye" size={14} />
-                        Fungua
-                      </Button>
-                    </Link>
-                    <div className="flex items-center gap-1">
+                  </td>
+                  <td className="tabular border-b border-surface-border px-3 py-2.5 text-body text-ink-secondary">
+                    v{dataset.current_version ?? 1}
+                  </td>
+                  <td className="border-b border-surface-border px-3 py-2.5 text-caption text-ink-muted">
+                    {formatDate(dataset.uploaded_at)}
+                  </td>
+
+                  {/* Pipeline progress stays as a title-only tooltip: the table
+                      has no room for six dots per row, and the status badge
+                      already carries the same information visibly. */}
+                  <td className="border-b border-surface-border px-3 py-2.5">
+                    <span
+                      className="hidden sm:inline-flex"
+                      title={`Hatua ${done} kati ya 6 zimekamilika`}
+                    >
+                      <StageDots done={done} />
+                    </span>
+                  </td>
+                  <td className="border-b border-surface-border px-3 py-2.5 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Link href={`/datasets/${dataset.id}`}>
+                        <Button size="small">
+                          <Icon name="eye" size={14} />
+                          Fungua
+                        </Button>
+                      </Link>
                       <Link href={`/datasets/${dataset.id}/statistics`}>
                         <Button
                           variant="ghost"
@@ -319,44 +396,46 @@ export default function DatasetsPage() {
                           <Icon name="file-text" size={16} />
                         </Button>
                       </Link>
-                    </div>
-                    {canDelete &&
-                      (confirming ? (
-                        <span className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger-bg px-2 py-1">
-                          <span className="text-caption text-danger-700">Futa?</span>
-                          <Button
-                            variant="danger"
-                            size="small"
-                            loading={deleting}
-                            onClick={() => handleDelete(dataset)}
-                          >
-                            Ndiyo
-                          </Button>
+                      {canDelete &&
+                        (confirming ? (
+                          <span className="flex items-center gap-1 rounded-md border border-danger/30 bg-danger-bg px-1.5 py-0.5">
+                            <span className="text-caption text-danger-700">Futa?</span>
+                            <Button
+                              variant="danger"
+                              size="small"
+                              loading={deleting}
+                              onClick={() => handleDelete(dataset)}
+                            >
+                              Ndiyo
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="small"
+                              onClick={() => setPendingDelete(null)}
+                            >
+                              Ghairi
+                            </Button>
+                          </span>
+                        ) : (
                           <Button
                             variant="ghost"
                             size="small"
-                            onClick={() => setPendingDelete(null)}
+                            aria-label={`Futa ${dataset.original_filename}`}
+                            onClick={() => setPendingDelete(dataset.id)}
                           >
-                            Ghairi
+                            <Icon name="trash" size={16} />
                           </Button>
-                        </span>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="small"
-                          aria-label={`Futa ${dataset.original_filename}`}
-                          onClick={() => setPendingDelete(dataset.id)}
-                        >
-                          <Icon name="trash" size={16} />
-                        </Button>
-                      ))}
-                  </div>
-                </li>
+                        ))}
+                    </div>
+                  </td>
+                </tr>
               );
             })}
-          </ul>
+              </tbody>
+            </table>
+          </div>
         )}
-      </Card>
+      </div>
     </AppShell>
   );
 }
