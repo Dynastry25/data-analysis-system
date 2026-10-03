@@ -43,6 +43,24 @@ export const UPLOAD_FILE_INPUT_ACCEPT: string = UPLOAD_FILE_EXTENSIONS.join(",")
 export const UPLOAD_FILE_GROUPS =
   "CSV, Excel, JSON, TSV, TXT, Parquet, Stata, SPSS, R";
 
+/**
+ * The same families, one per entry, for surfaces that show them individually
+ * as chips rather than as one run-on sentence. Derived from the same list the
+ * picker uses, so a new format cannot appear in one place and be missing from
+ * the other.
+ */
+export const UPLOAD_FORMATS: { label: string; extensions: string[] }[] = [
+  { label: "CSV", extensions: [".csv"] },
+  { label: "Excel", extensions: [".xlsx"] },
+  { label: "JSON", extensions: [".json"] },
+  { label: "TSV", extensions: [".tsv"] },
+  { label: "TXT", extensions: [".txt"] },
+  { label: "Parquet", extensions: [".parquet"] },
+  { label: "Stata", extensions: [".dta"] },
+  { label: "SPSS", extensions: [".sav", ".zsav", ".por"] },
+  { label: "R", extensions: [".rdata", ".rda", ".rds"] },
+];
+
 /** The extensions themselves, for the message shown when a name is rejected. */
 export const UPLOAD_FILE_EXTENSION_LIST: string = UPLOAD_FILE_EXTENSIONS.join(
   ", "

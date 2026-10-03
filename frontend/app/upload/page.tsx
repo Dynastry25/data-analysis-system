@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { DragEvent, useEffect, useRef, useState } from "react";
+import { DragEvent, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
@@ -14,6 +14,7 @@ import {
   UPLOAD_FILE_EXTENSION_LIST,
   UPLOAD_FILE_GROUPS,
   UPLOAD_FILE_INPUT_ACCEPT,
+  UPLOAD_FORMATS,
   isAcceptedUploadName,
 } from "@/lib/upload-formats";
 
@@ -30,7 +31,6 @@ interface QueuedFile {
 export default function UploadPage() {
   const router = useRouter();
   const { showToast } = useToast();
-  const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [queue, setQueue] = useState<QueuedFile[]>([]);
   const [progress, setProgress] = useState(0);
@@ -124,7 +124,7 @@ export default function UploadPage() {
     setProgress(0);
   }
 
-  function handleDrop(event: DragEvent<HTMLDivElement>) {
+  function handleDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setDragging(false);
     addFiles(event.dataTransfer.files);
@@ -188,6 +188,7 @@ export default function UploadPage() {
 
   return (
     <AppShell
+      eyebrow="VIngilio vya data"
       title="Pakia data"
       description={`Aina zinazokubalika: ${UPLOAD_FILE_GROUPS}. Ukubwa wa juu ${MAX_MB}MB. Mfumo unasafisha na kuchambua moja kwa moja.`}
     >
@@ -237,42 +238,59 @@ export default function UploadPage() {
         </Card>
       )}
 
-      <Card>
-        <div
+      <Card
+        title="Faili"
+        icon="upload"
+        description="Kila faili inapakiwa kwa pekee, ili hitilafu moja isisite kuchafua zilizopakia."
+      >
+        {/* The zone is a <label>, so the whole surface is clickable and the native
+          file input supplies keyboard and screen-reader behaviour for free.
+          A div with an onClick would need role, tabIndex and key handlers to
+          match that, and would still not announce the file dialog correctly. */}
+        <label
           onDragOver={(event) => {
             event.preventDefault();
             setDragging(true);
           }}
           onDragLeave={() => setDragging(false)}
           onDrop={handleDrop}
-          className={`rounded-md border-2 border-dashed px-6 py-12 text-center transition-colors duration-200 ease-standard ${
+          className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[11px] border-[1.5px] border-dashed px-6 py-11 text-center transition-colors duration-200 ease-standard focus-within:border-primary-500 focus-within:bg-primary-50 ${
             dragging
               ? "border-primary-500 bg-primary-50"
-              : "border-[#D4D1DA] bg-surface-sunken"
+              : "border-[#CCC4DB] bg-[#FAF9FC] hover:border-primary-500 hover:bg-primary-50"
           }`}
         >
-          <span
-            className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full transition-colors duration-200 ${
-              dragging ? "bg-primary-100 text-primary-700" : "bg-surface-panel text-ink-muted"
-            }`}
-          >
-            <Icon name="upload" size={24} />
+          <Icon
+            name="database"
+            size={26}
+            className={dragging ? "text-primary-600" : "text-primary-500"}
+          />
+          <span className="block text-body-lg font-medium text-ink">
+            {queue.length > 0
+              ? "Ongeza faili zaidi"
+              : "Kokota faili zako hapa (drag & drop)"}
           </span>
-          <p className="mt-3 text-body-lg font-medium text-ink">
-            Kokota faili zako hapa (drag &amp; drop)
-          </p>
-          <p className="mt-1 text-body text-ink-secondary">
-            au chagua faili kutoka kompyuta — unaweza chagua zaidi ya moja
-          </p>
-          <p className="mt-1 text-caption text-ink-muted">
-            {UPLOAD_FILE_GROUPS} · hadi {MAX_MB}MB kwa faili · hadi {MAX_FILES} faili
-          </p>
+          <span className="block text-body text-ink-muted">
+            au bofya eneo hili kuchagua faili — unaweza chagua zaidi ya moja
+          </span>
+          <span className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
+            {UPLOAD_FORMATS.map((format) => (
+              <span
+                key={format.label}
+                className="rounded bg-surface-panel px-1.5 py-0.5 text-caption font-semibold uppercase text-ink-secondary"
+              >
+                {format.label}
+              </span>
+            ))}
+          </span>
+          <span className="mt-1 text-caption text-ink-muted">
+            hadi {MAX_MB}MB kwa faili · hadi {MAX_FILES} faili kwa wakati mmoja
+          </span>
           <input
-            ref={inputRef}
             type="file"
             multiple
             accept={UPLOAD_FILE_INPUT_ACCEPT}
-            className="hidden"
+            className="sr-only"
             onChange={(event) => {
               addFiles(event.target.files);
               /*
@@ -283,15 +301,7 @@ export default function UploadPage() {
               event.target.value = "";
             }}
           />
-          <Button
-            variant="secondary"
-            className="mt-4"
-            onClick={() => inputRef.current?.click()}
-          >
-            <Icon name="folder" size={16} />
-            Chagua faili
-          </Button>
-        </div>
+        </label>
 
         {queue.length > 0 && (
           <div className="mt-6 space-y-3">
