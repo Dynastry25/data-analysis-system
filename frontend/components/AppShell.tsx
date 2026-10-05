@@ -20,6 +20,7 @@ import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { Icon, IconName } from "./Icon";
 import { JourneyRail } from "./JourneyRail";
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import { Logo } from "./Logo";
 import { TopBar } from "./TopBar";
 import { WorkflowStrip } from "./WorkflowStrip";
 
@@ -148,34 +149,10 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
-/**
- * The logo mark: four squares on the violet accent, rotated slightly.
- *
- * Built from spans rather than an icon because the prototype's mark is a
- * four-cell grid with graduated opacity. Approximating it with a glyph would
- * lose the only piece of brand imagery the product has.
- */
-function LogoMark() {
-  return (
-    <span
-      aria-hidden="true"
-      className="grid h-[27px] w-[27px] -rotate-6 grid-cols-2 gap-0.5 rounded-lg bg-primary-600 p-[5px] shadow-[0_6px_18px_rgba(108,75,244,0.4)]"
-    >
-      <span className="rounded-[1.5px] bg-white" />
-      <span className="rounded-[1.5px] bg-white opacity-70" />
-      <span className="rounded-[1.5px] bg-white opacity-50" />
-      <span className="rounded-[1.5px] bg-white opacity-85" />
-    </span>
-  );
-}
-
 function Brand() {
   return (
-    <Link href="/dashboard" className="flex items-center gap-2.5">
-      <LogoMark />
-      <span className="font-display text-[20px] font-bold leading-none tracking-[-0.5px] text-white">
-        StatFlow
-      </span>
+    <Link href="/dashboard" aria-label="StatFlow nyumbani">
+      <Logo />
     </Link>
   );
 }

@@ -16,6 +16,7 @@ import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Card } from "@/components/Card";
 import { Icon, IconName } from "@/components/Icon";
+import { InlineSearch } from "@/components/InlineSearch";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import { apiErrorMessage, statflowApi } from "@/lib/api";
@@ -111,13 +112,55 @@ export default function HelpPage() {
     return [...grouped.entries()].sort((a, b) => b[1].total - a[1].total);
   }, [catalog]);
 
+  const [query, setQuery] = useState("");
+
+  /**
+   * Filters the guides and the method list together. A help page whose search
+   * only covers half its content is worse than none, because it looks like the
+   * whole page is searchable and quietly returns nothing for a valid term.
+   */
+  const needle = query.trim().toLowerCase();
+  const visibleGuides = useMemo(
+    () =>
+      needle
+        ? GUIDES.filter(
+            (guide) =>
+              guide.title.toLowerCase().includes(needle) ||
+              guide.steps.some((step) => step.toLowerCase().includes(needle))
+          )
+        : GUIDES,
+    [needle]
+  );
+  const visibleMethods = useMemo(() => {
+    const all = catalog?.methods ?? [];
+    if (!needle) return all;
+    return all.filter((method) =>
+      [method.label, method.label_en, method.purpose]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle)
+    );
+  }, [catalog, needle]);
+
   return (
     <AppShell
+      eyebrow="Kituo cha msaada"
       title="Msaada na nyaraka"
       description="Jinsi ya kutumia StatFlow, na mbinu zake zote."
     >
+      {/* The prototype's help search. Placed above the guides because it is the
+          thing people arrive here to use, not a per-section filter. */}
+      <div className="mb-4">
+        <InlineSearch
+          value={query}
+          onChange={setQuery}
+          placeholder="Tafuta miongozo, vipengele na mbinu za takwimu..."
+          label="Tafuta msaada"
+        />
+      </div>
+
       <div className="grid gap-4 md:grid-cols-3">
-        {GUIDES.map((guide) => (
+        {visibleGuides.map((guide) => (
           <Card key={guide.title}>
             <div className="flex items-center gap-2.5">
               <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-primary-50 text-primary-600">
@@ -147,6 +190,28 @@ export default function HelpPage() {
         >
           {loading ? (
             <TableSkeleton rows={5} columns={2} />
+          ) : needle ? (
+            /* With a search term the category counts would be unchanged and so
+               would look unresponsive, so the card lists the matching methods
+               instead. The counts stay meaningful when nothing is searched. */
+            visibleMethods.length === 0 ? (
+              <p className="text-body text-ink-muted">
+                Hakuna mbinu inayolingana na &ldquo;{query.trim()}&rdquo;.
+              </p>
+            ) : (
+              <ul className="divide-y divide-surface-border">
+                {visibleMethods.map((method) => (
+                  <li key={method.key} className="py-2">
+                    <p className="text-body font-medium text-ink">
+                      {method.label}
+                    </p>
+                    <p className="mt-0.5 text-caption text-ink-muted">
+                      {method.purpose}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )
           ) : (
             <ul className="divide-y divide-surface-border">
               {byCategory.map(([category, counts]) => (

@@ -90,10 +90,20 @@ export default function SettingsPage() {
   );
 
   return (
-    <AppShell title="Mipango" description="Mwonekano, data na akaunti yako.">
+    <AppShell
+      eyebrow="Mipangilio"
+      title="Mipango"
+      description="Mwonekano, data na akaunti yako."
+    >
       <div className="grid gap-4 lg:grid-cols-[14rem_1fr]">
-        <nav aria-label="Sehemu za mipango">
-          <ul className="space-y-1">
+        {/* The prototype's settings rail is a panel of its own, not a loose list
+            of links; giving it the shared surface keeps it consistent with the
+            cards it sits beside. */}
+        <nav
+          aria-label="Sehemu za mipango"
+          className="h-fit rounded-lg border border-surface-border bg-surface-panel p-1.5 shadow-card"
+        >
+          <ul className="space-y-0.5">
             {SECTIONS.map((entry) => {
               const active = section === entry.key;
               return (
@@ -102,14 +112,23 @@ export default function SettingsPage() {
                     type="button"
                     onClick={() => setSection(entry.key)}
                     aria-current={active ? "true" : undefined}
-                    className={`flex min-h-[44px] w-full items-center gap-2.5 rounded-sm px-3 text-left text-body transition-colors duration-150 ease-standard ${
+                    className={`flex min-h-[40px] w-full items-center gap-2.5 rounded-md px-3 text-left text-body transition-colors duration-150 ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 ${
                       active
-                        ? "bg-primary-50 font-medium text-primary-800"
-                        : "text-ink-secondary hover:bg-surface-sunken"
+                        ? "bg-surface-sunken font-semibold text-ink"
+                        : "text-ink-secondary hover:bg-surface-sunken hover:text-ink"
                     }`}
                   >
-                    <Icon name={entry.icon} size={16} />
+                    <Icon
+                      name={entry.icon}
+                      size={16}
+                      className={active ? "text-primary-600" : "text-ink-muted"}
+                    />
                     {entry.label}
+                    <Icon
+                      name="chevron-right"
+                      size={13}
+                      className={`ml-auto ${active ? "text-ink-muted" : "text-ink-faint"}`}
+                    />
                   </button>
                 </li>
               );

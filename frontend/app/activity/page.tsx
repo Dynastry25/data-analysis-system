@@ -142,6 +142,7 @@ export default function ActivityPage() {
 
   return (
     <AppShell
+      eyebrow="Historia"
       title="Kituo cha shughuli"
       description="Kila kitu kilichofanyika kwenye data yako, kwa mpangilio wa muda."
     >

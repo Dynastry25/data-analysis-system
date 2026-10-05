@@ -7,15 +7,18 @@ import { FormEvent, useState } from "react";
 import { Button } from "@/components/Button";
 import { TextInput } from "@/components/Field";
 import { Icon, IconName } from "@/components/Icon";
+import { Logo, LogoMark } from "@/components/Logo";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, setToken } from "@/lib/api";
 import { UPLOAD_FILE_GROUPS } from "@/lib/upload-formats";
+
+const MAX_MB = 50;
 
 const VALUE_POINTS: { icon: IconName; title: string; description: string }[] = [
   {
     icon: "upload",
     title: "Pakia kwa haraka",
-    description: `${UPLOAD_FILE_GROUPS}, hadi 50MB.`,
+    description: `${UPLOAD_FILE_GROUPS}, hadi ${MAX_MB}MB.`,
   },
   {
     icon: "calculator",
@@ -32,12 +35,9 @@ const VALUE_POINTS: { icon: IconName; title: string; description: string }[] = [
 function BrandPanel() {
   return (
     <aside className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-sidebar p-10 text-white lg:flex">
-      <div className="flex items-center gap-2.5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-600">
-          <Icon name="chart-line" size={20} />
-        </span>
-        <span className="text-h3">StatFlow</span>
-      </div>
+      <Link href="/login">
+        <Logo />
+      </Link>
 
       <div className="max-w-md">
         <h2 className="text-display text-white">Chambua data bila kuandika code</h2>
@@ -100,9 +100,7 @@ export default function LoginPage() {
       <div className="flex flex-1 items-center justify-center px-4 py-12">
         <div className="w-full max-w-md">
           <div className="mb-8 flex flex-col items-center text-center lg:items-start lg:text-left">
-            <span className="flex h-11 w-11 items-center justify-center rounded-md bg-primary-600 text-white lg:hidden">
-              <Icon name="chart-line" size={22} />
-            </span>
+            <LogoMark size={44} className="lg:hidden" />
             <h1 className="mt-4 text-h1 text-ink lg:mt-0">Karibu tena</h1>
             <p className="mt-1 text-body text-ink-secondary">
               Ingia ili kuendelea na uchambuzi wa data yako
