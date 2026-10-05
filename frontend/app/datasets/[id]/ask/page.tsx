@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
-import { Card, EmptyState } from "@/components/Card";
+import { Card } from "@/components/Card";
 import { SelectInput, TextInput } from "@/components/Field";
 import { Icon } from "@/components/Icon";
 import { StandardResultView, fmt, pFmt } from "@/components/StandardResultView";
@@ -140,6 +140,7 @@ export default function AskPage() {
 
   return (
     <AppShell
+      eyebrow="Msaidizi wa takwimu"
       title="AI Statistical Copilot"
       description="Uliza swali kwa lugha ya kawaida — engine hupanga uchambuzi na kujibu kwa takwimu zilizothibitishwa."
       actions={
@@ -250,13 +251,21 @@ export default function AskPage() {
       </Card>
 
       {turns.length === 0 ? (
-        <Card>
-          <EmptyState
-            title="Hakuna maswali bado"
-            description="Bonyeza moja ya mifano au andika swali lako la takwimu."
-            icon="message-circle"
-          />
-        </Card>
+        <section className="flex flex-col items-center px-6 py-10 text-center">
+          {/* The prototype's welcome orb and explanation. It sits above the
+              question card rather than replacing it, because the variable
+              selectors below are the part that makes the answer correct. */}
+          <span className="grid h-[52px] w-[52px] place-items-center rounded-[15px] bg-surface-sunken text-[#BBAAFF] shadow-[0_10px_30px_rgba(25,20,36,0.18)]">
+            <Icon name="sparkles" size={24} />
+          </span>
+          <h2 className="mt-3.5 font-display text-h2 font-bold tracking-[-0.02em] text-ink">
+            Ungependa kuelewa nini?
+          </h2>
+          <p className="mt-1.5 max-w-[500px] text-body leading-relaxed text-ink-muted">
+            Ninaleta swali lako kwenye variables, kuthibitisha method ya takwimu,
+            kuendesha engine, na kueleza matokeo yaliyothibitishwa.
+          </p>
+        </section>
       ) : (
         turns.map((turn, index) => (
           <Card
