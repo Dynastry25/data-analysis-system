@@ -277,6 +277,7 @@ export const en = {
   "auth.subheadline":
     "Six steps: upload, inspect, clean, analyse, chart, report. All in one system.",
   "auth.pointUploadTitle": "Upload quickly",
+  "auth.pointUploadBody": "CSV, Excel, JSON, TSV, TXT, Parquet, Stata, SPSS and R, up to 50MB per file.",
   "auth.pointAnalyseTitle": "Analyse step by step",
   "auth.pointAnalyseBody":
     "Complete statistics without writing code or asking an AI assistant.",
@@ -291,6 +292,26 @@ export const en = {
   "auth.createAccount": "Create account",
   "auth.haveAccount": "Already have an account?",
   "auth.signInInstead": "Sign in",
+  "auth.registerHeadline": "Start analysing data now",
+  "auth.registerSubheadline":
+    "One question, and the whole analysis path in your hands: upload, clean, analyse, chart, report.",
+  "auth.stepUpload": "Upload",
+  "auth.stepClean": "Clean",
+  "auth.stepAnalyse": "Analyse",
+  "auth.stepReport": "Report",
+  "auth.stepCleanBody": "Remove errors in Data Studio",
+  "auth.stepAnalyseBody": "Statistical analysis with verification",
+  "auth.stepReportBody": "PDF or Excel in one click",
+  "auth.registerFooter":
+    "Your data is protected · each user sees only their own datasets",
+  "auth.passwordHint": "At least 6 characters",
+  "auth.registerSubmit": "Register and sign in",
+  "auth.signedIn": "Signed in successfully. Welcome!",
+  "auth.accountCreated": "Account created. Welcome!",
+  "auth.namePlaceholder": "Asha Mwangi",
+
+  "upload.formats":
+    "CSV, Excel, JSON, TSV, TXT, Parquet, Stata, SPSS and R",
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -556,6 +577,7 @@ export const sw: Record<TranslationKey, string> = {
   "auth.subheadline":
     "Mtiririko wa hatua 6: pakia, angalia, safisha, chambua, buni chati, tengeneza ripoti. Yote katika mfumo mmoja.",
   "auth.pointUploadTitle": "Pakia kwa haraka",
+  "auth.pointUploadBody": "CSV, Excel, JSON, TSV, TXT, Parquet, Stata, SPSS na R, hadi 50MB kwa faili.",
   "auth.pointAnalyseTitle": "Chambua moja kwa moja",
   "auth.pointAnalyseBody":
     "Takwimu kamili bila kuandika code au uliza msaidizi wa AI.",
@@ -570,6 +592,25 @@ export const sw: Record<TranslationKey, string> = {
   "auth.createAccount": "Tengeneza akaunti",
   "auth.haveAccount": "Una akaunti tayari?",
   "auth.signInInstead": "Ingia",
+  "auth.registerHeadline": "Anza kuchambua data sasa",
+  "auth.registerSubheadline":
+    "Kuhusu muhula mmoja, na una njia nzima ya uchambuzi mikononi mwako: pakia, safisha, chambua, chati, ripoti.",
+  "auth.stepUpload": "Pakia",
+  "auth.stepClean": "Safisha",
+  "auth.stepAnalyse": "Chambua",
+  "auth.stepReport": "Ripoti",
+  "auth.stepCleanBody": "Ondoa kasoro kwenye Data Studio",
+  "auth.stepAnalyseBody": "Uchambuzi wa takwimu wenye uthibitisho",
+  "auth.stepReportBody": "PDF au Excel kwa kubonyeza moja",
+  "auth.registerFooter":
+    "Data yako imelindwa · kila mtumiaji anaona datasets zake tu",
+  "auth.passwordHint": "Angalau herufi 6",
+  "auth.registerSubmit": "Sajili na uingie",
+  "auth.signedIn": "Umeingia kikamilifu. Karibu!",
+  "auth.accountCreated": "Akaunti imetengenezwa. Karibu!",
+  "auth.namePlaceholder": "Asha Mwangi",
+
+  "upload.formats": "CSV, Excel, JSON, TSV, TXT, Parquet, Stata, SPSS na R",
 };
 
 export const dictionaries = { en, sw } as const;

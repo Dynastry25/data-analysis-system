@@ -7,43 +7,49 @@ import { FormEvent, useState } from "react";
 import { Button } from "@/components/Button";
 import { TextInput } from "@/components/Field";
 import { Icon, IconName } from "@/components/Icon";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Logo, LogoMark } from "@/components/Logo";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, setToken } from "@/lib/api";
-import { UPLOAD_FILE_GROUPS } from "@/lib/upload-formats";
+import { useLanguage, type TranslationKey } from "@/lib/i18n";
 
-const MAX_MB = 50;
-
-const VALUE_POINTS: { icon: IconName; title: string; description: string }[] = [
+/**
+ * The three selling points. They are keys rather than strings so the panel
+ * follows the language switcher -- a Swahili user reading an English pitch on
+ * the sign-in screen, which is the one screen they cannot navigate away from.
+ */
+const VALUE_POINTS: {
+  icon: IconName;
+  title: TranslationKey;
+  description: TranslationKey;
+}[] = [
   {
     icon: "upload",
-    title: "Pakia kwa haraka",
-    description: `${UPLOAD_FILE_GROUPS}, hadi ${MAX_MB}MB.`,
+    title: "auth.pointUploadTitle",
+    description: "auth.pointUploadBody",
   },
   {
     icon: "calculator",
-    title: "Chambua moja kwa moja",
-    description: "Takwimu kamili bila kuandika code au uliza msaidizi wa AI.",
+    title: "auth.pointAnalyseTitle",
+    description: "auth.pointAnalyseBody",
   },
   {
     icon: "file-text",
-    title: "Ripoti ya kubonyeza moja",
-    description: "Tengeneza PDF au Excel yenye matokeo na chati zote.",
+    title: "auth.pointReportTitle",
+    description: "auth.pointReportBody",
   },
 ];
 
 function BrandPanel() {
+  const { t } = useLanguage();
   return (
     <aside className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-sidebar p-10 text-white lg:flex">
-      <Link href="/login">
-        <Logo />
-      </Link>
+      <Logo />
 
       <div className="max-w-md">
-        <h2 className="text-display text-white">Chambua data bila kuandika code</h2>
+        <h2 className="text-display text-white">{t("auth.headline")}</h2>
         <p className="mt-3 text-body-lg text-neutral-300">
-          Mtiririko wa hatua 6: pakia, angalia, safisha, chambua, buni chati, tengeneza
-          ripoti. Yote katika mfumo mmoja.
+          {t("auth.subheadline")}
         </p>
         <ol className="mt-8 space-y-5">
           {VALUE_POINTS.map((point) => (
@@ -52,17 +58,19 @@ function BrandPanel() {
                 <Icon name={point.icon} size={18} />
               </span>
               <div>
-                <p className="text-body-lg font-medium text-white">{point.title}</p>
-                <p className="text-body text-neutral-400">{point.description}</p>
+                <p className="text-body-lg font-medium text-white">
+                  {t(point.title)}
+                </p>
+                <p className="text-body text-neutral-400">
+                  {t(point.description)}
+                </p>
               </div>
             </li>
           ))}
         </ol>
       </div>
 
-      <p className="text-caption text-neutral-500">
-        Mfumo wenye usalama · data yako imelindwa kwa kila mtumiaji
-      </p>
+      <p className="text-caption text-neutral-500">{t("auth.footer")}</p>
     </aside>
   );
 }
@@ -70,6 +78,7 @@ function BrandPanel() {
 export default function LoginPage() {
   const router = useRouter();
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -82,7 +91,7 @@ export default function LoginPage() {
     try {
       const result = await api.auth.login({ email, password });
       setToken(result.access_token);
-      showToast("Umeingia kikamilifu. Karibu!", "success");
+      showToast(t("auth.signedIn"), "success");
       router.push("/dashboard");
     } catch (caught) {
       const message = apiErrorMessage(caught);
@@ -97,13 +106,24 @@ export default function LoginPage() {
     <main className="flex min-h-screen bg-surface-canvas">
       <BrandPanel />
 
-      <div className="flex flex-1 items-center justify-center px-4 py-12">
+      <div className="relative flex flex-1 items-center justify-center px-4 py-12">
+        {/*
+          The switch lives on the auth screens too. The sidebar one is out of
+          reach until you are already signed in, so a Swahili speaker otherwise
+          had no way to reach their language before logging in.
+        */}
+        <div className="absolute right-5 top-5">
+          <LanguageSwitcher />
+        </div>
+
         <div className="w-full max-w-md">
           <div className="mb-8 flex flex-col items-center text-center lg:items-start lg:text-left">
             <LogoMark size={44} className="lg:hidden" />
-            <h1 className="mt-4 text-h1 text-ink lg:mt-0">Karibu tena</h1>
+            <h1 className="mt-4 text-h1 text-ink lg:mt-0">
+              {t("auth.welcomeBack")}
+            </h1>
             <p className="mt-1 text-body text-ink-secondary">
-              Ingia ili kuendelea na uchambuzi wa data yako
+              {t("auth.loginIntro")}
             </p>
           </div>
 
@@ -112,17 +132,17 @@ export default function LoginPage() {
             className="space-y-4 rounded-md border border-surface-border bg-surface-panel p-6 shadow-card"
           >
             <TextInput
-              label="Barua pepe (email)"
+              label={t("auth.email")}
               type="email"
               required
               autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="jina@example.com"
+              placeholder="name@example.com"
             />
 
             <TextInput
-              label="Neno la siri (password)"
+              label={t("auth.password")}
               type="password"
               required
               autoComplete="current-password"
@@ -142,16 +162,16 @@ export default function LoginPage() {
             )}
 
             <Button type="submit" size="large" loading={loading} className="w-full">
-              Ingia
+              {t("auth.signIn")}
             </Button>
 
             <p className="text-center text-body text-ink-secondary">
-              Huna akaunti?{" "}
+              {t("auth.noAccount")}{" "}
               <Link
                 href="/register"
                 className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
               >
-                Sajili hapa
+                {t("auth.createOne")}
               </Link>
             </p>
           </form>
