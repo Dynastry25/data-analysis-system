@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
@@ -9,6 +9,7 @@ import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
 import { TextArea, TextInput } from "@/components/Field";
 import { Icon } from "@/components/Icon";
+import { InlineSearch } from "@/components/InlineSearch";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import { api, apiErrorMessage, Organization, OrgRole } from "@/lib/api";
@@ -34,6 +35,18 @@ export default function OrganizationsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return organizations;
+    return organizations.filter(
+      (org) =>
+        org.name.toLowerCase().includes(needle) ||
+        org.slug.toLowerCase().includes(needle) ||
+        (org.description?.toLowerCase().includes(needle) ?? false)
+    );
+  }, [organizations, query]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -93,6 +106,7 @@ export default function OrganizationsPage() {
 
   return (
     <AppShell
+      eyebrow="Mashirika"
       title="Mashirika"
       description="Panga watu na data kwenye mashirika, na kila mwanachama apate kiwango chake cha ruhusa."
       actions={
@@ -148,6 +162,20 @@ export default function OrganizationsPage() {
         </Card>
       )}
 
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <InlineSearch
+          value={query}
+          onChange={setQuery}
+          placeholder="Tafuta mashirika..."
+          label="Tafuta mashirika"
+        />
+        <p className="text-caption text-ink-muted" aria-live="polite">
+          {loading
+            ? "Inapakia..."
+            : `Inaonyesha ${visible.length} kati ya ${organizations.length}`}
+        </p>
+      </div>
+
       {loading ? (
         <TableSkeleton rows={3} />
       ) : organizations.length === 0 ? (
@@ -163,7 +191,7 @@ export default function OrganizationsPage() {
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {organizations.map((org) => (
+          {visible.map((org) => (
             <Card key={org.id} className="flex flex-col">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
@@ -246,6 +274,31 @@ export default function OrganizationsPage() {
               )}
             </Card>
           ))}
+
+          {/*
+            The prototype leads the grid with a dashed create tile rather than
+            putting creation in the page header. Both are reachable here: this
+            card is the in-grid affordance, and the header button stays because
+            the form it opens is at the top of the page.
+          */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowForm(true);
+              setError(null);
+            }}
+            className="flex min-h-[200px] flex-col items-center justify-center gap-2 rounded-xl border-[1.5px] border-dashed border-surface-border-strong bg-surface-panel text-ink-secondary transition-colors duration-200 ease-standard hover:border-primary-400 hover:bg-primary-50/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500"
+          >
+            <span className="grid h-11 w-11 place-items-center rounded-full bg-primary-50 text-primary-600">
+              <Icon name="plus" size={20} />
+            </span>
+            <strong className="text-body font-semibold text-ink">
+              Tengeneza shirika
+            </strong>
+            <small className="text-caption text-ink-muted">
+              Anza na wanachama, miradi na data
+            </small>
+          </button>
         </div>
       )}
     </AppShell>
