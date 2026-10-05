@@ -186,6 +186,7 @@ export default function ExportPage() {
 
   return (
     <AppShell
+      eyebrow="Ripoti na ushirikishaji"
       title="Reports & Workspace"
       description="Panga ripoti kutoka matokeo uliyochagua, kisha pakua au isambaze."
       actions={
@@ -204,17 +205,21 @@ export default function ExportPage() {
       }
     >
       <div className="mb-6">
-        <div className="flex flex-wrap gap-1" role="tablist" aria-label="Hatua za ripoti">
+        <div
+          className="inline-flex flex-wrap gap-0.5 rounded-[7px] border border-surface-border bg-surface-sunken p-0.5"
+          role="tablist"
+          aria-label="Hatua za ripoti"
+        >
           {EXPORT_SECTIONS.map((entry) => (
             <Link
               key={entry.key}
               href={`/datasets/${datasetId}/export?stage=${entry.key}`}
               role="tab"
               aria-selected={section === entry.key}
-              className={`rounded-md px-3.5 py-2 text-body transition-colors duration-150 ease-standard ${
+              className={`rounded-[5px] px-3.5 py-1.5 text-body transition-all duration-150 ease-standard focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 ${
                 section === entry.key
-                  ? "bg-primary-50 font-medium text-primary-800"
-                  : "text-ink-secondary hover:bg-surface-sunken"
+                  ? "bg-surface-panel font-semibold text-ink shadow-card"
+                  : "font-medium text-ink-muted hover:bg-surface-panel hover:text-ink"
               }`}
             >
               {entry.label}
@@ -476,13 +481,47 @@ export default function ExportPage() {
             description="Ripoti zitaonekana hapa baada ya kutengeneza moja kwa juu."
           />
         ) : (
-          <ul className="divide-y divide-surface-border">
+          <ul className="flex flex-col gap-2">
             {reports.map((report) => (
               <li
                 key={report.id}
-                className="flex flex-wrap items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-surface-border px-3 py-2.5 transition-colors duration-150 ease-standard hover:border-primary-200 hover:bg-primary-50/40"
               >
-                <span className="flex flex-wrap items-center gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  {/*
+                    A format-coloured tile stands in for the prototype's report
+                    cover. Reports carry no title in the API, so the tile shows
+                    the format -- which is the one thing that reliably
+                    distinguishes one from another in this list.
+                  */}
+                  <span
+                    aria-hidden="true"
+                    className={`grid h-11 w-9 shrink-0 place-items-center rounded-md text-[10px] font-bold tracking-wide text-white ${
+                      report.file_format.toLowerCase() === "xlsx"
+                        ? "bg-[#1D7044]"
+                        : "bg-[#C0392B]"
+                    }`}
+                  >
+                    {report.file_format.toUpperCase()}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-body font-medium text-ink">
+                      Ripoti #{report.id}
+                    </p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-caption text-ink-muted">
+                      <span className="tabular">
+                        v{report.dataset_version ?? 1}
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        {report.created_at
+                          ? new Date(report.created_at).toLocaleString()
+                          : "—"}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
                   <Badge
                     tone={
                       report.status === "completed"
@@ -494,24 +533,16 @@ export default function ExportPage() {
                   >
                     {report.status}
                   </Badge>
-                  <span className="text-body font-medium text-ink">
-                    {report.file_format.toUpperCase()}
-                  </span>
-                  <span className="text-caption text-ink-muted">
-                    {report.created_at
-                      ? new Date(report.created_at).toLocaleString()
-                      : ""}
-                  </span>
-                </span>
-                <Button
-                  variant="secondary"
-                  size="small"
-                  icon="download"
-                  disabled={report.status !== "completed"}
-                  onClick={() => downloadReport(report.id, report.file_format)}
-                >
-                  Pakua
-                </Button>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    icon="download"
+                    disabled={report.status !== "completed"}
+                    onClick={() => downloadReport(report.id, report.file_format)}
+                  >
+                    Pakua
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
