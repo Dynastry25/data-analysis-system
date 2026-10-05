@@ -19,7 +19,7 @@ import {
 import { useLanguage, type TranslationKey } from "@/lib/i18n";
 import { Icon, IconName } from "./Icon";
 import { JourneyRail } from "./JourneyRail";
-import { LanguageSwitcher } from "./LanguageSwitcher";
+import { SidebarLanguageSwitcher } from "./LanguageSwitcher";
 import { Logo } from "./Logo";
 import { TopBar } from "./TopBar";
 import { WorkflowStrip } from "./WorkflowStrip";
@@ -506,7 +506,14 @@ export function AppShell({
           equivalent, so removing them would lose function.
         */}
         <div className="border-t border-white/10 p-3">
-          <LanguageSwitcher className="mb-2 w-full [&>button]:flex-1" />
+          {/*
+            The dark-sidebar variant. The light one used here before was
+            unreadable: text-ink-muted is a mid grey chosen for a white
+            surface, and against #111019 it had almost no contrast.
+          */}
+          <div className="mb-2">
+            <SidebarLanguageSwitcher />
+          </div>
           {user?.system_role && (
             <Link
               href="/admin"
