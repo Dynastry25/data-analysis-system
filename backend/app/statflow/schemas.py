@@ -48,6 +48,26 @@ class AnalysisRequest(BaseModel):
     save: bool = True
 
 
+class AnalysisReplayRequest(BaseModel):
+    """POST /datasets/{id}/analysis/replay - re-run an existing analysis."""
+
+    analysis_id: int
+    dataset_version: Optional[int] = Field(
+        default=None,
+        description="Which version to run on (default: the original analysis version)",
+    )
+    save: bool = True
+
+
+class AnalysisModifyRequest(BaseModel):
+    """POST /datasets/{id}/analysis/modify - modify and re-run an existing analysis."""
+
+    analysis_id: int
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    dataset_version: Optional[int] = None
+    save: bool = True
+
+
 class ProfileRequest(BaseModel):
     dataset_id: int
     dataset_version: Optional[int] = None

@@ -219,6 +219,13 @@ export function DashboardStudio({
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyText, setReplyText] = useState("");
 
+  // Reproducibility state
+  const [reproAnalysisId, setReproAnalysisId] = useState<number | null>(null);
+  const [reproMode, setReproMode] = useState<"replay" | "modify">("replay");
+  const [reproParams, setReproParams] = useState<Record<string, any>>({});
+  const [reproLoading, setReproLoading] = useState(false);
+  const [reproTargetVersion, setReproTargetVersion] = useState<number | null>(null);
+
   const columnOptions = columns.map((column) => ({ value: column.name, label: column.name }));
   const analysisOptions = analyses.map((analysis) => ({
     value: String(analysis.analysis_id),
@@ -517,6 +524,46 @@ export function DashboardStudio({
   function openComments(widgetId?: string) {
     setCommentWidgetId(widgetId ?? null);
     loadComments(widgetId);
+  }
+
+  // ---------------------------------------------------------------- Reproducibility
+
+  function openReproducibility(analysis: AnalysisRunRecord, mode: "replay" | "modify" = "replay") {
+    setReproAnalysisId(analysis.analysis_id);
+    setReproMode(mode);
+    setReproParams(mode === "modify" ? { ...analysis.parameters } : {});
+    setReproTargetVersion(analysis.dataset_version);
+  }
+
+  async function runReproducibility() {
+    if (!editing || !reproAnalysisId) return;
+    setReproLoading(true);
+    try {
+      if (reproMode === "replay") {
+        await (api as any).replayAnalysis(datasetId, {
+          analysis_id: reproAnalysisId,
+          dataset_version: reproTargetVersion || undefined,
+          save: true,
+        });
+        showToast("Uchambuzi umekurugenziwa tena", "success");
+      } else {
+        await (api as any).modifyAnalysis(datasetId, {
+          analysis_id: reproAnalysisId,
+          parameters: reproParams,
+          dataset_version: reproTargetVersion || undefined,
+          save: true,
+        });
+        showToast("Uchambuzi umebadilishwa na umekurugenziwa tena", "success");
+      }
+      setReproAnalysisId(null);
+      setReproMode("replay");
+      setReproParams({});
+      setReproTargetVersion(null);
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    } finally {
+      setReproLoading(false);
+    }
   }
 
   function loadDashboard(record: DashboardRecord) {
@@ -1110,6 +1157,151 @@ export function DashboardStudio({
               </div>
             )}
           </div>
+        </Card>
+      )}
+
+      {/* Reproducibility UI (Feature 24) */}
+      {editing && (
+        <Card
+          title="Ukurugenzi wa Uchambuzi"
+          description="Rudia, badilisha au nakili uchambuzi uliopita kwenye toleo la sasa au jipya la dataset."
+          icon="history"
+        >
+          {analyses.length === 0 ? (
+            <EmptyState
+              title="Hakuna uchambuzi bado"
+              description="Fanya uchambuzi kwanza ili uweze kurudia au kubadilisha."
+              icon="calculator"
+            />
+          ) : (
+            <div className="space-y-4">
+              <ul className="space-y-2 max-h-80 overflow-y-auto">
+                {analyses.map((analysis) => (
+                  <li
+                    key={analysis.analysis_id}
+                    className={`flex items-center justify-between gap-3 p-3 rounded-md border ${
+                      reproAnalysisId === analysis.analysis_id
+                        ? "border-primary-500 bg-primary-50/30"
+                        : "border-surface-border bg-surface-panel"
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge tone="primary" icon="calculator">
+                          {analysis.analysis_type}
+                        </Badge>
+                        <span className="text-caption text-ink-muted">
+                          v{analysis.dataset_version} · #{analysis.analysis_id}
+                        </span>
+                        {analysis.status === "completed" && (
+                          <Badge tone="success" size="sm">
+                            Kamilifu
+                          </Badge>
+                        )}
+                        {analysis.status === "failed" && (
+                          <Badge tone="danger" size="sm">
+                            Imeshindwa
+                          </Badge>
+                        )}
+                        {analysis.status === "running" && (
+                          <Badge tone="warning" size="sm">
+                            Inaendelea
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="mt-1 text-caption text-ink-secondary truncate">
+                        Param: {JSON.stringify(analysis.parameters).slice(0, 100)}
+                        {JSON.stringify(analysis.parameters).length > 100 ? "..." : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        variant="secondary"
+                        size="small"
+                        onClick={() => openReproducibility(analysis, "replay")}
+                        disabled={reproAnalysisId === analysis.analysis_id || reproLoading}
+                      >
+                        <Icon name="refresh" size={14} /> Rudia
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="small"
+                        onClick={() => openReproducibility(analysis, "modify")}
+                        disabled={reproAnalysisId === analysis.analysis_id || reproLoading}
+                      >
+                        <Icon name="sliders" size={14} /> Badilisha
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="small"
+                        onClick={() => {
+                          setReproAnalysisId(analysis.analysis_id);
+                          setReproMode("replay");
+                          setReproParams({});
+                          setReproTargetVersion(analysis.dataset_version);
+                        }}
+                        disabled={reproLoading}
+                      >
+                        <Icon name="copy" size={14} /> Nakili
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+
+              {reproAnalysisId && (
+                <div className="mt-4 p-4 rounded-md bg-primary-50/30 border border-primary-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-body font-medium text-ink">
+                      {reproMode === "replay" ? "Rudia Uchambuzi" : "Badilisha na Rudia Uchambuzi"}
+                    </h4>
+                    <Button variant="ghost" size="small" onClick={() => setReproAnalysisId(null)}>
+                      <Icon name="close" size={14} />
+                    </Button>
+                  </div>
+
+                  <div className="grid gap-3 mb-3">
+                    <SelectInput
+                      label="Toleo la Dataset la Muda"
+                      value={reproTargetVersion ? String(reproTargetVersion) : ""}
+                      options={[
+                        { value: "", label: "Toleo la sasa (default)" },
+                        ...Array.from(
+                          { length: datasetVersion },
+                          (_, i) => ({ value: String(i + 1), label: `v${i + 1}` })
+                        ),
+                      ]}
+                      onChange={(e) => setReproTargetVersion(e.target.value ? Number(e.target.value) : null)}
+                    />
+                    {reproMode === "modify" && (
+                      <TextArea
+                        label="Vipimo vya Uchambuzi (JSON)"
+                        rows={4}
+                        value={JSON.stringify(reproParams, null, 2)}
+                        onChange={(e) => {
+                          try {
+                            setReproParams(JSON.parse(e.target.value));
+                          } catch {
+                            // invalid JSON, ignore
+                          }
+                        }}
+                        placeholder='{"param1": "value1", "param2": "value2"}'
+                      />
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <Button variant="secondary" onClick={() => setReproAnalysisId(null)}>
+                      Futa
+                    </Button>
+                    <Button onClick={runReproducibility} loading={reproLoading} disabled={reproLoading}>
+                      {reproMode === "replay" ? "Rudia" : "Badilisha na Rudia"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </Card>
       )}
 

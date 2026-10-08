@@ -1280,6 +1280,14 @@ export const statflowApi = {
       .then((r) => r.data),
   analysisRun: (analysisId: number) =>
     http.get<AnalysisRunRecord>(`/v1/analysis/${analysisId}`).then((r) => r.data),
+  replayAnalysis: (datasetId: number, payload: { analysis_id: number; dataset_version?: number; save?: boolean }) =>
+    http
+      .post<AnalysisRunResponse>(`/v1/datasets/${datasetId}/analysis/replay`, payload)
+      .then((r) => r.data),
+  modifyAnalysis: (datasetId: number, payload: { analysis_id: number; parameters: Record<string, any>; dataset_version?: number; save?: boolean }) =>
+    http
+      .post<AnalysisRunResponse>(`/v1/datasets/${datasetId}/analysis/modify`, payload)
+      .then((r) => r.data),
   planningProfile: (datasetId: number, datasetVersion?: number) =>
     http
       .post<PlanningProfileResponse>("/v1/planning/profile", {

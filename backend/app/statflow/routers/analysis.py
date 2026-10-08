@@ -1,4 +1,9 @@
-"""MVP-19 endpoints: unified statistical analysis with the standard result."""
+"""MVP-19 endpoints: unified statistical analysis with the standard result.
+
+Reproducibility endpoints (Feature 24):
+- Replay an existing analysis on the same or different dataset version
+- Modify parameters and re-run an existing analysis
+"""
 
 from typing import Any, Dict, List
 
@@ -10,7 +15,7 @@ from app.deps import get_current_user, get_owned_dataset
 from app.models import AnalysisRun, Dataset, User
 from app.rbac import ORG_ROLE_VIEWER
 from app.statflow import methods, stats_engine, version_store
-from app.statflow.schemas import AnalysisRequest
+from app.statflow.schemas import AnalysisRequest, AnalysisReplayRequest, AnalysisModifyRequest
 from app.statflow.version_store import VersionError
 
 router = APIRouter(tags=["statflow-v1-analysis"])
@@ -144,3 +149,140 @@ def get_analysis(
         min_role=ORG_ROLE_VIEWER,
     )
     return run.to_dict()
+
+
+# ---------------------------------------------------------------- Reproducibility (Feature 24)
+
+
+@router.post("/datasets/{dataset_id}/analysis/replay")
+def replay_analysis(
+    dataset_id: int,
+    payload: AnalysisReplayRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Re-run an existing analysis on the same or a different dataset version.
+
+    The original analysis parameters are used. The target dataset version
+    defaults to the version the original analysis ran on.
+    """
+    dataset = get_owned_dataset(dataset_id, db, user)
+
+    original = db.get(AnalysisRun, payload.analysis_id)
+    if original is None:
+        raise HTTPException(status_code=404, detail="Original analysis not found")
+
+    # Verify the original analysis belongs to this dataset (or same org)
+    if original.dataset_id != dataset.id:
+        # Check if user has access to the original dataset
+        get_owned_dataset(
+            original.dataset_id,
+            db,
+            user,
+            require_file=False,
+            min_role=ORG_ROLE_VIEWER,
+        )
+
+    target_version = payload.dataset_version or original.dataset_version
+
+    try:
+        record, frame = _frame_for(db, dataset, target_version)
+        result = stats_engine.run_analysis(
+            frame, original.analysis_type, original.parameters
+        )
+    except (stats_engine.AnalysisError, VersionError) as exc:
+        raise _fail(exc)
+
+    response: Dict[str, Any] = {
+        "dataset_id": dataset.id,
+        "dataset_version": int(record.version),
+        "dataset_version_id": record.id,
+        "analysis_type": original.analysis_type,
+        "status": result.get("status"),
+        "result": result,
+        "analysis_id": None,
+        "replayed_from": original.id,
+    }
+    if payload.save:
+        run = AnalysisRun(
+            dataset_id=dataset.id,
+            dataset_version=int(record.version),
+            dataset_version_id=record.id,
+            analysis_type=original.analysis_type,
+            status=str(result.get("status")),
+            parameters=original.parameters,
+            result=result,
+        )
+        db.add(run)
+        dataset.status = "analyzed"
+        db.commit()
+        db.refresh(run)
+        response["analysis_id"] = run.id
+        response["created_at"] = run.created_at.isoformat() if run.created_at else None
+    return response
+
+
+@router.post("/datasets/{dataset_id}/analysis/modify")
+def modify_analysis(
+    dataset_id: int,
+    payload: AnalysisModifyRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Modify parameters of an existing analysis and re-run it.
+
+    The original analysis type is preserved, but parameters can be changed.
+    """
+    dataset = get_owned_dataset(dataset_id, db, user)
+
+    original = db.get(AnalysisRun, payload.analysis_id)
+    if original is None:
+        raise HTTPException(status_code=404, detail="Original analysis not found")
+
+    if original.dataset_id != dataset.id:
+        get_owned_dataset(
+            original.dataset_id,
+            db,
+            user,
+            require_file=False,
+            min_role=ORG_ROLE_VIEWER,
+        )
+
+    target_version = payload.dataset_version or original.dataset_version
+
+    try:
+        record, frame = _frame_for(db, dataset, target_version)
+        result = stats_engine.run_analysis(
+            frame, original.analysis_type, payload.parameters
+        )
+    except (stats_engine.AnalysisError, VersionError) as exc:
+        raise _fail(exc)
+
+    response: Dict[str, Any] = {
+        "dataset_id": dataset.id,
+        "dataset_version": int(record.version),
+        "dataset_version_id": record.id,
+        "analysis_type": original.analysis_type,
+        "status": result.get("status"),
+        "result": result,
+        "analysis_id": None,
+        "modified_from": original.id,
+        "modified_parameters": payload.parameters,
+    }
+    if payload.save:
+        run = AnalysisRun(
+            dataset_id=dataset.id,
+            dataset_version=int(record.version),
+            dataset_version_id=record.id,
+            analysis_type=original.analysis_type,
+            status=str(result.get("status")),
+            parameters=payload.parameters,
+            result=result,
+        )
+        db.add(run)
+        dataset.status = "analyzed"
+        db.commit()
+        db.refresh(run)
+        response["analysis_id"] = run.id
+        response["created_at"] = run.created_at.isoformat() if run.created_at else None
+    return response
