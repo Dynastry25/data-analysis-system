@@ -552,6 +552,50 @@ class DashboardCommentResponse(BaseModel):
 DashboardCommentResponse.model_rebuild()
 
 
+# --------------------------------------------------------------- Job Queue (Feature 25)
+
+JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
+JobType = Literal["analysis", "report_export", "dataset_clean", "dataset_transform", "chart_render", "ml_training"]
+
+
+class JobCreate(BaseModel):
+    job_type: JobType
+    dataset_id: Optional[int] = None
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+class JobUpdate(BaseModel):
+    status: Optional[JobStatus] = None
+    progress: Optional[int] = Field(default=None, ge=0, le=100)
+    result: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+
+
+class JobResponse(BaseModel):
+    id: int
+    user_id: int
+    user_email: Optional[str] = None
+    organization_id: Optional[int] = None
+    organization_name: Optional[str] = None
+    dataset_id: Optional[int] = None
+    job_type: JobType
+    status: JobStatus
+    progress: int
+    payload: Dict[str, Any]
+    result: Dict[str, Any]
+    error_message: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class JobListResponse(BaseModel):
+    items: List[JobResponse]
+    total: int
+    page: int
+    page_size: int
+
+
 # --------------------------------------------------------------- Export
 
 ExportFormat = Literal["pdf", "xlsx", "docx", "pptx", "html"]

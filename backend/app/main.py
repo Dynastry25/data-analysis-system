@@ -16,6 +16,7 @@ from app.routers import (
     charts,
     dashboards,
     datasets,
+    jobs,
     organizations,
     reports,
     scrape,
@@ -59,6 +60,7 @@ for router in (
     charts.router,
     dashboards.router,
     reports.router,
+    jobs.router,
 ):
     app.include_router(router, prefix=API_PREFIX)
 

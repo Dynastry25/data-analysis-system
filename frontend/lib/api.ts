@@ -494,6 +494,49 @@ export interface DashboardCommentUpdatePayload {
   content: string;
 }
 
+// ---------------------------------------------------------------- Job Queue (Feature 25)
+
+export type JobStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+export type JobType = "analysis" | "report_export" | "dataset_clean" | "dataset_transform" | "chart_render" | "ml_training";
+
+export interface JobRecord {
+  id: number;
+  user_id: number;
+  user_email?: string | null;
+  organization_id?: number | null;
+  organization_name?: string | null;
+  dataset_id?: number | null;
+  job_type: JobType;
+  status: JobStatus;
+  progress: number;
+  payload: Record<string, any>;
+  result: Record<string, any>;
+  error_message?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface JobListResponse {
+  items: JobRecord[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface JobCreatePayload {
+  job_type: JobType;
+  dataset_id?: number;
+  payload?: Record<string, any>;
+}
+
+export interface JobUpdatePayload {
+  status?: JobStatus;
+  progress?: number;
+  result?: Record<string, any>;
+  error_message?: string;
+}
+
 export interface ExportPayload {
   format: "pdf" | "xlsx";
   dataset_version?: number;
@@ -1318,6 +1361,19 @@ export const statflowApi = {
     http
       .get<{ examples: string[]; note: string }>("/v1/assistant/examples")
       .then((r) => r.data),
+  // Job Queue (Feature 25)
+  jobs: {
+    create: (payload: JobCreatePayload) =>
+      http.post<JobRecord>("/v1/jobs", payload).then((r) => r.data),
+    list: (params?: { job_type?: string; status?: JobStatus; dataset_id?: number; page?: number; page_size?: number }) =>
+      http.get<JobListResponse>("/v1/jobs", { params }).then((r) => r.data),
+    get: (jobId: number) =>
+      http.get<JobRecord>(`/v1/jobs/${jobId}`).then((r) => r.data),
+    update: (jobId: number, payload: JobUpdatePayload) =>
+      http.patch<JobRecord>(`/v1/jobs/${jobId}`, payload).then((r) => r.data),
+    cancel: (jobId: number) =>
+      http.delete(`/v1/jobs/${jobId}`).then((r) => r.data),
+  },
 };
 
 export default api;

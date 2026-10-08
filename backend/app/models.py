@@ -911,3 +911,92 @@ class DashboardComment(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+# ---------------------------------------------------------------- Job Queue (Feature 25)
+
+JOB_STATUS_PENDING = "pending"
+JOB_STATUS_RUNNING = "running"
+JOB_STATUS_COMPLETED = "completed"
+JOB_STATUS_FAILED = "failed"
+JOB_STATUS_CANCELLED = "cancelled"
+
+JOB_STATUSES = [
+    JOB_STATUS_PENDING,
+    JOB_STATUS_RUNNING,
+    JOB_STATUS_COMPLETED,
+    JOB_STATUS_FAILED,
+    JOB_STATUS_CANCELLED,
+]
+
+JOB_TYPES = [
+    "analysis",
+    "report_export",
+    "dataset_clean",
+    "dataset_transform",
+    "chart_render",
+    "ml_training",
+]
+
+
+class Job(Base):
+    """Background job queue for long-running operations.
+
+    Provides progress tracking, cancellation, and result storage.
+    Jobs are processed by a background worker (can be FastAPI BackgroundTasks,
+    Celery, RQ, or any async worker).
+    """
+
+    __tablename__ = "jobs"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    organization_id = Column(
+        Integer,
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    dataset_id = Column(
+        Integer,
+        ForeignKey("datasets.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    job_type = Column(String(50), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default=JOB_STATUS_PENDING, index=True)
+    progress = Column(Integer, default=0)  # 0-100
+    payload = Column(JSON, nullable=True)  # Input parameters
+    result = Column(JSON, nullable=True)   # Output/result data
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+
+    user = relationship("User")
+    organization = relationship("Organization")
+    dataset = relationship("Dataset")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "user_email": self.user.email if self.user else None,
+            "organization_id": self.organization_id,
+            "organization_name": self.organization.name if self.organization else None,
+            "dataset_id": self.dataset_id,
+            "job_type": self.job_type,
+            "status": self.status,
+            "progress": self.progress,
+            "payload": self.payload or {},
+            "result": self.result or {},
+            "error_message": self.error_message,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
