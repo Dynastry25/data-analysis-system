@@ -31,6 +31,9 @@ REPORT_FAILURE_MESSAGE = "Report generation failed. Please try again."
 MEDIA_TYPES = {
     "pdf": "application/pdf",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "html": "text/html",
 }
 
 

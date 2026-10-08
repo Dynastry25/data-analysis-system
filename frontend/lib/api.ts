@@ -272,7 +272,14 @@ export interface AnalyzePayload {
 
 export interface AnalysisRecord extends AnalysisRunRecord {}
 
-export type ChartType = "bar" | "line" | "scatter" | "histogram";
+export type ChartType =
+  | "bar"
+  | "line"
+  | "scatter"
+  | "histogram"
+  | "box"
+  | "pie"
+  | "heatmap";
 
 export type ChartPaletteName = "default" | "ocean" | "sunset" | "forest";
 
@@ -284,6 +291,25 @@ export interface ChartFormat {
   y_scale?: "linear" | "log" | null;
 }
 
+export interface ChartFilterCondition {
+  column: string;
+  operator: string;
+  value?: unknown;
+  values?: unknown[];
+}
+
+export interface ChartFilter {
+  conditions: ChartFilterCondition[];
+  logic?: "and" | "or";
+}
+
+export interface ChartAnnotation {
+  text: string;
+  x: unknown;
+  y?: unknown;
+  series?: string | null;
+}
+
 export interface ChartConfig {
   x: string;
   y?: string | null;
@@ -292,6 +318,16 @@ export interface ChartConfig {
   bins?: number | null;
   limit?: number | null;
   format?: ChartFormat | null;
+  /** Categorical column that colours scatter points / splits box panels. */
+  color_by?: string | null;
+  /** Numeric column that scales scatter marker sizes. */
+  size_by?: string | null;
+  /** Categorical column drawn as one panel each (max 12). */
+  facet_by?: string | null;
+  /** Row filter applied for drawing only — writes no new version. */
+  filters?: ChartFilter | null;
+  /** Text notes pinned to data positions. */
+  annotations?: ChartAnnotation[];
 }
 
 export interface ChartSeries {
@@ -301,6 +337,21 @@ export interface ChartSeries {
   type?: string;
   mode?: string;
   nbinsx?: number;
+  /** Per-point bubble sizes (scatter + `size_by`). */
+  sizes?: (number | null)[];
+  /** Pie slices: labels/values/shares. */
+  labels?: unknown[];
+  values?: unknown[];
+  shares?: (number | null)[];
+  /** Heatmap matrix rows. */
+  z?: (number | null)[][];
+  /** Whether the box was sampled down from a larger group. */
+  truncated?: boolean;
+}
+
+export interface ChartFacet {
+  facet: string | null;
+  chart: ChartData;
 }
 
 export interface ChartData {
@@ -308,6 +359,10 @@ export interface ChartData {
   x_label: string;
   y_label: string;
   series: ChartSeries[];
+  /** Extra panels when `facet_by` splits the chart. */
+  facets?: ChartFacet[];
+  /** Text notes pinned to data positions. */
+  annotations?: ChartAnnotation[];
   meta?: Record<string, any>;
 }
 
@@ -383,6 +438,60 @@ export interface DashboardUpdatePayload {
   name?: string;
   title?: string;
   widgets?: DashboardWidget[];
+}
+
+// ---------------------------------------------------------------- Dashboard Collaboration
+
+export type DashboardShareRole = "viewer" | "editor" | "admin";
+
+export interface DashboardShareRecord {
+  id: number;
+  dashboard_id: number;
+  user_id?: number | null;
+  user_email?: string | null;
+  organization_id?: number | null;
+  organization_name?: string | null;
+  role: DashboardShareRole;
+  created_by?: number | null;
+  created_by_email?: string | null;
+  created_at?: string | null;
+  expires_at?: string | null;
+}
+
+export interface DashboardShareCreatePayload {
+  user_id?: number;
+  organization_id?: number;
+  role?: DashboardShareRole;
+  expires_at?: string;
+}
+
+export interface DashboardShareUpdatePayload {
+  role?: DashboardShareRole;
+  expires_at?: string;
+}
+
+export interface DashboardCommentRecord {
+  id: number;
+  dashboard_id: number;
+  widget_id?: string | null;
+  user_id: number;
+  user_email?: string | null;
+  user_name?: string | null;
+  parent_id?: number | null;
+  content: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  replies: DashboardCommentRecord[];
+}
+
+export interface DashboardCommentCreatePayload {
+  widget_id?: string;
+  parent_id?: number;
+  content: string;
+}
+
+export interface DashboardCommentUpdatePayload {
+  content: string;
 }
 
 export interface ExportPayload {
@@ -471,6 +580,34 @@ export interface TeamMember {
   joined_at: string | null;
 }
 
+// ---------------------------------------------------------- Web scraping
+
+export interface ScrapeTablePreview {
+  index: number;
+  row_count: number;
+  column_count: number;
+  columns: string[];
+  /** The first rows, so a table can be chosen by what it contains. */
+  preview_rows: Record<string, unknown>[];
+}
+
+export interface ScrapePreviewResponse {
+  url: string;
+  /** After redirects: where the page actually lives. */
+  final_url: string;
+  title: string | null;
+  table_count: number;
+  tables: ScrapeTablePreview[];
+}
+
+export interface ScrapeImportPayload {
+  url: string;
+  /** Index as returned by /scrape/preview for the same URL. */
+  table_index: number;
+  project_id?: number | null;
+  filename?: string;
+}
+
 // ------------------------------------------------------------ API methods
 
 // Analysis + reports always flow through the unified engine (MVP-19+) —
@@ -539,6 +676,16 @@ export const api = {
       http.get<ExploreResponse>(`/datasets/${id}/explore`).then((r) => r.data),
     remove: (id: number) => http.delete(`/datasets/${id}`).then((r) => r.data),
   },
+  scrape: {
+    /** Fetch a page and list its HTML tables; nothing is stored server-side. */
+    preview: (url: string) =>
+      http
+        .post<ScrapePreviewResponse>("/v1/scrape/preview", { url })
+        .then((r) => r.data),
+    /** Turn one previewed table into a dataset via the normal ingest path. */
+    importTable: (payload: ScrapeImportPayload) =>
+      http.post<UploadResponse>("/v1/scrape/import", payload).then((r) => r.data),
+  },
   charts: {
     create: (id: number, payload: ChartPayload) =>
       http.post<ChartRecord>(`/datasets/${id}/charts`, payload).then((r) => r.data),
@@ -562,6 +709,36 @@ export const api = {
         .then((r) => r.data),
     remove: (dashboardId: number) =>
       http.delete(`/dashboards/${dashboardId}`).then((r) => r.data),
+    // Sharing
+    listShares: (dashboardId: number) =>
+      http.get<DashboardShareRecord[]>(`/dashboards/${dashboardId}/shares`).then((r) => r.data),
+    createShare: (dashboardId: number, payload: DashboardShareCreatePayload) =>
+      http
+        .post<DashboardShareRecord>(`/dashboards/${dashboardId}/shares`, payload)
+        .then((r) => r.data),
+    updateShare: (shareId: number, payload: DashboardShareUpdatePayload) =>
+      http
+        .patch<DashboardShareRecord>(`/shares/${shareId}`, payload)
+        .then((r) => r.data),
+    removeShare: (shareId: number) =>
+      http.delete(`/shares/${shareId}`).then((r) => r.data),
+    // Comments
+    listComments: (dashboardId: number, widgetId?: string) =>
+      http
+        .get<DashboardCommentRecord[]>(
+          `/dashboards/${dashboardId}/comments${widgetId ? `?widget_id=${widgetId}` : ""}`
+        )
+        .then((r) => r.data),
+    createComment: (dashboardId: number, payload: DashboardCommentCreatePayload) =>
+      http
+        .post<DashboardCommentRecord>(`/dashboards/${dashboardId}/comments`, payload)
+        .then((r) => r.data),
+    updateComment: (commentId: number, payload: DashboardCommentUpdatePayload) =>
+      http
+        .patch<DashboardCommentRecord>(`/comments/${commentId}`, payload)
+        .then((r) => r.data),
+    removeComment: (commentId: number) =>
+      http.delete(`/comments/${commentId}`).then((r) => r.data),
   },
   reports: {
     create: (id: number, payload: ExportPayload) =>

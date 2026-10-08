@@ -37,6 +37,7 @@ from app.schemas import (
 )
 from app.services.data_service import (
     PREVIEW_ROWS,
+    MemoryUpload,
     dataframe_records,
     delete_dataset_files,
     profile_columns,
@@ -144,7 +145,7 @@ def upload_dataset(
     user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Upload one CSV/XLSX/Stata/SPSS/R file, profile it and register it."""
-    return _ingest_upload(db, user, file, project_id)
+    return ingest_upload(db, user, file, project_id)
 
 
 @router.post("/upload-batch", response_model=BatchUploadResponse)
@@ -180,7 +181,7 @@ def upload_datasets_batch(
         # A per-file failure is recorded, not raised: the loop must continue so
         # the remaining files still get their chance.
         try:
-            outcome = _ingest_upload(db, user, upload, project_id)
+            outcome = ingest_upload(db, user, upload, project_id)
         except HTTPException as exc:
             db.rollback()
             results.append(
@@ -221,10 +222,10 @@ def _check_project_permission(
     require_org_role(db, project.organization_id, user, ORG_ROLE_ANALYST)
 
 
-def _ingest_upload(
+def ingest_upload(
     db: Session,
     user: User,
-    file: UploadFile,
+    file: UploadFile | MemoryUpload,
     project_id: Optional[int],
 ) -> Dict[str, Any]:
     """Store, read, profile and register one uploaded file.
@@ -232,6 +233,9 @@ def _ingest_upload(
     Shared by the single-file and batch endpoints so both go through exactly
     the same validation, size limit, label handling and rollback path. Two
     copies of this would drift, and the batch is the one nobody tests by hand.
+    The web-scrape import reuses it too: an HTML table arrives here as CSV
+    bytes (``MemoryUpload``), so a scraped dataset cannot diverge from an
+    uploaded one.
     """
     original_name = Path(file.filename or "").name
     try:

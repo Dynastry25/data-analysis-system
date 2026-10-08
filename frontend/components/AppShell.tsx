@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import { useAuthGuard } from "@/lib/useAuth";
 import { AiSidePanel } from "./AiSidePanel";
+import { CommandPalette } from "./CommandPalette";
 import { api, DatasetSummary, UserProfile } from "@/lib/api";
 import {
   PIPELINE_PHASES,
@@ -232,6 +233,7 @@ export function AppShell({
   const pathname = usePathname();
   const { t } = useLanguage();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
   const [journeyProgress, setJourneyProgress] = useState<StageProgressInput | null>(
@@ -257,6 +259,27 @@ export function AppShell({
   useEffect(() => {
     setDrawerOpen(false);
   }, [pathname]);
+
+  // Command Palette keyboard shortcut (Ctrl/Cmd+K)
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      // Ignore if user is typing in an input/textarea
+      if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement ||
+        event.target instanceof HTMLSelectElement ||
+        (event.target as HTMLElement).isContentEditable
+      ) {
+        return;
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+        event.preventDefault();
+        setCommandOpen(true);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // The journey rail lives in the shell so all 11 stages are visible from every
   // dataset page, not just the one that happens to render a stepper.
@@ -568,47 +591,46 @@ export function AppShell({
             />
 
             <main id="main-content" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-content">
-            <header className="mb-5">
-              {pipeline.datasetId !== null && (
-                <Breadcrumbs datasetId={pipeline.datasetId} pathname={pathname} />
-              )}
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0">
-                  {eyebrow && (
-                    <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-primary-600">
-                      {eyebrow}
-                    </span>
-                  )}
-                  <h1 className="font-display text-h1 tracking-[-0.015em] text-ink">
-                    {title}
-                  </h1>
-                  {description && (
-                    <p className="mt-1.5 max-w-3xl text-body text-ink-muted">
-                      {description}
-                    </p>
+            <div className="mx-auto max-w-content">
+              <header className="mb-5">
+                {pipeline.datasetId !== null && (
+                  <Breadcrumbs datasetId={pipeline.datasetId} pathname={pathname} />
+                )}
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    {eyebrow && (
+                      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-primary-600">
+                        {eyebrow}
+                      </span>
+                    )}
+                    <h1 className="font-display text-h1 tracking-[-0.015em] text-ink">
+                      {title}
+                    </h1>
+                    {description && (
+                      <p className="mt-1.5 max-w-3xl text-body text-ink-muted">
+                        {description}
+                      </p>
+                    )}
+                  </div>
+                  {actions && (
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
                   )}
                 </div>
-                {actions && (
-                  <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
-                )}
-              </div>
-            </header>
+              </header>
 
-            {pipeline.datasetId !== null && journeyProgress && (
-              <JourneyRail
-                datasetId={pipeline.datasetId}
-                currentStage={pipeline.stage}
-                progress={journeyProgress}
-              />
-            )}
+              {pipeline.datasetId !== null && journeyProgress && (
+                <JourneyRail
+                  datasetId={pipeline.datasetId}
+                  currentStage={pipeline.stage}
+                  progress={journeyProgress}
+                />
+              )}
 
-            <div className="space-y-6">{children}</div>
+              <div className="space-y-6">{children}</div>
             </div>
           </main>
-          </div>
 
-          {/*
+{/*
             The panel returns null when there is no dataset to ground it in, so
             a new account sees the shell exactly as it was before this existed.
           */}
@@ -618,6 +640,14 @@ export function AppShell({
             activeVersion={activeDataset?.current_version ?? null}
           />
         </div>
+
+        {/* Command Palette (Ctrl/Cmd+K) */}
+        <CommandPalette
+          isOpen={commandOpen}
+          onClose={() => setCommandOpen(false)}
+          datasets={datasets}
+        />
+      </div>
     </div>
   );
 }

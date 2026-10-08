@@ -7,6 +7,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { DatasetSummary, UserProfile } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 import { PIPELINE_PHASES, PIPELINE_STAGES } from "@/lib/pipeline";
 import { useLogout } from "@/lib/useAuth";
 
@@ -45,6 +46,7 @@ function formatTimestamp(value: string | null): string {
 export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
   const router = useRouter();
   const logout = useLogout();
+  const { t, language } = useLanguage();
   const headerRef = useRef<HTMLElement | null>(null);
   const [openMenu, setOpenMenu] = useState<MenuKey | null>(null);
   const [query, setQuery] = useState("");
@@ -117,7 +119,7 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
     >
       <button
         type="button"
-        aria-label="Fungua menyu"
+        aria-label={t("top.openMenu")}
         onClick={onOpenMenu}
         className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-ink-secondary transition-colors hover:bg-surface-sunken lg:hidden"
       >
@@ -126,7 +128,7 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
 
       <Link
         href="/dashboard"
-        aria-label="StatFlow nyumbani"
+        aria-label={t("top.home")}
         className="flex shrink-0 items-center lg:hidden"
       >
         <span className="flex h-8 w-8 items-center justify-center rounded bg-primary-600 text-white">
@@ -151,8 +153,8 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
             setSearchActive(true);
           }}
           onFocus={() => setSearchActive(true)}
-          placeholder="Search projects, datasets, analyses…"
-          aria-label="Search projects, datasets, analyses"
+          placeholder={t("top.searchPlaceholder")}
+          aria-label={t("top.searchAria")}
           className="h-[37px] w-full rounded-md border border-transparent bg-surface-sunken pl-8 pr-14 text-body text-ink transition-colors duration-200 ease-standard placeholder:text-ink-muted focus:border-[#CFC7F8] focus:bg-surface-panel focus:outline-none focus:ring-0 [&::-webkit-search-cancel-button]:appearance-none"
         />
         {/*
@@ -168,7 +170,7 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
             {matches.length === 0 ? (
               <div className="px-3 py-3">
                 <p className="text-body text-ink-secondary">
-                  Hakuna dataset inayolingana na “{query.trim()}”.
+                  {t("top.searchNone", { q: query.trim() })}
                 </p>
                 <Link
                   href="/upload"
@@ -178,7 +180,7 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
                   }}
                   className="mt-1 inline-block text-caption font-medium text-primary-700 hover:underline"
                 >
-                  Pakia faili jipya
+                  {t("top.searchUploadNew")}
                 </Link>
               </div>
             ) : (
@@ -201,8 +203,11 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
                           {dataset.original_filename}
                         </span>
                         <span className="block text-caption text-ink-muted">
-                          Safu {dataset.row_count.toLocaleString()} · Columns{" "}
-                          {dataset.column_count} · {dataset.status}
+                          {t("top.searchMeta", {
+                            rows: dataset.row_count.toLocaleString(),
+                            columns: dataset.column_count,
+                            status: dataset.status,
+                          })}
                         </span>
                       </span>
                       <Icon
@@ -223,21 +228,21 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
               }}
               className="block border-t border-surface-border px-3 py-2 text-caption font-medium text-primary-700 hover:bg-surface-sunken"
             >
-              Datasets zote ({datasets.length})
+              {t("top.allDatasetsCount", { count: datasets.length })}
             </Link>
           </div>
         )}
       </form>
 
       <div className="ml-auto flex shrink-0 items-center gap-1">
-        <Link href="/upload" aria-label="Pakia data">
+        <Link href="/upload" aria-label={t("dash.uploadCta")}>
           <Button size="small" icon="upload" className="hidden sm:inline-flex">
-            <span className="hidden md:inline">Pakia data</span>
+            <span className="hidden md:inline">{t("dash.uploadCta")}</span>
           </Button>
         </Link>
         <Link
           href="/upload"
-          aria-label="Pakia data"
+          aria-label={t("dash.uploadCta")}
           className="flex h-11 w-11 items-center justify-center rounded text-ink-secondary hover:bg-surface-sunken sm:hidden"
         >
           <Icon name="upload" size={20} />
@@ -252,22 +257,28 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
             className={menuButton}
           >
             <Icon name="info" size={18} />
-            <span className="hidden xl:inline">Msaada</span>
+            <span className="hidden xl:inline">{t("nav.help")}</span>
           </button>
           {openMenu === "help" && (
             <div className="absolute right-0 top-full z-40 mt-2 w-80 rounded-md border border-surface-border bg-surface-panel p-3 shadow-overlay">
               <p className="text-overline uppercase tracking-wide text-ink-muted">
-                Mwongozo wa mtiririko
+                {t("top.guideTitle")}
               </p>
               <p className="mt-1 text-caption text-ink-secondary">
-                Hatua 6, na kazi zake ndani ya kila moja.
+                {t("top.guideBody")}
               </p>
               <ul className="mt-2 space-y-2">
                 {phasesWithStages.map((phase) => (
                   <li key={phase.key}>
-                    <p className="text-body font-medium text-ink">{phase.label}</p>
+                    <p className="text-body font-medium text-ink">
+                      {language === "en" ? phase.labelEn : phase.label}
+                    </p>
                     <p className="text-caption text-ink-muted">
-                      {phase.stages.map((stage) => stage.fullLabel).join(" · ")}
+                      {phase.stages
+                        .map((stage) =>
+                          language === "en" ? stage.labelEn : stage.fullLabel
+                        )
+                        .join(" · ")}
                     </p>
                   </li>
                 ))}
@@ -282,23 +293,23 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
             aria-haspopup="true"
             aria-expanded={openMenu === "activity"}
             onClick={() => toggleMenu("activity")}
-            aria-label="Shughuli za hivi karibuni"
+            aria-label={t("top.activityAria")}
             className={menuButton}
           >
             <Icon name="history" size={18} />
-            <span className="hidden xl:inline">Shughuli</span>
+            <span className="hidden xl:inline">{t("top.activity")}</span>
           </button>
           {openMenu === "activity" && (
             <div className="absolute right-0 top-full z-40 mt-2 w-80 rounded-md border border-surface-border bg-surface-panel p-3 shadow-overlay">
               <p className="text-overline uppercase tracking-wide text-ink-muted">
-                Shughuli za hivi karibuni
+                {t("top.activityTitle")}
               </p>
               <p className="mt-1 text-caption text-ink-secondary">
-                Datasets zako, mpya kwanza.
+                {t("top.activityBody")}
               </p>
               {datasets.length === 0 ? (
                 <p className="mt-3 text-body text-ink-muted">
-                  Hakuna dataset bado. Pakia faili lako la kwanza.
+                  {t("top.activityEmpty")}
                 </p>
               ) : (
                 <ul className="mt-2 divide-y divide-surface-border">
@@ -332,7 +343,7 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
                 onClick={() => setOpenMenu(null)}
                 className="mt-2 block border-t border-surface-border pt-2 text-caption font-medium text-primary-700 hover:underline"
               >
-                Datasets zote
+                {t("top.allDatasets")}
               </Link>
             </div>
           )}
@@ -350,7 +361,7 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
               <Icon name="user" size={16} />
             </span>
             <span className="hidden truncate sm:inline">
-              {user?.full_name ?? "Mtumiaji"}
+              {user?.full_name ?? t("top.user")}
             </span>
             <Icon name="chevron-down" size={14} className="shrink-0" />
           </button>
@@ -358,7 +369,7 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
             <div className="absolute right-0 top-full z-40 mt-2 w-64 rounded-md border border-surface-border bg-surface-panel p-2 shadow-overlay">
               <div className="px-2 py-1.5">
                 <p className="truncate text-body font-medium text-ink">
-                  {user?.full_name ?? "Mtumiaji"}
+                  {user?.full_name ?? t("top.user")}
                 </p>
                 <p className="truncate text-caption text-ink-muted">{user?.email ?? ""}</p>
               </div>
@@ -370,7 +381,7 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
                   className="flex items-center gap-2 rounded px-2 py-2 text-body text-ink-secondary transition-colors hover:bg-surface-sunken"
                 >
                   <Icon name="shield" size={16} />
-                  Admin portal
+                  {t("nav.admin")}
                 </Link>
               )}
               <Button
@@ -380,7 +391,7 @@ export function TopBar({ user, datasets, onOpenMenu }: TopBarProps) {
                 className="w-full justify-start text-danger hover:bg-danger-bg"
               >
                 <Icon name="logout" size={16} />
-                Toka (logout)
+                {t("top.logout")}
               </Button>
             </div>
           )}

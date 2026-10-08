@@ -35,6 +35,15 @@ MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024  # 50MB
 # generous for a folder of survey exports and low enough to stay honest.
 MAX_BATCH_FILES = 20
 
+# Web scraping (URL -> HTML tables -> dataset). The guard rails the scrape
+# service enforces: one short fetch, a hard cap on the body, and bounds on what
+# a single page may ask the platform to import.
+SCRAPE_TIMEOUT_SECONDS = 15
+SCRAPE_MAX_BYTES = 5 * 1024 * 1024  # 5MB of HTML is already a very large page
+SCRAPE_MAX_TABLES = 50  # preview and import both stop listing after this
+SCRAPE_MAX_ROWS = 100_000  # one scraped table's row ceiling
+SCRAPE_MAX_REDIRECTS = 5
+
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 

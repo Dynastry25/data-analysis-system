@@ -6,10 +6,17 @@ import { DragEvent, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
-import { SelectInput } from "@/components/Field";
+import { SelectInput, TextInput } from "@/components/Field";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
-import { api, apiErrorMessage, OrgProject, Organization } from "@/lib/api";
+import {
+  api,
+  apiErrorMessage,
+  OrgProject,
+  Organization,
+  ScrapePreviewResponse,
+} from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 import {
   UPLOAD_FILE_EXTENSION_LIST,
   UPLOAD_FILE_GROUPS,
@@ -31,6 +38,7 @@ interface QueuedFile {
 export default function UploadPage() {
   const router = useRouter();
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const [dragging, setDragging] = useState(false);
   const [queue, setQueue] = useState<QueuedFile[]>([]);
   const [progress, setProgress] = useState(0);
@@ -40,6 +48,16 @@ export default function UploadPage() {
   const [selectedOrg, setSelectedOrg] = useState<number | "">("");
   const [projects, setProjects] = useState<OrgProject[]>([]);
   const [selectedProject, setSelectedProject] = useState<number | "">("");
+  // Web-scrape source: the preview is bound to the URL it came from, so the
+  // import always resubmits that exact URL with the chosen table index.
+  const [scrapeUrl, setScrapeUrl] = useState("");
+  const [scraping, setScraping] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState<ScrapePreviewResponse | null>(
+    null
+  );
+  const [scrapeSelection, setScrapeSelection] = useState<number | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [scrapeError, setScrapeError] = useState<string | null>(null);
 
   useEffect(() => {
     api.organizations
@@ -72,12 +90,61 @@ export default function UploadPage() {
     setSelectedProject("");
   }
 
+  function changeScrapeUrl(value: string) {
+    setScrapeUrl(value);
+    // The preview belongs to the URL it was fetched from; editing the URL must
+    // not leave a stale table list whose import would target something else.
+    setScrapeResult(null);
+    setScrapeSelection(null);
+    setScrapeError(null);
+  }
+
+  async function handleFindTables() {
+    const url = scrapeUrl.trim();
+    if (!url) return;
+    setScraping(true);
+    setScrapeError(null);
+    setScrapeResult(null);
+    setScrapeSelection(null);
+    try {
+      setScrapeResult(await api.scrape.preview(url));
+    } catch (caught) {
+      setScrapeError(apiErrorMessage(caught));
+    } finally {
+      setScraping(false);
+    }
+  }
+
+  async function handleImportTable() {
+    if (!scrapeResult || scrapeSelection === null) return;
+    setImporting(true);
+    setScrapeError(null);
+    try {
+      const created = await api.scrape.importTable({
+        url: scrapeResult.url,
+        table_index: scrapeSelection,
+        project_id: selectedProject === "" ? null : selectedProject,
+      });
+      showToast(
+        t("scrape.imported", { name: created.original_filename }),
+        "success"
+      );
+      router.push(`/datasets/${created.dataset_id}`);
+    } catch (caught) {
+      const message = apiErrorMessage(caught);
+      setScrapeError(message);
+      showToast(message, "danger");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   function validate(candidate: File): string | null {
     if (!isAcceptedUploadName(candidate.name)) {
-      return `Aina ya faili haikusajiliwa. Pakia faili la ${UPLOAD_FILE_EXTENSION_LIST} pekee.`;
+      return t("upload.errType", { list: UPLOAD_FILE_EXTENSION_LIST });
     }
     if (candidate.size > MAX_MB * 1024 * 1024) {
-      return `Faili ni kubwa mno. Ukubwa wa juu ni ${MAX_MB}MB.`;
+      return t("upload.errSize", { max: MAX_MB });
     }
     return null;
   }
@@ -113,9 +180,7 @@ export default function UploadPage() {
         else merged.push(item);
       }
       if (merged.length > MAX_FILES) {
-        setError(
-          `Umechagua faili ${merged.length}. Kipakio cha moja hukubali ${MAX_FILES} faili.`
-        );
+        setError(t("upload.errTooMany", { count: merged.length, max: MAX_FILES }));
         return merged.slice(0, MAX_FILES);
       }
       setError(null);
@@ -156,16 +221,16 @@ export default function UploadPage() {
       const first = result.results.find((entry) => entry.dataset_id);
 
       if (failed.length === 0) {
-        showToast(
-          `Faili ${result.uploaded_count} zimepakiwa`,
-          "success"
-        );
+        showToast(t("upload.toastOk", { count: result.uploaded_count }), "success");
       } else {
         // Partial success is stated plainly, with the count that actually
         // landed — a green toast over a batch where a third failed would be a
         // lie the user only discovers later.
         showToast(
-          `Faili ${result.uploaded_count} zimepakiwa, ${result.failed_count} zimeshindwa`,
+          t("upload.toastPartial", {
+            ok: result.uploaded_count,
+            failed: result.failed_count,
+          }),
           "warning"
         );
       }
@@ -188,27 +253,30 @@ export default function UploadPage() {
 
   return (
     <AppShell
-      eyebrow="VIngilio vya data"
-      title="Pakia data"
-      description={`Aina zinazokubalika: ${UPLOAD_FILE_GROUPS}. Ukubwa wa juu ${MAX_MB}MB. Mfumo unasafisha na kuchambua moja kwa moja.`}
+      eyebrow={t("upload.eyebrow")}
+      title={t("upload.title")}
+      description={t("upload.description", {
+        formats: UPLOAD_FILE_GROUPS,
+        max: MAX_MB,
+      })}
     >
       {orgs.length > 0 && (
         <Card
-          title="Weka data kwenye mradi"
+          title={t("upload.project.title")}
           icon="folder"
-          description="Ikiwa uchague mradi, wanachama wa shirika hilo wataweza kufikia data kulingana na kiwango chao. Ikiwa hutaki, data itabaki yawewe pekee."
+          description={t("upload.project.body")}
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <SelectInput
-              label="Shirika"
+              label={t("upload.project.org")}
               value={selectedOrg}
               options={[
-                { value: "", label: "Data ya binafsi (Bila mradi)" },
+                { value: "", label: t("upload.project.personal") },
                 ...orgs.map((org) => ({
                   value: String(org.id),
                   label:
                     org.my_role === "viewer"
-                      ? `${org.name} (mtazamaji)`
+                      ? `${org.name} (${t("upload.project.viewer")})`
                       : org.name,
                 })),
               ]}
@@ -217,12 +285,14 @@ export default function UploadPage() {
               }
             />
             <SelectInput
-              label="Mradi"
+              label={t("upload.project.project")}
               value={selectedProject}
               disabled={selectedOrg === ""}
-              placeholder="— Bila mradi —"
+              placeholder={t("upload.project.noProject")}
               hint={
-                selectedOrg === "" ? "Chagua shirika kwanza" : "Chagua mradi wa kuhifadhi data"
+                selectedOrg === ""
+                  ? t("upload.project.pickOrg")
+                  : t("upload.project.pickProject")
               }
               options={projects.map((project) => ({
                 value: String(project.id),
@@ -239,9 +309,9 @@ export default function UploadPage() {
       )}
 
       <Card
-        title="Faili"
+        title={t("upload.file.title")}
         icon="upload"
-        description="Kila faili inapakiwa kwa pekee, ili hitilafu moja isisite kuchafua zilizopakia."
+        description={t("upload.file.body")}
       >
         {/* The zone is a <label>, so the whole surface is clickable and the native
           file input supplies keyboard and screen-reader behaviour for free.
@@ -266,12 +336,10 @@ export default function UploadPage() {
             className={dragging ? "text-primary-600" : "text-primary-500"}
           />
           <span className="block text-body-lg font-medium text-ink">
-            {queue.length > 0
-              ? "Ongeza faili zaidi"
-              : "Kokota faili zako hapa (drag & drop)"}
+            {queue.length > 0 ? t("upload.dropMore") : t("upload.dropHint")}
           </span>
           <span className="block text-body text-ink-muted">
-            au bofya eneo hili kuchagua faili — unaweza chagua zaidi ya moja
+            {t("upload.dropClick")}
           </span>
           <span className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
             {UPLOAD_FORMATS.map((format) => (
@@ -284,7 +352,7 @@ export default function UploadPage() {
             ))}
           </span>
           <span className="mt-1 text-caption text-ink-muted">
-            hadi {MAX_MB}MB kwa faili · hadi {MAX_FILES} faili kwa wakati mmoja
+            {t("upload.dropLimits", { max: MAX_MB, files: MAX_FILES })}
           </span>
           <input
             type="file"
@@ -307,7 +375,7 @@ export default function UploadPage() {
           <div className="mt-6 space-y-3">
             <div className="flex items-center justify-between gap-3">
               <p className="text-body font-medium text-ink">
-                Faili zilizochaguliwa ({ready.length})
+                {t("upload.selected", { count: ready.length })}
               </p>
               {!uploading && (
                 <Button
@@ -319,7 +387,7 @@ export default function UploadPage() {
                     setError(null);
                   }}
                 >
-                  Ondoa zote
+                  {t("upload.clearAll")}
                 </Button>
               )}
             </div>
@@ -369,7 +437,7 @@ export default function UploadPage() {
                           current.filter((_, position) => position !== index)
                         )
                       }
-                      aria-label={`Ondoa ${entry.file.name}`}
+                      aria-label={t("upload.remove", { name: entry.file.name })}
                       className="shrink-0 rounded-full p-1 text-ink-muted transition-colors duration-150 ease-standard hover:bg-surface-sunken hover:text-danger-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
                     >
                       <Icon name="close" size={16} />
@@ -383,8 +451,7 @@ export default function UploadPage() {
               <p className="flex items-start gap-2 text-caption text-danger-700">
                 <Icon name="alert-circle" size={14} className="mt-0.5 shrink-0" />
                 <span>
-                  Faili {rejected.length} hazitawekwa kwa kuwa hazikubaliwa. Ondoa
-                  au.badilisha ili kuendelea.
+                  {t("upload.rejectedNotice", { count: rejected.length })}
                 </span>
               </p>
             )}
@@ -396,7 +463,7 @@ export default function UploadPage() {
                   aria-valuenow={progress}
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-label="Maendeleo ya upakiaji"
+                  aria-label={t("upload.progressAria")}
                   className="h-2 w-full overflow-hidden rounded-full bg-surface-sunken"
                 >
                   <div
@@ -405,8 +472,11 @@ export default function UploadPage() {
                   />
                 </div>
                 <p className="mt-1.5 text-caption text-ink-secondary">
-                  Inapakia faili {ready.length} · {(totalBytes / 1024 / 1024).toFixed(2)} MB ·{" "}
-                  {progress}%
+                  {t("upload.progressBody", {
+                    count: ready.length,
+                    mb: (totalBytes / 1024 / 1024).toFixed(2),
+                    pct: progress,
+                  })}
                 </p>
               </div>
             )}
@@ -418,8 +488,8 @@ export default function UploadPage() {
               onClick={handleUpload}
             >
               {ready.length > 1
-                ? `Pakia faili ${ready.length}`
-                : "Pakia na uchambue"}
+                ? t("upload.submitMany", { count: ready.length })
+                : t("upload.submitOne")}
             </Button>
           </div>
         )}
@@ -435,20 +505,176 @@ export default function UploadPage() {
         )}
       </Card>
 
-      <Card title="Vidokezo vya faili lako" icon="info" description="Ili matokeo yawe bora:">
+      <Card
+        title={t("scrape.cardTitle")}
+        icon="globe"
+        description={t("scrape.cardBody")}
+      >
+        <div className="space-y-4">
+          <TextInput
+            label={t("scrape.urlLabel")}
+            hint={t("scrape.urlHint")}
+            placeholder="https://…"
+            type="url"
+            value={scrapeUrl}
+            onChange={(event) => changeScrapeUrl(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void handleFindTables();
+              }
+            }}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              loading={scraping}
+              disabled={!scrapeUrl.trim() || importing}
+              onClick={() => void handleFindTables()}
+            >
+              {scraping ? t("scrape.fetching") : t("scrape.find")}
+            </Button>
+            {scrapeResult && (
+              <Button
+                variant="ghost"
+                disabled={importing}
+                onClick={() => changeScrapeUrl(scrapeUrl)}
+              >
+                {t("scrape.clear")}
+              </Button>
+            )}
+          </div>
+
+          {scrapeError && (
+            <p
+              role="alert"
+              className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger-bg px-3 py-2.5 text-body text-danger-700"
+            >
+              <Icon name="alert-circle" size={16} className="mt-0.5 shrink-0" />
+              {scrapeError}
+            </p>
+          )}
+
+          {scrapeResult && (
+            <div className="space-y-3">
+              <p className="text-caption text-ink-secondary">
+                {t("scrape.found", { count: scrapeResult.table_count })}
+                {scrapeResult.title
+                  ? ` · ${t("scrape.pageTitle", { title: scrapeResult.title })}`
+                  : ""}
+              </p>
+              {/*
+                A radio group, not a list of links: exactly one table can be
+                imported, and aria-checked carries which. The first rows are
+                shown so the choice is made by content, not by index number.
+              */}
+              <ul
+                role="radiogroup"
+                aria-label={t("scrape.cardTitle")}
+                className="space-y-2"
+              >
+                {scrapeResult.tables.map((table) => {
+                  const active = scrapeSelection === table.index;
+                  const previewColumns = table.columns.slice(0, 4);
+                  return (
+                    <li key={table.index}>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        disabled={importing}
+                        onClick={() => setScrapeSelection(table.index)}
+                        className={`w-full rounded-md border px-3 py-2.5 text-left transition-colors duration-150 ease-standard ${
+                          active
+                            ? "border-primary-500 bg-primary-50"
+                            : "border-surface-border bg-surface-panel hover:border-surface-border-strong hover:bg-surface-sunken"
+                        }`}
+                      >
+                        <span className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-body font-medium text-ink">
+                            {t("scrape.tableN", { n: table.index + 1 })}
+                          </span>
+                          <span className="text-caption text-ink-muted">
+                            {table.row_count.toLocaleString()} {t("common.rows")} ·{" "}
+                            {table.column_count} {t("common.columns")}
+                          </span>
+                        </span>
+                        {table.row_count === 0 ? (
+                          <span className="mt-1 block text-caption text-danger-700">
+                            {t("scrape.emptyTable")}
+                          </span>
+                        ) : (
+                          <span className="mt-2 block overflow-x-auto">
+                            <table className="w-full table-fixed border-collapse text-caption">
+                              <thead>
+                                <tr className="text-left text-ink-muted">
+                                  {previewColumns.map((column) => (
+                                    <th
+                                      key={column}
+                                      className="max-w-[9rem] truncate border-b border-surface-border pb-1 pr-2 font-medium"
+                                    >
+                                      {column}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody className="font-mono">
+                                {table.preview_rows
+                                  .slice(0, 3)
+                                  .map((row, rowIndex) => (
+                                    <tr key={rowIndex}>
+                                      {previewColumns.map((column) => (
+                                        <td
+                                          key={column}
+                                          className="max-w-[9rem] truncate py-0.5 pr-2 text-ink-secondary"
+                                        >
+                                          {row[column] === null ||
+                                          row[column] === undefined
+                                            ? "—"
+                                            : String(row[column])}
+                                        </td>
+                                      ))}
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  loading={importing}
+                  disabled={scrapeSelection === null}
+                  onClick={() => void handleImportTable()}
+                >
+                  {importing ? t("scrape.importing") : t("scrape.import")}
+                </Button>
+                <span className="text-caption text-ink-muted">
+                  {scrapeSelection === null
+                    ? t("scrape.selectHint")
+                    : t("scrape.tableN", { n: scrapeSelection + 1 })}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card
+        title={t("upload.tips.title")}
+        icon="info"
+        description={t("upload.tips.body")}
+      >
         <ul className="list-disc space-y-1.5 pl-5 text-body text-ink-secondary">
-          <li>Row ya kwanza iwe majina ya columns (header).</li>
-          <li>Columns za namba zisiwe na alama kama &quot;TSh&quot; au &quot;%&quot;.</li>
-          <li>Tarehe ziwe katika muundo mmoja (YYYY-MM-DD inapendekezwa).</li>
-          <li>
-            Faili za Stata (.dta), SPSS (.sav, .zsav, .por) na R (.RData, .rda,
-            .rds) zinakubalika; lebo za thamani (value labels) huhifadhiwa kama
-            namba ili columns hizo zipate kubalika na kuchambuliwa.
-          </li>
-          <li>
-            Faili kubwa (safu 100,000+) zinasindika nyuma ya pazia unaweza kuendelea
-            kutumia mfumo.
-          </li>
+          <li>{t("upload.tips.header")}</li>
+          <li>{t("upload.tips.noMarks")}</li>
+          <li>{t("upload.tips.dates")}</li>
+          <li>{t("upload.tips.statFiles")}</li>
+          <li>{t("upload.tips.large")}</li>
         </ul>
       </Card>
     </AppShell>

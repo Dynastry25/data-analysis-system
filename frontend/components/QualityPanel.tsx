@@ -2,6 +2,7 @@
 
 import { Icon } from "./Icon";
 import { ScoreRing } from "./ScoreRing";
+import { useLanguage } from "@/lib/i18n";
 
 export interface QualityBar {
   label: string;
@@ -35,12 +36,13 @@ export function QualityPanel({
   subtitle,
   action,
 }: QualityPanelProps) {
+  const { t } = useLanguage();
   return (
     <article className="flex min-h-[307px] flex-col rounded-lg border border-surface-border bg-surface-panel p-5 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="font-display text-body font-semibold text-ink">
-            Data health
+            {t("quality.title")}
           </h2>
           {subtitle && (
             <p className="mt-0.5 text-caption text-ink-muted">{subtitle}</p>
@@ -55,7 +57,9 @@ export function QualityPanel({
           <strong className="block font-display text-[15px] font-semibold text-ink">
             {caption}
           </strong>
-          <p className="my-1 text-caption text-ink-muted">Workspace quality score</p>
+          <p className="my-1 text-caption text-ink-muted">
+            {t("quality.scoreLabel")}
+          </p>
           {change && (
             <span className="inline-flex items-center gap-1 text-caption font-medium text-success">
               <Icon name="chevron-up" size={11} />

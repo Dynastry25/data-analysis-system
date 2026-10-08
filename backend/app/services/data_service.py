@@ -3,6 +3,7 @@
 Everything that touches the dataset files lives here so the routers stay thin.
 """
 
+import io
 import math
 import re
 import shutil
@@ -67,8 +68,24 @@ def validate_extension(filename: str) -> str:
     return ext
 
 
+class MemoryUpload:
+    """An in-memory stand-in for ``fastapi.UploadFile``.
+
+    Web scraping turns an HTML table into CSV bytes without touching disk;
+    handing one of these to ``store_upload_file``/``ingest_upload`` sends the
+    table through the exact same pipeline as a picked file — extension check,
+    50MB cap, profiling, column metadata — instead of a second path that could
+    drift from it. Duck-typed on purpose: those functions read ``filename``
+    and ``file``, nothing else.
+    """
+
+    def __init__(self, filename: str, data: bytes) -> None:
+        self.filename = filename
+        self.file = io.BytesIO(data)
+
+
 def store_upload_file(
-    upload: UploadFile, user_id: int, dataset_id: int
+    upload: UploadFile | MemoryUpload, user_id: int, dataset_id: int
 ) -> Tuple[Path, str]:
     """Stream an upload to ``storage/{user_id}/{dataset_id}/data{ext}``.
 

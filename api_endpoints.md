@@ -60,6 +60,28 @@ ni **analyst+** katika shirika ya mradi (vinginevyo 403).
 
 ---
 
+### POST /v1/scrape/preview
+Onyesha majedwali ya HTML yaliyopatikana kwenye ukurasa (uhamishaji wa URL →
+jedwali). JWT inahitajika. URL lazima iwe `http://` au `https://` ya umma;
+anwani za private/loopback (SSRF) zinakataliwa, kurasa zenye zaidi ya
+marudioso 5 na ukurasa zaidi ya 5MB pia zinakataliwa.
+**Body:** `{ url }`
+**Response:** `{ url, final_url, title, table_count, tables: [{ index, row_count, column_count, columns, preview_rows }] }`
+Hakuna HTML inayohifadhiwa kwenye server: import huonyesha URL ile ile tena,
+kwa hivyo `index` na table ni sawa maadamu ukurasa haujabadilika.
+
+### POST /v1/scrape/import
+Ingiza jedwali moja (kwa `index` kutoka preview ya URL ile ile) kama dataset
+ya kawaida. Maudhui hupakuliwa kama CSV chini ya pazia na kupitia njia ile ile
+ya `upload`, hivyo profiling, dataset versions, miradi na RBAC hubaki vile vile.
+**Body:** `{ url, table_index, project_id?, filename? }`
+**Response:** ya `POST /datasets/upload` (`dataset_id`, `row_count`, `columns`, …)
+`filename` ikiachwa, jina hujitokeza pekee k.m. `example.org-table-2.csv`;
+bila kujali jina lililowekwa, faili huhifadhiwa kama `.csv`.
+Vikomo: jedwali hadi safu 100,000; majedwali 50 kwenye ukurasa mmoja.
+
+---
+
 ## 3. Dataset versions, cleaning & transforms
 
 ### POST /v1/datasets/{id}/clean

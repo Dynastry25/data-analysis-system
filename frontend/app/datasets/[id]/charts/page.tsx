@@ -16,13 +16,23 @@ import { useToast } from "@/components/Toast";
 import {
   api,
   apiErrorMessage,
+  ChartAnnotation,
+  ChartFilter,
   ChartFormat,
   ChartPaletteName,
   ChartRecord,
   ChartType,
   ColumnProfile,
 } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 import { CHART_PALETTES } from "@/lib/constants";
+import {
+  emptyCondition,
+  FilterBuilder,
+  FilterCondition,
+  FilterLogic,
+  buildFilterConfig,
+} from "@/components/FilterBuilder";
 
 const CHART_TYPE_OPTIONS: ChartTypeOption[] = [
   // "bar" was labelled "Chati ya mistari", which is a line chart in Swahili --
@@ -31,6 +41,9 @@ const CHART_TYPE_OPTIONS: ChartTypeOption[] = [
   { value: "line", label: "Chati ya mstari", use: "Mwenendo kwa muda" },
   { value: "scatter", label: "Chati ya alama", use: "Uhusiano wa variables mbili" },
   { value: "histogram", label: "Histograma", use: "Mgawanyo wa data" },
+  { value: "box", label: "Chati ya sanduku", use: "Mgawanyo kwa kundi" },
+  { value: "pie", label: "Chati ya pai", use: "Sehemu ya jumla" },
+  { value: "heatmap", label: "Ramani ya joto", use: "Thamani kwa seli mbili" },
 ];
 
 const AGGREGATION_LABELS: Record<string, string> = {
@@ -53,6 +66,7 @@ export default function ChartsPage() {
   const params = useParams<{ id: string }>();
   const datasetId = Number(params?.id);
   const { showToast } = useToast();
+  const { t } = useLanguage();
 
   const [columns, setColumns] = useState<ColumnProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +76,17 @@ export default function ChartsPage() {
   const [groupBy, setGroupBy] = useState("");
   const [aggregate, setAggregate] = useState<(typeof AGGREGATIONS)[number]>("sum");
   const [bins, setBins] = useState("20");
+  const [colorBy, setColorBy] = useState("");
+  const [sizeBy, setSizeBy] = useState("");
+  const [facetBy, setFacetBy] = useState("");
+  // Chart-level filter: drawn from fewer rows, writes no version.
+  const [filterLogic, setFilterLogic] = useState<FilterLogic>("and");
+  const [filterConditions, setFilterConditions] = useState<FilterCondition[]>([]);
+  // Text notes pinned to data positions.
+  const [annotationText, setAnnotationText] = useState("");
+  const [annotationX, setAnnotationX] = useState("");
+  const [annotationY, setAnnotationY] = useState("");
+  const [annotations, setAnnotations] = useState<ChartAnnotation[]>([]);
   const [creating, setCreating] = useState(false);
   const [current, setCurrent] = useState<ChartRecord | null>(null);
   const [saved, setSaved] = useState<ChartRecord[]>([]);
@@ -112,25 +137,72 @@ export default function ChartsPage() {
     setCreating(true);
     try {
       const needsY = chartType === "bar" || chartType === "line";
+      const usesAggregate =
+        chartType === "bar" || chartType === "line" || chartType === "pie" || chartType === "heatmap";
+      // The filter builder validates rows (column chosen, value present) and
+      // returns the exact condition shape the chart endpoint expects.
+      let filters: ChartFilter | null = null;
+      if (filterConditions.length > 0) {
+        const built = buildFilterConfig(filterConditions);
+        if (built.error || !built.config) {
+          showToast(built.error ?? t("viz.filter.invalid"), "danger");
+          return;
+        }
+        filters = {
+          conditions: (built.config.conditions ?? []) as ChartFilter["conditions"],
+          logic: filterLogic,
+        };
+      }
       const record = await api.charts.create(datasetId, {
         chart_type: chartType,
         config: {
           x: xColumn,
-          ...(chartType === "scatter" || (needsY && yColumn) ? { y: yColumn } : {}),
+          ...(chartType === "scatter" || chartType === "box" || (needsY && yColumn)
+            ? { y: yColumn }
+            : {}),
+          ...(chartType === "pie" && yColumn ? { y: yColumn } : {}),
           ...(groupBy ? { group_by: groupBy } : {}),
-          ...(needsY ? { aggregate } : {}),
+          ...(usesAggregate ? { aggregate } : {}),
           ...(chartType === "histogram" ? { bins: Number(bins) || 20 } : {}),
+          ...(chartType === "scatter" && colorBy ? { color_by: colorBy } : {}),
+          ...(chartType === "scatter" && sizeBy ? { size_by: sizeBy } : {}),
+          ...(chartType === "box" && colorBy ? { color_by: colorBy } : {}),
+          ...(chartType === "heatmap" && colorBy && !groupBy ? { color_by: colorBy } : {}),
+          ...(facetBy ? { facet_by: facetBy } : {}),
+          ...(filters ? { filters } : {}),
+          ...(annotations.length > 0 ? { annotations } : {}),
           ...(format ? { format } : {}),
         },
       });
       setCurrent(record);
-      showToast("Chati imetengenezwa", "success");
+      showToast(t("viz.created"), "success");
       await loadSaved();
     } catch (caught) {
       showToast(apiErrorMessage(caught), "danger");
     } finally {
       setCreating(false);
     }
+  }
+
+  function addAnnotation() {
+    const text = annotationText.trim();
+    const x = annotationX.trim();
+    if (!text || !x) {
+      showToast(t("viz.annotation.required"), "danger");
+      return;
+    }
+    const numericY = annotationY.trim() === "" ? undefined : Number(annotationY);
+    setAnnotations((previous) => [
+      ...previous,
+      {
+        text,
+        x,
+        ...(annotationY.trim() === "" ? {} : { y: Number.isFinite(numericY as number) ? numericY : annotationY.trim() }),
+      },
+    ]);
+    setAnnotationText("");
+    setAnnotationX("");
+    setAnnotationY("");
   }
 
   return (
@@ -196,6 +268,37 @@ export default function ChartsPage() {
             value={groupBy}
             options={allColumns.map((column) => ({ value: column, label: column }))}
             onChange={(event) => setGroupBy(event.target.value)}
+          />
+
+          {(chartType === "scatter" || chartType === "box" || chartType === "heatmap") && (
+            <SelectInput
+              label="Color"
+              optionalLabel="hiari"
+              placeholder="— Hakuna —"
+              value={colorBy}
+              options={allColumns.map((column) => ({ value: column, label: column }))}
+              onChange={(event) => setColorBy(event.target.value)}
+            />
+          )}
+
+          {chartType === "scatter" && (
+            <SelectInput
+              label="Size"
+              optionalLabel="hiari"
+              placeholder="— Hakuna —"
+              value={sizeBy}
+              options={numericColumns.map((column) => ({ value: column, label: column }))}
+              onChange={(event) => setSizeBy(event.target.value)}
+            />
+          )}
+
+          <SelectInput
+            label="Facet"
+            optionalLabel="hiari"
+            placeholder="— Hakuna —"
+            value={facetBy}
+            options={allColumns.map((column) => ({ value: column, label: column }))}
+            onChange={(event) => setFacetBy(event.target.value)}
           />
 
           {chartType === "bar" || chartType === "line" ? (
@@ -344,6 +447,87 @@ export default function ChartsPage() {
           Mapendeleo yanahifadhiwa pamoja na chati kila unapotengeneza. Rangi zinarudishwa
           kwa kundi moja kila chati ya dataset hii.
         </p>
+      </Card>
+
+      <Card
+        title="Chujio cha chati"
+        description="Punguza rows zinazochorwa bila kuandika version mpya. Hutumia operators zile zile za kitendo cha Filter."
+        icon="filter"
+      >
+        <FilterBuilder
+          columns={columns}
+          conditions={filterConditions}
+          logic={filterLogic}
+          onChange={setFilterConditions}
+          onLogicChange={setFilterLogic}
+          attempted={false}
+          error={null}
+        />
+        <p className="mt-3 text-caption text-ink-muted">
+          {filterConditions.length === 0
+            ? "Hakuna kichujio — chati inaonyesha rows zote."
+            : `Masharti ${filterConditions.length} yatachanganya na ${filterLogic === "and" ? "NA" : "AU"}.`}
+        </p>
+      </Card>
+
+      <Card
+        title="Alama (annotations)"
+        description="Andika maelezo kwenye nafasi fulani ya data — huenda na chati unapohifadhi na kupakua."
+        icon="tag"
+      >
+        <div className="grid gap-3 sm:grid-cols-[1fr_8rem_8rem_auto] sm:items-end">
+          <TextInput
+            label="Maandishi"
+            placeholder="Mwisho wa robo hii"
+            value={annotationText}
+            onChange={(event) => setAnnotationText(event.target.value)}
+          />
+          <TextInput
+            label="X"
+            value={annotationX}
+            onChange={(event) => setAnnotationX(event.target.value)}
+          />
+          <TextInput
+            label="Y"
+            optionalLabel="hiari"
+            value={annotationY}
+            onChange={(event) => setAnnotationY(event.target.value)}
+          />
+          <Button variant="secondary" onClick={addAnnotation} icon="plus">
+            Ongeza
+          </Button>
+        </div>
+        {annotations.length > 0 && (
+          <ul className="mt-3 space-y-1.5">
+            {annotations.map((annotation, index) => (
+              <li
+                key={`${annotation.x}-${index}`}
+                className="flex items-center justify-between gap-3 rounded-md border border-surface-border px-3 py-2 text-caption"
+              >
+                <span className="text-ink">
+                  <span className="font-medium">{annotation.text}</span>{" "}
+                  <span className="text-ink-muted">
+                    @ x={String(annotation.x)}
+                    {annotation.y !== undefined && annotation.y !== null
+                      ? `, y=${String(annotation.y)}`
+                      : ""}
+                  </span>
+                </span>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  icon="trash"
+                  aria-label={`Ondoa alama ${index + 1}`}
+                  onClick={() =>
+                    setAnnotations((previous) =>
+                      previous.filter((_, position) => position !== index)
+                    )
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       <Card

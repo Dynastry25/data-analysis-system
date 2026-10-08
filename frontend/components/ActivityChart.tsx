@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { Icon } from "./Icon";
+import { useLanguage } from "@/lib/i18n";
 
 const RANGES = ["4W", "12W", "6M"] as const;
 type Range = (typeof RANGES)[number];
@@ -29,6 +30,7 @@ interface ActivityChartProps {
  */
 export function ActivityChart({ dates, loading = false }: ActivityChartProps) {
   const [range, setRange] = useState<Range>("12W");
+  const { t } = useLanguage();
 
   const series = useMemo(() => {
     const weeks = RANGE_WEEKS[range];
@@ -69,23 +71,28 @@ export function ActivityChart({ dates, loading = false }: ActivityChartProps) {
       : "";
 
   const gridValues = [max, max * 0.75, max * 0.5, max * 0.25, 0];
-  const rangeLabel = range === "6M" ? "6 months" : `${range.slice(0, -1)} weeks`;
+  // The range is named rather than printed raw ("4W"), because "4W" means
+  // nothing in prose and the label sits inside a sentence.
+  const rangeLabel =
+    range === "6M"
+      ? t("chart.activity.months")
+      : t("chart.activity.weeks", { count: Number(range.slice(0, -1)) });
 
   return (
     <article className="flex min-h-[307px] flex-col rounded-lg border border-surface-border bg-surface-panel p-5 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="font-display text-body font-semibold text-ink">
-            Analysis activity
+            {t("chart.activity.title")}
           </h2>
           <p className="mt-0.5 text-caption text-ink-muted">
-            Completed analyses across your workspace
+            {t("chart.activity.body")}
           </p>
         </div>
         <div
           className="flex shrink-0 gap-0.5 rounded-[7px] border border-surface-border bg-surface-sunken p-0.5"
           role="group"
-          aria-label="Chart range"
+          aria-label={t("chart.activity.range")}
         >
           {RANGES.map((item) => (
             <button
@@ -113,7 +120,9 @@ export function ActivityChart({ dates, loading = false }: ActivityChartProps) {
             <strong className="tabular font-display text-h1 font-bold tracking-[-0.02em] text-ink">
               {total}
             </strong>
-            <span className="text-caption text-ink-muted">in the last {rangeLabel}</span>
+            <span className="text-caption text-ink-muted">
+              {t("chart.activity.total", { range: rangeLabel })}
+            </span>
           </>
         )}
       </div>
@@ -124,7 +133,7 @@ export function ActivityChart({ dates, loading = false }: ActivityChartProps) {
           <div className="flex h-[190px] flex-col items-center justify-center gap-2 text-center">
             <Icon name="chart-line" size={22} className="text-ink-faint" />
             <p className="text-caption text-ink-muted">
-              No analyses in this period yet.
+              {t("chart.activity.empty")}
             </p>
           </div>
         ) : (
@@ -147,7 +156,10 @@ export function ActivityChart({ dates, loading = false }: ActivityChartProps) {
               preserveAspectRatio="none"
               className="h-[190px] w-full pl-7"
               role="img"
-              aria-label={`${total} analyses over the last ${rangeLabel}`}
+              aria-label={t("chart.activity.ariaLabel", {
+                count: total,
+                range: rangeLabel,
+              })}
             >
               <defs>
                 <linearGradient id="activity-fill" x1="0" y1="0" x2="0" y2="1">

@@ -487,6 +487,31 @@ def _apply_condition(frame: pd.DataFrame, condition: Dict[str, Any]) -> np.ndarr
     raise OperationError(f"Unsupported operator '{operator}'")
 
 
+def filter_mask(
+    frame: pd.DataFrame,
+    conditions: List[Dict[str, Any]],
+    logic: Any = "and",
+) -> "np.ndarray":
+    """Boolean mask of the rows matching every filter condition.
+
+    Public so charts can filter a frame for *drawing* without creating a new
+    dataset version: a studio filter lives on the chart config, not in
+    history. The operators are the same ``FILTER_OPERATORS`` the Filter
+    operation uses, so a filter previewed on a chart behaves exactly like the
+    same filter saved as a step.
+    """
+    logic = str(logic or "and").lower()
+    if logic not in {"and", "or"}:
+        raise OperationError("'logic' must be 'and' or 'or'")
+    if not isinstance(conditions, list) or not conditions:
+        raise OperationError("'conditions' must be a non-empty list of conditions")
+    masks = [_apply_condition(frame, condition) for condition in conditions]
+    mask = masks[0]
+    for extra in masks[1:]:
+        mask = (mask & extra) if logic == "and" else (mask | extra)
+    return mask
+
+
 def op_filter(frame: pd.DataFrame, config: Dict[str, Any]) -> OperationResult:
     conditions = config.get("conditions")
     if conditions:
@@ -495,10 +520,7 @@ def op_filter(frame: pd.DataFrame, config: Dict[str, Any]) -> OperationResult:
         logic = str(config.get("logic") or "and").lower()
         if logic not in {"and", "or"}:
             raise OperationError("'logic' must be 'and' or 'or'")
-        masks = [_apply_condition(frame, condition) for condition in conditions]
-        mask = masks[0]
-        for extra in masks[1:]:
-            mask = (mask & extra) if logic == "and" else (mask | extra)
+        mask = filter_mask(frame, conditions, logic)
         description = {"logic": logic, "conditions": conditions}
     else:
         mask = _apply_condition(frame, config)

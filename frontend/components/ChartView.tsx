@@ -69,6 +69,41 @@ export function ChartView({ data, height = 380, format, title }: ChartViewProps)
       const isNumericY = data.chart_type !== "histogram";
       const showLabels =
         format?.show_data_labels !== false && isNumericY && data.chart_type !== "scatter";
+      if (data.chart_type === "pie") {
+        return {
+          type: "pie",
+          name: series.name,
+          labels: (series.labels ?? []) as (string | number)[],
+          values: (series.values ?? []) as number[],
+          marker: { colors: palette },
+          textinfo: "label+percent",
+          textposition: "inside",
+          insidetextorientation: "auto",
+          hovertemplate: `%{label}<br>%{value} (%{percent})<extra></extra>`,
+        } as Data;
+      }
+      if (data.chart_type === "heatmap") {
+        return {
+          type: "heatmap",
+          name: series.name,
+          x: (series.x ?? []) as (string | number)[],
+          y: (series.y ?? []) as (string | number)[],
+          z: (series.z ?? []) as number[][],
+          colorscale: "Blues",
+          showscale: true,
+          hovertemplate: `%{x} · %{y}<br>%{z}<extra>${series.name}</extra>`,
+        } as Data;
+      }
+      if (data.chart_type === "box") {
+        return {
+          type: "box",
+          name: series.name,
+          y: (series.y ?? []) as number[],
+          marker: { color },
+          boxpoints: "outliers",
+          hovertemplate: `${series.name}<br>Median: %{median}<br>Q1: %{q1} · Q3: %{q3}<extra></extra>`,
+        } as Data;
+      }
       if (data.chart_type === "histogram") {
         return {
           type: "histogram",
@@ -81,13 +116,33 @@ export function ChartView({ data, height = 380, format, title }: ChartViewProps)
         } as Data;
       }
       if (data.chart_type === "scatter") {
+        // size_by arrives as raw values; Plotly wants pixel diameters, so the
+        // mapping is linear from the observed range to a readable 6–22px.
+        const rawSizes = series.sizes ?? [];
+        const finite = rawSizes.filter(
+          (value): value is number => typeof value === "number" && Number.isFinite(value)
+        );
+        const minSize = finite.length ? Math.min(...finite) : 0;
+        const maxSize = finite.length ? Math.max(...finite) : 0;
+        const span = maxSize - minSize || 1;
+        const markerSizes = rawSizes.map((value) =>
+          typeof value === "number" && Number.isFinite(value)
+            ? 6 + (16 * (value - minSize)) / span
+            : 7
+        );
         return {
           type: "scatter",
           mode: "markers",
           name: series.name,
           x: series.x as number[],
           y: (series.y ?? []) as number[],
-          marker: { color, size: 7, opacity: 0.75, line: { color: "#ffffff", width: 0.5 } },
+          marker: {
+            color,
+            size: markerSizes.length ? markerSizes : 7,
+            sizemode: "diameter",
+            opacity: 0.75,
+            line: { color: "#ffffff", width: 0.5 },
+          },
           hovertemplate: `%{x}, %{y}<extra>${series.name}</extra>`,
         } as Data;
       }
@@ -122,6 +177,10 @@ export function ChartView({ data, height = 380, format, title }: ChartViewProps)
 
   const [showTable, setShowTable] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  // Plotly's zoom buttons live in the modebar; the studio keeps its own small
+  // toolbar (fixedZoomIn / fixedZoomOut / reset) instead so zoom is one tap on
+  // touch screens, where the modebar's drag-zoom is unreliable.
+  const [zoomLevel, setZoomLevel] = useState(1);
   const hostRef = useRef<HTMLDivElement>(null);
 
   // Source attribution travels in `meta`; a chart that cannot name the version
@@ -131,25 +190,26 @@ export function ChartView({ data, height = 380, format, title }: ChartViewProps)
     data?.series?.reduce((total, series) => total + (series.x?.length ?? 0), 0) ?? 0;
   const pointsDrawn = pointsAvailable;
 
-  const exportImage = useCallback(async () => {
-    const graph = hostRef.current?.firstElementChild as any;
-    if (!graph || typeof Plotly === "undefined") return;
-    try {
-      const url = await Plotly.toImage(graph, {
-        format: "png",
-        height,
-        width: graph.clientWidth || 900,
-      });
-      // toImage resolves to a data URL; the download name lives on the anchor,
-      // because plotly has no filename option of its own.
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "statflow-chart.png";
-      link.click();
-    } catch {
-      // Export is a convenience: a failure here must not take the chart down.
-    }
-  }, [height]);
+  const exportImage = useCallback(
+    async (imageFormat: "png" | "svg" | "pdf" = "png") => {
+      const graph = hostRef.current?.firstElementChild as any;
+      if (!graph || typeof Plotly === "undefined") return;
+      try {
+        const url = await Plotly.toImage(graph, {
+          format: imageFormat,
+          height,
+          width: graph.clientWidth || 900,
+        });
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `statflow-chart.${imageFormat}`;
+        link.click();
+      } catch {
+        // Export is a convenience: a failure here must not take the chart down.
+      }
+    },
+    [height]
+  );
 
   const tableRows = useMemo(() => {
     if (!data?.series?.length) return [];
@@ -181,6 +241,41 @@ export function ChartView({ data, height = 380, format, title }: ChartViewProps)
   const showGrid = format?.show_grid !== false;
   const xType = format?.x_scale === "log" ? "log" : undefined;
   const yType = format?.y_scale === "log" ? "log" : undefined;
+  // Zoom is a camera on fixed data: narrowing the visible window never changes
+  // the series. Ranges are recomputed from the drawn points, so zooming works
+  // identically for bars, lines, scatters, histograms and boxes. Pie and
+  // heatmap have no meaningful cartesian window, so the buttons stay hidden
+  // for them rather than doing nothing.
+  const zoomable = data.chart_type !== "pie" && data.chart_type !== "heatmap";
+  const numericExtent = useMemo(() => {
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (const series of data.series) {
+      for (const value of series.x ?? []) {
+        if (typeof value === "number" && Number.isFinite(value)) xs.push(value);
+      }
+      for (const value of series.y ?? []) {
+        if (typeof value === "number" && Number.isFinite(value)) ys.push(value);
+      }
+    }
+    return { xs, ys };
+  }, [data]);
+  const zoomWindow = useMemo(() => {
+    if (!zoomable || zoomLevel === 1 || data.chart_type === "box") {
+      return { xRange: undefined as undefined | number[], yRange: undefined as undefined | number[] };
+    }
+    const focus = (values: number[]) => {
+      if (values.length === 0) return undefined;
+      const low = Math.min(...values);
+      const high = Math.max(...values);
+      const span = high - low || Math.abs(high) || 1;
+      const pad = span * 0.05;
+      const window = span / zoomLevel;
+      const centre = (low + high) / 2;
+      return [centre - window / 2 - pad, centre + window / 2 + pad];
+    };
+    return { xRange: focus(numericExtent.xs), yRange: focus(numericExtent.ys) };
+  }, [zoomable, zoomLevel, numericExtent, data.chart_type]);
 
   const layout: Partial<Layout> = {
     height,
@@ -197,6 +292,7 @@ export function ChartView({ data, height = 380, format, title }: ChartViewProps)
       linecolor: AXIS_LINE_COLOR,
       zeroline: false,
       automargin: true,
+      ...(zoomWindow.xRange ? { range: zoomWindow.xRange } : {}),
     },
     yaxis: {
       title: { text: data.y_label, font: AXIS_FONT, standoff: 10 },
@@ -205,11 +301,25 @@ export function ChartView({ data, height = 380, format, title }: ChartViewProps)
       linecolor: AXIS_LINE_COLOR,
       zeroline: false,
       automargin: true,
+      ...(zoomWindow.yRange ? { range: zoomWindow.yRange } : {}),
     },
     showlegend: data.series.length > 1,
     legend: { orientation: "h", y: -0.2, font: AXIS_FONT },
     bargap: 0.25,
     transition: { duration: 400, easing: "cubic-out" },
+    annotations: (data.annotations ?? []).map((annotation) => ({
+      text: annotation.text,
+      x: annotation.x as string | number,
+      y: (annotation.y ?? "") as string | number,
+      xref: "x",
+      yref: "y",
+      showarrow: true,
+      arrowhead: 2,
+      arrowcolor: "#17151F",
+      bgcolor: "rgba(245,246,250,0.92)",
+      bordercolor: "#D4D1DA",
+      font: { family: "DM Sans, Segoe UI, sans-serif", size: 11, color: "#17151F" },
+    })),
   };
 
   const description =
@@ -240,14 +350,60 @@ export function ChartView({ data, height = 380, format, title }: ChartViewProps)
           >
             Data
           </Button>
+          {zoomable && (
+            <>
+              <Button
+                variant="ghost"
+                size="small"
+                icon="plus"
+                onClick={() => setZoomLevel((level) => Math.min(level * 1.5, 8))}
+                disabled={zoomLevel >= 8}
+                aria-label="Zoom in"
+              />
+              <Button
+                variant="ghost"
+                size="small"
+                icon="minus"
+                onClick={() => setZoomLevel((level) => Math.max(level / 1.5, 1))}
+                disabled={zoomLevel <= 1}
+                aria-label="Zoom out"
+              />
+              <Button
+                variant="ghost"
+                size="small"
+                icon="refresh"
+                onClick={() => setZoomLevel(1)}
+                disabled={zoomLevel === 1}
+                aria-label="Reset zoom"
+              />
+            </>
+          )}
           <Button
             variant="ghost"
             size="small"
             icon="download"
-            onClick={exportImage}
+            onClick={() => void exportImage("png")}
             aria-label="Pakua chati kama picha"
           >
             PNG
+          </Button>
+          <Button
+            variant="ghost"
+            size="small"
+            icon="download"
+            onClick={() => void exportImage("svg")}
+            aria-label="Download chart as vector graphic"
+          >
+            SVG
+          </Button>
+          <Button
+            variant="ghost"
+            size="small"
+            icon="download"
+            onClick={() => void exportImage("pdf")}
+            aria-label="Download chart as PDF"
+          >
+            PDF
           </Button>
           <Button
             variant="ghost"

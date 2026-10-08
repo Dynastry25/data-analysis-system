@@ -20,6 +20,7 @@ export type IconName =
   | "check"
   | "arrow-right"
   | "plus"
+  | "minus"
   | "table"
   | "clipboard"
   | "calculator"
@@ -51,7 +52,8 @@ export type IconName =
   | "mail"
   | "eye"
   | "tag"
-  | "globe";
+  | "globe"
+  | "grip-vertical";
 
 /**
  * Outline icon set (Lucide-style, 24×24 viewBox). One consistent icon set is
@@ -171,6 +173,7 @@ const PATHS: Record<IconName, ReactNode> = {
       <line x1="5" y1="12" x2="19" y2="12" />
     </>
   ),
+  minus: <line x1="5" y1="12" x2="19" y2="12" />,
   table: (
     <>
       <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -372,6 +375,16 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" />
       <line x1="7" y1="7" x2="7.01" y2="7" />
+    </>
+  ),
+  "grip-vertical": (
+    <>
+      <circle cx="9" cy="6" r="1" />
+      <circle cx="15" cy="6" r="1" />
+      <circle cx="9" cy="12" r="1" />
+      <circle cx="15" cy="12" r="1" />
+      <circle cx="9" cy="18" r="1" />
+      <circle cx="15" cy="18" r="1" />
     </>
   ),
 };

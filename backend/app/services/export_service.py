@@ -359,6 +359,295 @@ def build_report(
         return build_xlsx(path, dataset, analyses, charts)
     if file_format == "pdf":
         return build_pdf(path, dataset, analyses, charts)
-    raise ValueError("format must be 'pdf' or 'xlsx'")
+    if file_format == "docx":
+        return build_docx(path, dataset, analyses, charts)
+    if file_format == "pptx":
+        return build_pptx(path, dataset, analyses, charts)
+    if file_format == "html":
+        return build_html(path, dataset, analyses, charts)
+    raise ValueError(f"format must be one of 'pdf', 'xlsx', 'docx', 'pptx', or 'html'; got '{file_format}'")
+
+
+# -------------------------------------------------------------------- DOCX
+
+
+def build_docx(
+    path: Path,
+    dataset: Dict[str, Any],
+    analyses: Sequence[Dict[str, Any]],
+    charts: Sequence[Dict[str, Any]],
+) -> Path:
+    """Write a Microsoft Word document (.docx) with the report content."""
+    from docx import Document
+    from docx.shared import Inches
+    
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = Document()
+    
+    # Title
+    doc.add_heading(f"Data Analysis Report", 0)
+    doc.add_paragraph(f"Generated on {datetime.now().strftime('%d %b %Y %H:%M')}", style="Intense Quote")
+    
+    # Dataset summary
+    doc.add_heading("Dataset Summary", level=1)
+    table = doc.add_table(rows=0, cols=2)
+    table.style = "Table Grid"
+    
+    def add_row(table, field, value):
+        row = table.add_row().cells
+        row[0].text = field
+        row[1].text = str(value) if value is not None else ""
+    
+    add_row(table, "Dataset", dataset.get("original_filename"))
+    add_row(table, "File type", dataset.get("file_type"))
+    add_row(table, "Dataset version", dataset.get("current_version"))
+    add_row(table, "Rows", dataset.get("row_count"))
+    add_row(table, "Columns", dataset.get("column_count"))
+    add_row(table, "Status", dataset.get("status"))
+    add_row(table, "Uploaded at", dataset.get("uploaded_at"))
+    add_row(table, "Report generated", datetime.now().isoformat(timespec="seconds"))
+    
+    # Analyses
+    if analyses:
+        doc.add_heading("Statistical Analysis", level=1)
+        for index, analysis in enumerate(analyses, start=1):
+            label = analysis["analysis_type"].replace("_", " ").title()
+            doc.add_heading(f"{index}. {label}", level=2)
+            doc.add_paragraph(f"(Saved {analysis.get('created_at') or ''})", style="Intense Quote")
+            
+            for table_title, frame in flatten_analysis(analysis["analysis_type"], analysis["result"] or {}):
+                if frame.empty:
+                    continue
+                doc.add_paragraph(table_title, style="Heading 3")
+                # Add table as Word table
+                if frame.shape[0] <= PDF_TABLE_ROWS:
+                    table = doc.add_table(rows=1, cols=len(frame.columns))
+                    table.style = "Table Grid"
+                    header_row = table.rows[0].cells
+                    for i, col in enumerate(frame.columns):
+                        header_row[i].text = col
+                    
+                    for row_index, row in enumerate(frame.itertuples(index=False), start=1):
+                        if row_index > PDF_TABLE_ROWS:
+                            break
+                        table.add_row()
+                        for i, value in enumerate(row):
+                            table.cell(row_index, i).text = str(value)[:60]
+                else:
+                    doc.add_paragraph(f"Showing first {PDF_TABLE_ROWS} of {frame.shape[0]} rows (full data in Excel export).")
+                    doc.add_table_from_dataframe(frame.head(PDF_TABLE_ROWS))
+    
+    # Charts
+    if charts:
+        doc.add_heading("Charts", level=1)
+        for index, chart in enumerate(charts, start=1):
+            description = describe_chart(chart["chart_type"], chart.get("config") or {})
+            doc.add_heading(f"{index}. {description}", level=2)
+            frame = chart_to_frame(chart)
+            if frame.empty:
+                doc.add_paragraph("No chart data available.")
+            else:
+                table = doc.add_table(rows=1, cols=len(frame.columns))
+                table.style = "Table Grid"
+                header_row = table.rows[0].cells
+                for i, col in enumerate(frame.columns):
+                    header_row[i].text = col
+                
+                for row_index, row in enumerate(frame.itertuples(index=False), start=1):
+                    table.add_row()
+                    for i, value in enumerate(row):
+                        table.cell(row_index, i).text = str(value)[:60]
+    
+    if not analyses and not charts:
+        doc.add_paragraph("No analysis results or charts were selected for this report.", style="Intense Quote")
+    
+    doc.save(str(path))
+    return path
+
+
+# -------------------------------------------------------------------- PPTX
+
+
+def build_pptx(
+    path: Path,
+    dataset: Dict[str, Any],
+    analyses: Sequence[Dict[str, Any]],
+    charts: Sequence[Dict[str, Any]],
+) -> Path:
+    """Write a Microsoft PowerPoint presentation (.pptx) with the report content."""
+    from pptx import Presentation
+    from pptx.enum.text import MSO_AUTO_SIZE
+    
+    path.parent.mkdir(parents=True, exist_ok=True)
+    prs = Presentation()
+    
+    # Title slide
+    title_slide_layout = prs.slide_layouts[0]
+    slide = prs.slides.add_slide(title_slide_layout)
+    slide.shapes.title.text = "Data Analysis Report"
+    slide.placeholders[1].text = f"Generated on {datetime.now().strftime('%d %b %Y %H:%M')}"
+    
+    # Dataset summary slide
+    slide_layout = prs.slide_layouts[1]
+    slide = prs.slides.add_slide(slide_layout)
+    slide.shapes.title.text = "Dataset Summary"
+    
+    content = slide.shapes.placeholders[1]
+    tf = content.text_frame
+    tf.text = ""
+    p = tf.add_paragraph()
+    p.text = f"Dataset: {dataset.get('original_filename')}"
+    p = tf.add_paragraph()
+    p.text = f"Type: {dataset.get('file_type')}"
+    p = tf.add_paragraph()
+    p.text = f"Version: v{dataset.get('current_version')}"
+    p = tf.add_paragraph()
+    p.text = f"Rows: {dataset.get('row_count')}"
+    p = tf.add_paragraph()
+    p.text = f"Columns: {dataset.get('column_count')}"
+    p = tf.add_paragraph()
+    p.text = f"Status: {dataset.get('status')}"
+    
+    # Analyses slides
+    if analyses:
+        slide_layout = prs.slide_layouts[2]
+        for index, analysis in enumerate(analyses, start=1):
+            slide = prs.slides.add_slide(slide_layout)
+            label = analysis["analysis_type"].replace("_", " ").title()
+            slide.shapes.title.text = f"{index}. {label}"
+            slide.placeholders[1].text = f"(Saved {analysis.get('created_at') or ''})"
+            
+            content = slide.shapes.placeholders[1].text_frame
+            content.text = ""
+            for table_title, frame in flatten_analysis(analysis["analysis_type"], analysis["result"] or {}):
+                if frame.empty:
+                    continue
+                p = content.add_paragraph(table_title)
+                p.font.bold = True
+                p = content.add_paragraph()
+                p.text = frame.to_string()
+    
+    # Charts slides
+    if charts:
+        slide_layout = prs.slide_layouts[3]
+        for index, chart in enumerate(charts, start=1):
+            slide = prs.slides.add_slide(slide_layout)
+            description = describe_chart(chart["chart_type"], chart.get("config") or {})
+            slide.shapes.title.text = f"{index}. {description}"
+            
+            frame = chart_to_frame(chart)
+            if not frame.empty:
+                content = slide.shapes.placeholders[1].text_frame
+                content.text = frame.to_string()
+    
+    if not analyses and not charts:
+        slide = prs.slides.add_slide(prs.slide_layouts[0])
+        slide.shapes.title.text = "No Data"
+        slide.placeholders[1].text = "No analysis results or charts were selected for this report."
+    
+    prs.save(str(path))
+    return path
+
+
+# -------------------------------------------------------------------- HTML
+
+
+def build_html(
+    path: Path,
+    dataset: Dict[str, Any],
+    analyses: Sequence[Dict[str, Any]],
+    charts: Sequence[Dict[str, Any]],
+) -> Path:
+    """Write an HTML report (.html) with the report content."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Data Analysis Report</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }}
+        h1 {{ color: #1E3A8A; border-bottom: 2px solid #DBEAFE; padding-bottom: 10px; }}
+        h2 {{ color: #111827; margin-top: 30px; }}
+        h3 {{ color: #4B5563; }}
+        .summary {{ background-color: #F9FAFB; padding: 15px; border-radius: 5px; margin: 10px 0; }}
+        table {{ border-collapse: collapse; width: 100%; margin: 10px 0; }}
+        th, td {{ border: 1px solid #E5E7EB; padding: 8px; text-align: left; }}
+        th {{ background-color: #DBEAFE; color: #1E3A8A; font-weight: bold; }}
+        tr:nth-child(even) {{ background-color: #F9FAFB; }}
+        .note {{ font-style: italic; color: #6B7280; font-size: 0.9em; }}
+    </style>
+</head>
+<body>
+    <h1>Data Analysis Report</h1>
+    <p class="note">Generated on {datetime.now().strftime('%d %b %Y %H:%M')}</p>
+    
+    <div class="summary">
+        <h2>Dataset Summary</h2>
+        <table>
+            <tr><th>Field</th><th>Value</th></tr>
+            <tr><td>Dataset</td><td>{dataset.get('original_filename', '')}</td></tr>
+            <tr><td>File type</td><td>{dataset.get('file_type', '')}</td></tr>
+            <tr><td>Dataset version</td><td>v{dataset.get('current_version', '')}</td></tr>
+            <tr><td>Rows</td><td>{dataset.get('row_count', '')}</td></tr>
+            <tr><td>Columns</td><td>{dataset.get('column_count', '')}</td></tr>
+            <tr><td>Status</td><td>{dataset.get('status', '')}</td></tr>
+            <tr><td>Uploaded at</td><td>{dataset.get('uploaded_at', '')}</td></tr>
+            <tr><td>Report generated</td><td>{datetime.now().isoformat(timespec='seconds')}</td></tr>
+        </table>
+    </div>
+"""
+    
+    if analyses:
+        html_content += "<h2>Statistical Analysis</h2>\n"
+        for index, analysis in enumerate(analyses, start=1):
+            label = analysis["analysis_type"].replace("_", " ").title()
+            html_content += f"<h3>{index}. {label}</h3>\n"
+            html_content += f"<p class='note'>(Saved {analysis.get('created_at') or ''})</p>\n"
+            
+            for table_title, frame in flatten_analysis(analysis["analysis_type"], analysis["result"] or {}):
+                if frame.empty:
+                    continue
+                html_content += f"<h4>{table_title}</h4>\n"
+                html_content += "<table>\n"
+                html_content += f"<tr><th>{'</th><th>'.join(frame.columns)}</th></tr>\n"
+                for row in frame.itertuples(index=False):
+                    html_content += "<tr>"
+                    for value in row:
+                        html_content += f"<td>{str(value)[:60]}</td>"
+                    html_content += "</tr>\n"
+                html_content += "</table>\n"
+                if frame.shape[0] > PDF_TABLE_ROWS:
+                    html_content += f"<p>Showing first {PDF_TABLE_ROWS} of {frame.shape[0]} rows (full data in the Excel export).</p>\n"
+    
+    if charts:
+        html_content += "<h2>Charts</h2>\n"
+        for index, chart in enumerate(charts, start=1):
+            description = describe_chart(chart["chart_type"], chart.get("config") or {})
+            html_content += f"<h3>{index}. {description}</h3>\n"
+            
+            frame = chart_to_frame(chart)
+            if not frame.empty:
+                html_content += "<table>\n"
+                html_content += f"<tr><th>{'</th><th>'.join(frame.columns)}</th></tr>\n"
+                for row in frame.itertuples(index=False):
+                    html_content += "<tr>"
+                    for value in row:
+                        html_content += f"<td>{str(value)[:60]}</td>"
+                    html_content += "</tr>\n"
+                html_content += "</table>\n"
+    
+    if not analyses and not charts:
+        html_content += "<p class='note'>No analysis results or charts were selected for this report.</p>\n"
+    
+    html_content += """
+</body>
+</html>
+"""
+    
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
+    return path
 
 

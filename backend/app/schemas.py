@@ -1,5 +1,6 @@
 """Pydantic request/response models (they also power the auto-generated /docs)."""
 
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -106,6 +107,74 @@ class BatchUploadResponse(BaseModel):
     uploaded_count: int
     failed_count: int
     results: List[BatchUploadResult]
+
+
+# ------------------------------------------------------------ Web scraping
+
+
+class ScrapePreviewRequest(BaseModel):
+    """A public http(s) page whose HTML tables the user wants to see."""
+
+    url: str = Field(..., min_length=8, max_length=2048)
+
+    @field_validator("url")
+    @classmethod
+    def _url_stripped(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("url is required")
+        return value
+
+
+class ScrapeTablePreview(BaseModel):
+    """One table as it would become a dataset — enough to choose by."""
+
+    index: int
+    row_count: int
+    column_count: int
+    columns: List[str]
+    preview_rows: List[Dict[str, Any]] = []
+
+
+class ScrapePreviewResponse(BaseModel):
+    url: str
+    # Where the page actually ended up after redirects, so the UI can show the
+    # real host when a short link resolves somewhere else.
+    final_url: str
+    title: Optional[str] = None
+    table_count: int
+    tables: List[ScrapeTablePreview]
+
+
+class ScrapeImportRequest(BaseModel):
+    """Import one previously previewed table as a dataset.
+
+    ``table_index`` refers to the order ``/scrape/preview`` returned for the
+    same URL; both endpoints derive it from the same deterministic parse, so no
+    server-side cache has to sit between the two calls.
+    """
+
+    url: str = Field(..., min_length=8, max_length=2048)
+    table_index: int = Field(..., ge=0)
+    # Same semantics as a file upload's project_id: absent/null keeps the
+    # dataset personal; present requires analyst+ in that project's org.
+    project_id: Optional[int] = None
+    # Optional display name; the backend always stores it as .csv.
+    filename: Optional[str] = Field(None, max_length=200)
+
+    @field_validator("url")
+    @classmethod
+    def _url_stripped(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("url is required")
+        return value
+
+    @field_validator("filename")
+    @classmethod
+    def _filename_optional(cls, value: Optional[str]) -> Optional[str]:
+        value = (value or "").strip()
+        return value or None
 
 
 class DatasetSummary(BaseModel):
@@ -247,12 +316,44 @@ class JourneyResponse(BaseModel):
 
 # --------------------------------------------------------------- Charts
 
-ChartType = Literal["bar", "line", "scatter", "histogram"]
+ChartType = Literal["bar", "line", "scatter", "histogram", "box", "pie", "heatmap"]
 AggregationType = Literal["sum", "mean", "count", "min", "max", "median"]
 
 
 PaletteName = Literal["default", "ocean", "sunset", "forest"]
 AxisScale = Literal["linear", "log"]
+
+
+class ChartFilterCondition(BaseModel):
+    """One row-filter condition on a chart, mirroring ``op_filter``.
+
+    Keeping this shape next to (not inside) the cleaning operation is
+    deliberate: a chart filter draws from fewer rows without writing a new
+    dataset version, so it shares the operators but lives on the chart.
+    """
+
+    column: str = Field(..., min_length=1)
+    operator: str = Field(..., min_length=1)
+    value: Any = None
+    values: Optional[List[Any]] = None
+
+
+class ChartFilter(BaseModel):
+    conditions: List[ChartFilterCondition] = Field(default_factory=list)
+    logic: Literal["and", "or"] = "and"
+
+
+class ChartAnnotation(BaseModel):
+    """A text note pinned to a data position on a chart.
+
+    Coordinates are data values (not pixels): annotations travel with the data
+    when the chart is re-rendered or exported.
+    """
+
+    text: str = Field(..., min_length=1, max_length=280)
+    x: Any
+    y: Any = None
+    series: Optional[str] = None
 
 
 class ChartFormat(BaseModel):
@@ -273,6 +374,19 @@ class ChartConfig(BaseModel):
     bins: Optional[int] = Field(default=None, ge=1, le=200)
     limit: Optional[int] = Field(default=5000, ge=1, le=50000)
     format: Optional[ChartFormat] = None
+    # --- Visualization Studio: channel encodings --------------------------
+    # All optional: an old config without them draws exactly like before.
+    # color_by colours points (scatter), splits distributions (box) or shares
+    # of a part-to-whole (pie) by a categorical column; size_by scales scatter
+    # markers by a numeric column; facet_by draws one panel per column value.
+    color_by: Optional[str] = None
+    size_by: Optional[str] = None
+    facet_by: Optional[str] = None
+    # A chart-level filter (same operators as the Filter operation): the chart
+    # draws from fewer rows without writing a new dataset version.
+    filters: Optional[ChartFilter] = None
+    # Text notes pinned to data positions (kept separate from the pixel grid).
+    annotations: List[ChartAnnotation] = Field(default_factory=list)
 
 
 class ChartRequest(BaseModel):
@@ -372,9 +486,75 @@ class DashboardListItem(DashboardResponse):
     pass
 
 
+# --------------------------------------------------------------- Dashboard Collaboration
+
+DashboardShareRole = Literal["viewer", "editor", "admin"]
+
+
+class DashboardShareCreate(BaseModel):
+    user_id: Optional[int] = None
+    organization_id: Optional[int] = None
+    role: DashboardShareRole = "viewer"
+    expires_at: Optional[datetime] = None
+
+    @model_validator(mode="after")
+    def _check_target(self) -> "DashboardShareCreate":
+        if self.user_id is None and self.organization_id is None:
+            raise ValueError("Either user_id or organization_id must be provided")
+        if self.user_id is not None and self.organization_id is not None:
+            raise ValueError("Provide either user_id or organization_id, not both")
+        return self
+
+
+class DashboardShareUpdate(BaseModel):
+    role: Optional[DashboardShareRole] = None
+    expires_at: Optional[datetime] = None
+
+
+class DashboardShareResponse(BaseModel):
+    id: int
+    dashboard_id: int
+    user_id: Optional[int] = None
+    user_email: Optional[str] = None
+    organization_id: Optional[int] = None
+    organization_name: Optional[str] = None
+    role: DashboardShareRole
+    created_by: Optional[int] = None
+    created_by_email: Optional[str] = None
+    created_at: Optional[str] = None
+    expires_at: Optional[str] = None
+
+
+class DashboardCommentCreate(BaseModel):
+    widget_id: Optional[str] = None
+    parent_id: Optional[int] = None
+    content: str = Field(min_length=1, max_length=5000)
+
+
+class DashboardCommentUpdate(BaseModel):
+    content: str = Field(min_length=1, max_length=5000)
+
+
+class DashboardCommentResponse(BaseModel):
+    id: int
+    dashboard_id: int
+    widget_id: Optional[str] = None
+    user_id: int
+    user_email: Optional[str] = None
+    user_name: Optional[str] = None
+    parent_id: Optional[int] = None
+    content: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    replies: List["DashboardCommentResponse"] = Field(default_factory=list)
+
+
+DashboardCommentResponse.model_rebuild()
+
+
 # --------------------------------------------------------------- Export
 
-ExportFormat = Literal["pdf", "xlsx"]
+ExportFormat = Literal["pdf", "xlsx", "docx", "pptx", "html"]
 
 
 class ExportRequest(BaseModel):

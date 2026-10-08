@@ -22,6 +22,7 @@ Hii ni implementesheni ya MVP kwa mujibu wa nyaraka za mradi:
 | Auth (register/login, JWT) | ✅ | `backend/app/routers/auth.py`, `app/login`, `app/register` |
 | **Dashboard home** (metrics, quick actions, recent datasets, workflow guide) | ✅ | `app/dashboard`, AppShell sidebar + `WorkflowStrip` |
 | Upload CSV/XLSX (validation + progress) | ✅ | `backend/app/routers/datasets.py`, `app/upload` |
+| **Web scraping** (URL → majedwali ya HTML → dataset, na SSRF guards) | ✅ | `app/upload` kadi “From the web”, `POST /api/v1/scrape/preview\|import` |
 | Data preview (rows, columns, types) | ✅ | `app/datasets/[id]` |
 | Data profiling (missing/unique/min/max) | ✅ | `GET /datasets/{id}/profile` |
 | Cleaning + transforms with immutable versions + audit trail | ✅ | Data Studio (`app/datasets/[id]/studio`), `POST /api/v1/datasets/{id}/clean|transform`, `dataset_versions` + `dataset_operations` tables |

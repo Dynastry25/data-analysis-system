@@ -246,10 +246,6 @@ export default function SettingsPage() {
                   title: "Mapendeleo ya AI",
                   why: "Hakuna mipango ya AI kwenye mfano wa data.",
                 },
-                {
-                  title: "Lugha",
-                  why: "Mvigezi wa lugha bado ni Kiswahili tu.",
-                },
               ].map((item) => (
                 <li
                   key={item.title}

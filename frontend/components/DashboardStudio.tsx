@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
@@ -14,7 +14,10 @@ import {
   api,
   apiErrorMessage,
   ChartRecord,
+  DashboardCommentRecord,
   DashboardRecord,
+  DashboardShareRecord,
+  DashboardShareRole,
   DashboardWidget,
   DashboardWidgetType,
   ExploreColumn,
@@ -197,6 +200,24 @@ export function DashboardStudio({
   const [editing, setEditing] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [configWidget, setConfigWidget] = useState<string | null>(null);
+  const [draggingWidgetId, setDraggingWidgetId] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // Sharing state
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shares, setShares] = useState<DashboardShareRecord[]>([]);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareTarget, setShareTarget] = useState<{ type: "user" | "org"; id: number; email?: string; name?: string } | null>(null);
+  const [shareRole, setShareRole] = useState<DashboardShareRole>("viewer");
+  const [shareExpires, setShareExpires] = useState("");
+
+  // Comments state
+  const [commentWidgetId, setCommentWidgetId] = useState<string | null>(null);
+  const [comments, setComments] = useState<DashboardCommentRecord[]>([]);
+  const [commentLoading, setCommentLoading] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [replyingTo, setReplyingTo] = useState<number | null>(null);
+  const [replyText, setReplyText] = useState("");
 
   const columnOptions = columns.map((column) => ({ value: column.name, label: column.name }));
   const analysisOptions = analyses.map((analysis) => ({
@@ -207,6 +228,43 @@ export function DashboardStudio({
     value: String(record.chart_id),
     label: `${record.chart_type} · x:${record.config.x}${record.config.y ? ` / ${record.config.y}` : ""}`,
   }));
+
+  // Load shares and comments when editing a saved dashboard
+  useEffect(() => {
+    if (editing) {
+      loadShares();
+      loadComments();
+    } else {
+      setShares([]);
+      setComments([]);
+    }
+  }, [editing]);
+
+  async function loadShares() {
+    if (!editing) return;
+    setShareLoading(true);
+    try {
+      const data = await api.dashboards.listShares(editing);
+      setShares(data);
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function loadComments(widgetId?: string) {
+    if (!editing) return;
+    setCommentLoading(true);
+    try {
+      const data = await api.dashboards.listComments(editing, widgetId);
+      setComments(data);
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    } finally {
+      setCommentLoading(false);
+    }
+  }
 
   function patchWidget(id: string, patch: Partial<DashboardWidget>) {
     setWidgets((previous) =>
@@ -221,6 +279,10 @@ export function DashboardStudio({
     setTitle((previous) => previous || "Dashboard ya uchambuzi");
   }
 
+  function deleteWidget(id: string) {
+    setWidgets((previous) => previous.filter((item) => item.id !== id));
+  }
+
   function moveWidget(id: string, direction: -1 | 1) {
     setWidgets((previous) => {
       const index = previous.findIndex((widget) => widget.id === id);
@@ -230,6 +292,67 @@ export function DashboardStudio({
       [next[index], next[target]] = [next[target], next[index]];
       return next;
     });
+  }
+
+  function duplicateWidget(id: string) {
+    const widget = widgets.find((w) => w.id === id);
+    if (!widget) return;
+    const duplicated: DashboardWidget = {
+      id: `${widget.type}-${Date.now().toString(36)}`,
+      type: widget.type,
+      title: widget.title ? `${widget.title} (copy)` : `Copy of ${widget.type}`, 
+      source: widget.source,
+      analysis_id: widget.analysis_id,
+      column: widget.column,
+      operator: widget.operator,
+      value: widget.value,
+      chart_id: widget.chart_id,
+      content: widget.content,
+    };
+    setWidgets((previous) => {
+      const index = previous.findIndex((w) => w.id === id);
+      const next = [...previous];
+      next.splice(index + 1, 0, duplicated);
+      return next;
+    });
+  }
+
+  function startDrag(e: React.DragEvent, id: string) {
+    e.dataTransfer.setData("text/plain", id);
+    setDraggingWidgetId(id);
+    // Calculate offset so cursor starts at center of widget
+    const rect = (e.target as Element).closest(".widget-card") as HTMLElement;
+    const offsetX = e.clientX - rect.getBoundingClientRect().left;
+    const offsetY = e.clientY - rect.getBoundingClientRect().top;
+    setDragOffset({ x: offsetX, y: offsetY });
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (!draggedId || !draggingWidgetId) return;
+    setDraggingWidgetId(null);
+    setDragOffset({ x: 0, y: 0 });
+    const target = (e.target as Element).closest("li") as HTMLLIElement;
+    if (!target) return;
+    const targetIndex = Array.from(target.parentElement?.children ?? []).indexOf(target);
+    const draggedIndex = widgets.findIndex((w) => w.id === draggedId);
+    if (draggedIndex === -1 || targetIndex === -1) return;
+    setWidgets((previous) => {
+      const next = [...previous];
+      const dragged = next[draggedIndex];
+      const targetItem = next[targetIndex];
+      const isBefore = draggedIndex < targetIndex;
+      const isAfter = draggedIndex > targetIndex;
+      const insertPosition = isBefore ? targetIndex : targetIndex + 1;
+      next.splice(draggedIndex, 1);
+      next.splice(insertPosition, 0, dragged);
+      return next;
+    });
+  }
+
+  function allowDrop(e: React.DragEvent) {
+    e.preventDefault();
   }
 
   async function saveDashboard() {
@@ -259,6 +382,141 @@ export function DashboardStudio({
     } finally {
       setSaving(false);
     }
+  }
+
+  // ---------------------------------------------------------------- Sharing
+
+  async function createShare() {
+    if (!editing || !shareTarget) return;
+    setShareLoading(true);
+    try {
+      const payload = {
+        user_id: shareTarget.type === "user" ? shareTarget.id : undefined,
+        organization_id: shareTarget.type === "org" ? shareTarget.id : undefined,
+        role: shareRole,
+        expires_at: shareExpires || undefined,
+      };
+      await api.dashboards.createShare(editing, payload);
+      showToast("Dashboard imeshirikiwa", "success");
+      setShareTarget(null);
+      setShareRole("viewer");
+      setShareExpires("");
+      setShareModalOpen(false);
+      await loadShares();
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function updateShare(shareId: number, role: DashboardShareRole) {
+    setShareLoading(true);
+    try {
+      await api.dashboards.updateShare(shareId, { role });
+      showToast("Jukumu limesasishwa", "success");
+      await loadShares();
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function deleteShare(shareId: number) {
+    if (!window.confirm("Futa uhusiano huu wa ushirikiano?")) return;
+    setShareLoading(true);
+    try {
+      await api.dashboards.removeShare(shareId);
+      showToast("Uhusiano umefutwa", "success");
+      await loadShares();
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  function openShareModal() {
+    setShareModalOpen(true);
+  }
+
+  // ---------------------------------------------------------------- Comments
+
+  async function createComment() {
+    if (!editing || !newComment.trim()) return;
+    setCommentLoading(true);
+    try {
+      const payload = {
+        widget_id: commentWidgetId || undefined,
+        parent_id: replyingTo || undefined,
+        content: newComment.trim(),
+      };
+      await api.dashboards.createComment(editing, payload);
+      if (replyingTo) {
+        setReplyingTo(null);
+        setReplyText("");
+      } else {
+        setNewComment("");
+      }
+      await loadComments(commentWidgetId || undefined);
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    } finally {
+      setCommentLoading(false);
+    }
+  }
+
+  async function createReply(commentId: number) {
+    if (!editing || !replyText.trim()) return;
+    setCommentLoading(true);
+    try {
+      const payload = {
+        widget_id: commentWidgetId || undefined,
+        parent_id: commentId,
+        content: replyText.trim(),
+      };
+      await api.dashboards.createComment(editing, payload);
+      setReplyingTo(null);
+      setReplyText("");
+      await loadComments(commentWidgetId || undefined);
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    } finally {
+      setCommentLoading(false);
+    }
+  }
+
+  async function updateComment(commentId: number, content: string) {
+    setCommentLoading(true);
+    try {
+      await api.dashboards.updateComment(commentId, { content });
+      showToast("Maoni yamesasishwa", "success");
+      await loadComments(commentWidgetId || undefined);
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    } finally {
+      setCommentLoading(false);
+    }
+  }
+
+  async function deleteComment(commentId: number) {
+    if (!window.confirm("Futa maoni haya?")) return;
+    setCommentLoading(true);
+    try {
+      await api.dashboards.removeComment(commentId);
+      showToast("Maoni yamefutwa", "success");
+      await loadComments(commentWidgetId || undefined);
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    } finally {
+      setCommentLoading(false);
+    }
+  }
+
+  function openComments(widgetId?: string) {
+    setCommentWidgetId(widgetId ?? null);
+    loadComments(widgetId);
   }
 
   function loadDashboard(record: DashboardRecord) {
@@ -479,6 +737,117 @@ export function DashboardStudio({
     );
   }
 
+  function CommentThread({
+    comment,
+    onReply,
+    onUpdate,
+    onDelete,
+    replyingTo,
+    replyText,
+    setReplyText,
+    onSubmitReply,
+  }: {
+    comment: DashboardCommentRecord;
+    onReply: (id: number | null) => void;
+    onUpdate: (id: number, content: string) => void;
+    onDelete: (id: number) => void;
+    replyingTo: number | null;
+    replyText: string;
+    setReplyText: (text: string) => void;
+    onSubmitReply: (commentId: number) => void;
+  }) {
+    const [editing, setEditing] = useState(false);
+    const [editText, setEditText] = useState(comment.content);
+
+    const isReplying = replyingTo === comment.id;
+    const isEditing = editing;
+
+    return (
+      <li className="flex flex-col gap-2 border-l-2 border-surface-border pl-4 ml-4">
+        <div className="flex items-start gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-body font-medium text-ink">{comment.user_name || comment.user_email || "—"}</p>
+              <span className="text-caption text-ink-muted">
+                {comment.created_at ? new Date(comment.created_at).toLocaleString() : ""}
+              </span>
+            </div>
+            {isEditing ? (
+              <div className="flex gap-2">
+                <TextArea
+                  label="Hariri maoni"
+                  rows={2}
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                />
+                <div className="flex flex-col gap-1 mt-2">
+                  <Button size="small" onClick={() => { onUpdate(comment.id, editText); setEditing(false); }}>
+                    Hifadhi
+                  </Button>
+                  <Button variant="ghost" size="small" onClick={() => { setEditText(comment.content); setEditing(false); }}>
+                    Futa
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-body text-ink-secondary whitespace-pre-wrap">{comment.content}</p>
+            )}
+            <div className="flex items-center gap-2 mt-2">
+              {isReplying ? (
+                <div className="flex flex-col gap-2 w-full">
+                  <TextArea
+                    label="Jibu"
+                    rows={2}
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder="Andika jibu lako..."
+                  />
+                  <div className="flex gap-2">
+                    <Button size="small" onClick={() => onSubmitReply(comment.id)}>
+                      Tumia
+                    </Button>
+                    <Button variant="ghost" size="small" onClick={() => onReply(null)}>
+                      Futa
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <Button variant="ghost" size="small" onClick={() => onReply(comment.id)}>
+                    <Icon name="message-circle" size={14} /> Jibu
+                  </Button>
+                  <Button variant="ghost" size="small" onClick={() => setEditing(true)}>
+                    <Icon name="sliders" size={14} /> Hariri
+                  </Button>
+                  <Button variant="danger" size="small" onClick={() => onDelete(comment.id)}>
+                    <Icon name="trash" size={14} /> Futa
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+        {comment.replies.length > 0 && (
+          <ul className="space-y-2">
+            {comment.replies.map((reply) => (
+              <CommentThread
+                key={reply.id}
+                comment={reply}
+                onReply={onReply}
+                onUpdate={onUpdate}
+                onDelete={onDelete}
+                replyingTo={replyingTo}
+                replyText={replyText}
+                setReplyText={setReplyText}
+                onSubmitReply={onSubmitReply}
+              />
+            ))}
+          </ul>
+        )}
+      </li>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <Card
@@ -513,6 +882,11 @@ export function DashboardStudio({
             <Button variant="secondary" size="small" onClick={clearDraft} disabled={widgets.length === 0}>
               Wazi
             </Button>
+            {editing && (
+              <Button variant="secondary" size="small" icon="external-link" onClick={openShareModal}>
+                Shiriki
+              </Button>
+            )}
           </div>
         }
         footer={
@@ -551,19 +925,36 @@ export function DashboardStudio({
             icon="dashboard"
           />
         ) : (
-          <ul className="grid gap-4 md:grid-cols-2">
+          <ul className="grid gap-4 md:grid-cols-2" onDragOver={allowDrop} onDrop={handleDrop}>
             {widgets.map((widget) => (
               <li
                 key={widget.id}
-                className="rounded-md border border-surface-border bg-surface-panel p-3"
+                className={`rounded-md border bg-surface-panel p-3 transition-opacity widget-card ${
+                  draggingWidgetId === widget.id ? "opacity-50 border-primary-500" : "border-surface-border"
+                }`}
+                draggable
+                onDragStart={(e) => startDrag(e, widget.id)}
+                onDragEnd={() => {
+                  setDraggingWidgetId(null);
+                  setDragOffset({ x: 0, y: 0 });
+                }}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <Badge tone="primary" icon={widget.type === "kpi" ? "target" : widget.type === "chart" ? "chart" : widget.type === "insight" ? "lightbulb" : widget.type === "filter" ? "filter" : "clipboard"}>
                     {widget.type}
                   </Badge>
                   <div className="flex items-center gap-1">
+                    <div
+                      className="flex h-8 w-8 items-center justify-center rounded text-ink-muted hover:bg-white/10 cursor-grab active:cursor-grabbing"
+                      draggable
+                      onDragStart={(e) => startDrag(e, widget.id)}
+                      aria-label="Chukua widget"
+                    >
+                      <Icon name="grip-vertical" size={16} />
+                    </div>
                     <Button variant="ghost" size="small" icon="chevron-left" onClick={() => moveWidget(widget.id, -1)} aria-label="Sogeza juu" />
                     <Button variant="ghost" size="small" icon="chevron-right" onClick={() => moveWidget(widget.id, 1)} aria-label="Sogeza chini" />
+                    <Button variant="ghost" size="small" icon="copy" onClick={() => duplicateWidget(widget.id)} aria-label="Rudia widget" />
                     <Button
                       variant="ghost"
                       size="small"
@@ -576,7 +967,7 @@ export function DashboardStudio({
                       size="small"
                       icon="close"
                       aria-label="Futa widget"
-                      onClick={() => setWidgets((previous) => previous.filter((item) => item.id !== widget.id))}
+                      onClick={() => deleteWidget(widget.id)}
                     />
                   </div>
                 </div>
@@ -622,6 +1013,201 @@ export function DashboardStudio({
           </ul>
         )}
       </Card>
+
+      {editing && (
+        <Card
+          title="Maoni"
+          description="Ongeza maoni kwenye dashboard au widget fulani."
+          icon="message-circle"
+          actions={
+            <Button variant="secondary" size="small" icon="message-circle" onClick={() => openComments()}>
+              {commentWidgetId ? "Maoni ya dashboard" : "Maoni ya dashboard"}
+            </Button>
+          }
+        >
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={() => openComments()}
+              className={!commentWidgetId ? "bg-primary-100 text-primary-800" : ""}
+            >
+              Dashboard
+            </Button>
+            {widgets.map((widget) => (
+              <Button
+                key={widget.id}
+                variant="secondary"
+                size="small"
+                onClick={() => openComments(widget.id)}
+                className={commentWidgetId === widget.id ? "bg-primary-100 text-primary-800" : ""}
+              >
+                {widget.title || widget.type}
+              </Button>
+            ))}
+          </div>
+
+          {commentLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <span className="h-6 w-6 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" />
+            </div>
+          ) : comments.length === 0 ? (
+            <EmptyState
+              title="Hakuna maoni bado"
+              description={commentWidgetId ? "Kuwa wa kwanza kuongea maoni kuhusu widget hii." : "Kuwa wa kwanza kuongea maoni kuhusu dashboard hii."}
+              icon="message-circle"
+            />
+          ) : (
+            <ul className="space-y-4">
+              {comments.map((comment) => (
+                <CommentThread
+                  key={comment.id}
+                  comment={comment}
+                  onReply={setReplyingTo}
+                  onUpdate={updateComment}
+                  onDelete={deleteComment}
+                  replyingTo={replyingTo}
+                  replyText={replyText}
+                  setReplyText={setReplyText}
+                  onSubmitReply={createReply}
+                />
+              ))}
+            </ul>
+          )}
+
+          {/* Add comment form */}
+          <div className="mt-4 border-t border-surface-border pt-4">
+            {replyingTo ? (
+              <div className="flex gap-2">
+                <TextArea
+                  label="Jibu"
+                  rows={2}
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  placeholder="Andika jibu lako..."
+                />
+                <div className="flex flex-col gap-2 mt-6">
+                  <Button size="small" onClick={() => createReply(replyingTo!)} loading={commentLoading}>
+                    Tumia
+                  </Button>
+                  <Button variant="ghost" size="small" onClick={() => setReplyingTo(null)}>
+                    Futa
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <TextArea
+                  label={commentWidgetId ? "Maoni kuhusu widget" : "Maoni kuhusu dashboard"}
+                  rows={2}
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  placeholder="Andika maoni yako..."
+                />
+                <Button size="small" onClick={createComment} loading={commentLoading} className="mt-6">
+                  Tumia
+                </Button>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* Share Modal */}
+      {shareModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShareModalOpen(false)}>
+          <div className="w-full max-w-md rounded-md bg-surface-panel p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-h3 text-ink">Shiriki Dashboard</h3>
+              <Button variant="ghost" size="small" icon="close" onClick={() => setShareModalOpen(false)} />
+            </div>
+
+            {shareLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <span className="h-6 w-6 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" />
+              </div>
+            ) : (
+              <>
+                <div className="mb-4">
+                  <label className="block text-caption font-medium text-ink mb-2">Chagua mtumiaji au shirika</label>
+                  <div className="flex gap-2">
+                    <TextInput
+                      label="Barua pepe ya mtumiaji"
+                      placeholder="Tafuta mtumiaji kwa barua pepe..."
+                      value={shareTarget?.email || ""}
+                      onChange={(e) => setShareTarget({ ...shareTarget!, email: e.target.value, type: "user" })}
+                    />
+                  </div>
+                  <p className="text-caption text-ink-muted mt-1">Hii ni moja ya demo - kwenye utekelezaji halisi, hii itaweza kutoka kwenye orodha ya watumiaji/washirika.</p>
+                </div>
+
+                <div className="grid gap-3 mb-4">
+                  <SelectInput
+                    label="Jukumu"
+                    value={shareRole}
+                    options={[
+                      { value: "viewer", label: "Viewer - anaweza kuona tu" },
+                      { value: "editor", label: "Editor - anaweza kubadilisha" },
+                      { value: "admin", label: "Admin - anaweza kushiriki na kufuta" },
+                    ]}
+                    onChange={(e) => setShareRole(e.target.value as DashboardShareRole)}
+                  />
+                  <TextInput
+                    label="Muda wa mwisho (isiyotajika)"
+                    type="datetime-local"
+                    value={shareExpires}
+                    onChange={(e) => setShareExpires(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <Button variant="secondary" onClick={() => setShareModalOpen(false)}>
+                    Futa
+                  </Button>
+                  <Button onClick={createShare} loading={shareLoading} disabled={!shareTarget}>
+                    Shiriki
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {shares.length > 0 && (
+              <div className="mt-6 border-t border-surface-border pt-4">
+                <h4 className="text-body font-medium text-ink mb-3">Washiriki wanao sasa</h4>
+                <ul className="space-y-2 max-h-60 overflow-y-auto">
+                  {shares.map((share) => (
+                    <li key={share.id} className="flex items-center justify-between gap-2 p-2 rounded-md bg-surface-sunken">
+                      <div className="flex items-center gap-2">
+                        <Icon name={share.user_id ? "user" : "building"} size={16} className="text-ink-muted" />
+                        <div>
+                          <p className="text-body text-ink">{share.user_email || share.organization_name || "—"}</p>
+                          <p className="text-caption text-ink-muted">
+                            {share.expires_at ? `Mwisho: ${new Date(share.expires_at).toLocaleDateString()}` : "Hakuna mwisho"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <SelectInput
+                          label="Jukumu"
+                          value={share.role}
+                          options={[
+                            { value: "viewer", label: "Viewer" },
+                            { value: "editor", label: "Editor" },
+                            { value: "admin", label: "Admin" },
+                          ]}
+                          onChange={(e) => updateShare(share.id, e.target.value as DashboardShareRole)}
+                          className="w-32"
+                        />
+                        <Button variant="ghost" size="small" icon="trash" onClick={() => deleteShare(share.id)} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

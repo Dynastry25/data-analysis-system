@@ -22,6 +22,7 @@ import {
   UserProfile,
 } from "@/lib/api";
 import { completedStageCount, PIPELINE_STAGES } from "@/lib/pipeline";
+import { useLanguage, type TranslationKey } from "@/lib/i18n";
 
 function formatDate(value: string | null): string {
   if (!value) return "";
@@ -31,11 +32,11 @@ function formatDate(value: string | null): string {
     : parsed.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
 }
 
-/** Time-of-day greeting, in the same voice as the rest of the copy. */
-function greetingFor(hour: number): string {
-  if (hour < 12) return "Habari za asubuhi";
-  if (hour < 17) return "Habari za mchana";
-  return "Habari za jioni";
+/** Time-of-day greeting, resolved through the dictionary. */
+function greetingKey(hour: number): TranslationKey {
+  if (hour < 12) return "dash.greetingMorning";
+  if (hour < 17) return "dash.greetingAfternoon";
+  return "dash.greetingEvening";
 }
 
 interface DatasetActivity {
@@ -47,11 +48,12 @@ interface DatasetActivity {
 }
 
 function StageDots({ done, total = 6 }: { done: number; total?: number }) {
+  const { t } = useLanguage();
   return (
     <span
       className="inline-flex items-center gap-1"
       role="img"
-      aria-label={`Hatua ${done} kati ya ${total}`}
+      aria-label={t("step.progress", { done, total })}
     >
       {Array.from({ length: total }).map((_, index) => (
         <span
@@ -67,6 +69,7 @@ function StageDots({ done, total = 6 }: { done: number; total?: number }) {
 
 export default function DashboardPage() {
   const { showToast } = useToast();
+  const { t } = useLanguage();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [datasets, setDatasets] = useState<DatasetSummary[]>([]);
   const [activity, setActivity] = useState<Map<number, DatasetActivity>>(new Map());
@@ -179,10 +182,12 @@ export default function DashboardPage() {
   // Same opening row as the design: a greeting that matches the time of day,
   // then the real clock reading rather than an invented one.
   const greeting = now
-    ? `${greetingFor(now.getHours())}${firstName ? `, ${firstName}` : ""}`
+    ? firstName
+      ? `${t(greetingKey(now.getHours()))}, ${firstName}`
+      : t(greetingKey(now.getHours()))
     : firstName
-      ? `Karibu, ${firstName}`
-      : "Dashboard";
+      ? t("dash.greetingFallback", { name: firstName })
+      : t("dash.greetingAnonymous");
   const nowLabel = now
     ? now.toLocaleString("en-GB", {
         weekday: "long",
@@ -192,72 +197,76 @@ export default function DashboardPage() {
         minute: "2-digit",
       })
     : "";
-  const summary = "Muhtasari wa shughuli zako na hatua zinazofuata.";
+  const summary = t("dash.summary");
 
   const quickActions: QuickAction[] = latestDataset
     ? [
         {
           icon: "upload",
-          label: "Pakia data mpya",
-          description: "Ongeza faili jipya la data",
+          label: t("dash.quickActions.uploadLabel"),
+          description: t("dash.quickActions.uploadBody"),
           href: "/upload",
         },
         {
           icon: "clipboard",
-          label: "Safisha data",
-          description: `Fungua Data Studio la "${latestDataset.original_filename}"`,
+          label: t("dash.steps.clean"),
+          description: t("dash.quickActions.cleanBody", {
+            name: latestDataset.original_filename,
+          }),
           href: `/datasets/${latestDataset.id}/studio`,
         },
         {
           icon: "calculator",
-          label: "Endesha uchambuzi",
-          description: `Takwimu za "${latestDataset.original_filename}"`,
+          label: t("dash.steps.analyse"),
+          description: t("dash.quickActions.analyseBody", {
+            name: latestDataset.original_filename,
+          }),
           href: `/datasets/${latestDataset.id}/statistics`,
         },
         {
           icon: "sparkles",
-          label: "Msaidizi wa AI",
-          description: "Uliza swali kwa lugha ya kawaida",
+          label: t("dash.quickActions.assistantLabel"),
+          description: t("dash.quickActions.assistantBody"),
           href: `/datasets/${latestDataset.id}/ask`,
         },
       ]
     : [
         {
           icon: "upload",
-          label: "Pakia data",
-          description: "Anza kwa kupakia faili lako la kwanza",
+          label: t("dash.uploadCta"),
+          description: t("dash.quickActions.uploadFirstBody"),
           href: "/upload",
         },
         {
           icon: "database",
-          label: "Angalia datasets",
-          description: "Orodha na hali za data zako",
+          label: t("dash.quickActions.listLabel"),
+          description: t("dash.quickActions.listBody"),
           href: "/datasets",
         },
         {
           icon: "sparkles",
-          label: "Msaidizi wa AI",
-          description: "Uliza swali kwa lugha ya kawaida",
+          label: t("dash.quickActions.assistantLabel"),
+          description: t("dash.quickActions.assistantBody"),
           href: "/datasets",
         },
         {
           icon: "file-text",
-          label: "Ripoti",
-          description: "Tayarisha ripoti ya PDF au Excel",
+          label: t("dash.quickActions.reportLabel"),
+          description: t("dash.quickActions.reportBody"),
           href: "/datasets",
         },
       ];
 
   return (
     <AppShell
-      eyebrow="Muhtasari wa kazi"
+      eyebrow={t("dash.eyebrow")}
       title={greeting}
       description={nowLabel ? `${nowLabel} · ${summary}` : summary}
       actions={
         <Link href="/upload">
           <Button>
             <Icon name="upload" size={16} />
-            Pakia data mpya
+            {t("dash.uploadCta")}
           </Button>
         </Link>
       }
@@ -268,9 +277,9 @@ export default function DashboardPage() {
           icon="database"
           tone="primary"
           accent="bg-primary-600"
-          label="Datasets"
+          label={t("dash.kpi.datasets")}
           value={loading ? "…" : datasets.length}
-          hint={addedThisMonth > 0 ? `${addedThisMonth} added this month` : "Zote zilizo hivi karibuni"}
+          hint={t("dash.kpi.datasetsHint")}
           trend={
             addedThisMonth > 0 ? { value: `+${addedThisMonth}` } : undefined
           }
@@ -279,17 +288,20 @@ export default function DashboardPage() {
           icon="layers"
           tone="info"
           accent="bg-info"
-          label="Active Analyses"
+          label={t("dash.kpi.analyses")}
           value={loading ? "…" : totalAnalyses + totalCharts}
-          hint={`${totalAnalyses} takwimu · ${totalCharts} chati`}
+          hint={t("dash.kpi.analysesHint", {
+            analyses: totalAnalyses,
+            charts: totalCharts,
+          })}
         />
         <MetricCard
           icon="file-text"
           tone="warning"
           accent="bg-accent-500"
-          label="Reports"
+          label={t("dash.kpi.reports")}
           value={loading ? "…" : totalReports}
-          hint="PDF / Excel zilizotengenezwa"
+          hint={t("dash.kpi.reportsHint")}
         />
       </div>
 
@@ -306,31 +318,31 @@ export default function DashboardPage() {
           score={quality.score}
           caption={
             datasets.length === 0
-              ? "Hakuna data"
+              ? t("dash.quality.noData")
               : quality.score >= 80
-                ? "Inazofanya vizuri"
+                ? t("dash.quality.excellent")
                 : quality.score >= 50
-                  ? "Inahitaji kazi"
-                  : "Haijalianishwa"
+                  ? t("dash.quality.needsWork")
+                  : t("dash.quality.unprofiled")
           }
-          subtitle={`Kati ya datasets ${datasets.length} zinazoendelea`}
+          subtitle={t("dash.quality.subtitle", { count: datasets.length })}
           bars={[
-            { label: "Kamili", value: quality.complete, color: "#24A36A" },
-            { label: "Ina thamani", value: quality.valued, color: "#6C4BF4" },
-            { label: "Imefanywa kazi", value: quality.unique, color: "#3B82F6" },
+            { label: t("dash.quality.complete"), value: quality.complete, color: "#24A36A" },
+            { label: t("dash.quality.valid"), value: quality.valued, color: "#6C4BF4" },
+            { label: t("dash.quality.processed"), value: quality.unique, color: "#3B82F6" },
           ]}
           action={
             <Link
               href="/datasets"
               className="inline-flex shrink-0 items-center gap-0.5 text-caption font-semibold text-primary-600 hover:text-primary-700"
             >
-              Ripoti
+              {t("dash.quality.viewReport")}
               <Icon name="chevron-right" size={13} />
             </Link>
           }
         />
 
-        <Card title="Recent Analyses" icon="layers" className="lg:col-span-2">
+        <Card title={t("dash.analyses.title")} icon="layers" className="lg:col-span-2">
           {loading ? (
             <div className="space-y-3">
               {Array.from({ length: 4 }).map((_, index) => (
@@ -339,13 +351,13 @@ export default function DashboardPage() {
             </div>
           ) : datasets.length === 0 ? (
             <EmptyState
-              title="Hakuna uchambuzi bado"
-              description="Pakia dataset yako ya kwanza ili uanze."
+              title={t("dash.analyses.empty")}
+              description={t("dash.analyses.emptyBody")}
               action={
                 <Link href="/upload">
                   <Button size="large">
                     <Icon name="upload" size={16} />
-                    Pakia data
+                    {t("dash.uploadCta")}
                   </Button>
                 </Link>
               }
@@ -361,10 +373,10 @@ export default function DashboardPage() {
                       : ("neutral" as const);
                 const statusLabel =
                   dataset.status === "analyzed"
-                    ? "COMPLETE"
+                    ? t("dash.stage.complete")
                     : dataset.status === "cleaned"
-                      ? "REVIEW"
-                      : "DRAFT";
+                      ? t("dash.stage.review")
+                      : t("dash.stage.draft");
                 return (
                   <li
                     key={dataset.id}
@@ -395,27 +407,31 @@ export default function DashboardPage() {
           card asserting a specific recoverable row count that nothing computed.
           This shows the one real next step instead.
         */}
-        <Card title="Hatua inayofuata" icon="target" className="lg:col-span-3">
+        <Card title={t("dash.steps.title")} icon="target" className="lg:col-span-3">
           {latestDataset ? (
             <ul className="flex flex-col gap-2.5">
               {[
                 {
                   done: latestDataset.status === "analyzed",
-                  label: "Kukagua na kusafisha data",
+                  label: t("dash.steps.clean"),
                   href: `/datasets/${latestDataset.id}/studio`,
                   detail: latestDataset.original_filename,
                 },
                 {
                   done: (activity.get(latestDataset.id)?.analyses ?? 0) > 0,
-                  label: "Kuendesha takwimu",
+                  label: t("dash.steps.analyse"),
                   href: `/datasets/${latestDataset.id}/statistics`,
-                  detail: `${activity.get(latestDataset.id)?.analyses ?? 0} takwimu zimekamilika`,
+                  detail: t("dash.steps.analyseDetail", {
+                    count: activity.get(latestDataset.id)?.analyses ?? 0,
+                  }),
                 },
                 {
                   done: (activity.get(latestDataset.id)?.charts ?? 0) > 0,
-                  label: "Kutengeneza chati",
+                  label: t("dash.steps.chart"),
                   href: `/datasets/${latestDataset.id}/charts`,
-                  detail: `${activity.get(latestDataset.id)?.charts ?? 0} chati zimeundwa`,
+                  detail: t("dash.steps.chartDetail", {
+                    count: activity.get(latestDataset.id)?.charts ?? 0,
+                  }),
                 },
               ].map((step) => (
                 <li key={step.label}>
@@ -446,13 +462,13 @@ export default function DashboardPage() {
             </ul>
           ) : (
             <EmptyState
-              title="Hakuna hatua bado"
-              description="Pakia dataset ili mtiririko wa kazi uanze."
+              title={t("dash.steps.empty")}
+              description={t("dash.steps.emptyBody")}
               action={
                 <Link href="/upload">
                   <Button>
                     <Icon name="upload" size={16} />
-                    Pakia data
+                    {t("dash.uploadCta")}
                   </Button>
                 </Link>
               }
@@ -463,22 +479,22 @@ export default function DashboardPage() {
 
       {/* Quick actions */}
       <Card
-        title="Vitendo vya haraka"
+        title={t("dash.quickActions.title")}
         icon="target"
-        description="Chagua hatua inayofuata kwenye mtiririko wa kazi."
+        description={t("dash.quickActions.body")}
       >
         <QuickActions actions={quickActions} />
       </Card>
 
       {/* Recent datasets */}
       <Card
-        title="Datasets za hivi karibuni"
+        title={t("dash.recent.title")}
         icon="database"
-        description="Endelea na kazi uliyoiacha."
+        description={t("dash.recent.body")}
         actions={
           <Link href="/datasets">
             <Button variant="secondary" size="small">
-              Ona zote
+              {t("dash.viewAll")}
             </Button>
           </Link>
         }
@@ -491,8 +507,8 @@ export default function DashboardPage() {
           </div>
         ) : datasets.length === 0 ? (
           <EmptyState
-            title="Hakuna dataset bado"
-            description="Anza kwa kupakia faili lako la kwanza mtiririko utakuongoza hatua kwa hatua."
+            title={t("dash.recent.empty")}
+            description={t("dash.recent.emptyBody")}
             action={
               <Link href="/upload">
                 <Button size="large">
@@ -551,7 +567,7 @@ export default function DashboardPage() {
                       {dataset.status}
                     </Badge>
                     <Link href={`/datasets/${dataset.id}`}>
-                      <Button size="small">Endelea</Button>
+                      <Button size="small">{t("dash.continue")}</Button>
                     </Link>
                   </div>
                 </li>
@@ -563,9 +579,9 @@ export default function DashboardPage() {
 
       {/* Pipeline guide */}
       <Card
-        title="Mtiririko wa kazi"
+        title={t("workflow.title")}
         icon="layers"
-        description="Hatua 6 kutoka kwenye faili hadi ripoti. Kila hatua inafungua ukurasa wake."
+        description={t("workflow.body")}
       >
         <ol className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {PIPELINE_STAGES.map((stage) => {

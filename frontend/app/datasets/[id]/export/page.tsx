@@ -70,7 +70,7 @@ export default function ExportPage() {
   const [datasetVersion, setDatasetVersion] = useState<number | null>(null);
   const [selectedAnalyses, setSelectedAnalyses] = useState<number[]>([]);
   const [selectedCharts, setSelectedCharts] = useState<number[]>([]);
-  const [format, setFormat] = useState<"pdf" | "xlsx">("pdf");
+  const [format, setFormat] = useState<"pdf" | "xlsx" | "docx" | "pptx" | "html">("pdf");
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
@@ -363,7 +363,7 @@ export default function ExportPage() {
           </div>
         )}
 
-        <fieldset className="mt-5">
+<fieldset className="mt-5">
           <legend className="text-body font-medium text-ink">Muundo wa faili</legend>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
             {(
@@ -371,12 +371,27 @@ export default function ExportPage() {
                 {
                   value: "pdf" as const,
                   label: "PDF",
-                  hint: "Ripoti ya kusoma na kuprint, yenye muhtasari na chati.",
+                  hint: "Ripoti ya kusoma na kuprint, yenye muhtasri na chati.",
                 },
                 {
                   value: "xlsx" as const,
                   label: "Excel (.xlsx)",
                   hint: "Data kamili ya kila jedwali kwa uchambuzi zaidi.",
+                },
+                {
+                  value: "docx" as const,
+                  label: "DOCX (Word)",
+                  hint: "Hatua za maandishi na jedwali.",
+                },
+                {
+                  value: "pptx" as const,
+                  label: "PPTX (PowerPoint)",
+                  hint: "Mapendekezo na vifaa vya kuonekana.",
+                },
+                {
+                  value: "html" as const,
+                  label: "HTML",
+                  hint: "Ripoti ya kusana kwenye kiwanda.",
                 },
               ]
             ).map((option) => (

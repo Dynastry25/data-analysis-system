@@ -791,3 +791,123 @@ class AuditLog(Base):
             "metadata": self.metadata_json or {},
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+# ---------------------------------------------------------------- Dashboard Collaboration
+
+DASHBOARD_SHARE_ROLE_VIEWER = "viewer"
+DASHBOARD_SHARE_ROLE_EDITOR = "editor"
+DASHBOARD_SHARE_ROLE_ADMIN = "admin"
+
+DASHBOARD_SHARE_ROLES = [DASHBOARD_SHARE_ROLE_VIEWER, DASHBOARD_SHARE_ROLE_EDITOR, DASHBOARD_SHARE_ROLE_ADMIN]
+
+
+class DashboardShare(Base):
+    """Share a dashboard with another user or organization.
+
+    Creates a link/permission that allows the target to view, edit, or administer
+    the dashboard. The share is scoped to the dashboard's dataset, so the target
+    must also have access to the dataset (or be granted it via this share).
+    """
+
+    __tablename__ = "dashboard_shares"
+
+    id = Column(Integer, primary_key=True)
+    dashboard_id = Column(
+        Integer,
+        ForeignKey("dashboards.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Target can be a user (direct share) or organization (org-wide share)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    organization_id = Column(
+        Integer,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    role = Column(String(20), nullable=False, default=DASHBOARD_SHARE_ROLE_VIEWER)
+    created_by = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at = Column(DateTime, default=utcnow, index=True)
+    expires_at = Column(DateTime, nullable=True)
+
+    dashboard = relationship("Dashboard")
+    user = relationship("User", foreign_keys=[user_id])
+    organization = relationship("Organization")
+    creator = relationship("User", foreign_keys=[created_by])
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "dashboard_id": self.dashboard_id,
+            "user_id": self.user_id,
+            "user_email": self.user.email if self.user else None,
+            "organization_id": self.organization_id,
+            "organization_name": self.organization.name if self.organization else None,
+            "role": self.role,
+            "created_by": self.created_by,
+            "created_by_email": self.creator.email if self.creator else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+        }
+
+
+class DashboardComment(Base):
+    """Comment thread on a dashboard or specific widget.
+
+    Supports nested replies for threaded discussions. Comments can be attached
+    to the dashboard root (widget_id=None) or to a specific widget via its
+    stable widget ID.
+    """
+
+    __tablename__ = "dashboard_comments"
+
+    id = Column(Integer, primary_key=True)
+    dashboard_id = Column(
+        Integer,
+        ForeignKey("dashboards.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    widget_id = Column(String(100), nullable=True, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    parent_id = Column(
+        Integer,
+        ForeignKey("dashboard_comments.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=utcnow, index=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    dashboard = relationship("Dashboard")
+    user = relationship("User")
+    parent = relationship("DashboardComment", remote_side=[id], backref="replies")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "dashboard_id": self.dashboard_id,
+            "widget_id": self.widget_id,
+            "user_id": self.user_id,
+            "user_email": self.user.email if self.user else None,
+            "user_name": self.user.full_name if self.user else None,
+            "parent_id": self.parent_id,
+            "content": self.content,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
