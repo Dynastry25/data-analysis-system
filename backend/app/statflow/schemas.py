@@ -46,6 +46,7 @@ class AnalysisRequest(BaseModel):
     parameters: Dict[str, Any] = Field(default_factory=dict)
     dataset_version: Optional[int] = None
     save: bool = True
+    use_job_queue: bool = False
 
 
 class AnalysisReplayRequest(BaseModel):

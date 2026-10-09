@@ -393,6 +393,7 @@ class ChartRequest(BaseModel):
     chart_type: ChartType
     config: ChartConfig
     dataset_version: Optional[int] = None
+    use_job_queue: bool = False
 
 
 class ChartResponse(BaseModel):

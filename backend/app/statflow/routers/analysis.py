@@ -7,13 +7,15 @@ Reproducibility endpoints (Feature 24):
 
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
-from app.models import AnalysisRun, Dataset, User
+from app.models import AnalysisRun, Dataset, Job, User
 from app.rbac import ORG_ROLE_VIEWER
+from app.schemas import JobType
+from app.services.job_processor import process_job
 from app.statflow import methods, stats_engine, version_store
 from app.statflow.schemas import AnalysisRequest, AnalysisReplayRequest, AnalysisModifyRequest
 from app.statflow.version_store import VersionError
@@ -71,11 +73,46 @@ def analysis_method_detail(
 def run_analysis_endpoint(
     dataset_id: int,
     payload: AnalysisRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """Run one analysis on a dataset version and store the standard result."""
+    """Run one analysis on a dataset version and store the standard result.
+
+    If use_job_queue is true, the analysis is queued as a background job
+    and the job ID is returned immediately.
+    """
     dataset = get_owned_dataset(dataset_id, db, user)
+
+    if payload.use_job_queue:
+        # Create a job for the analysis
+        job = Job(
+            user_id=user.id,
+            job_type=JobType.ANALYSIS,
+            dataset_id=dataset.id,
+            status="pending",
+            progress=0,
+            payload={
+                "analysis_type": payload.analysis_type,
+                "parameters": payload.parameters,
+                "dataset_version": payload.dataset_version,
+                "save": payload.save,
+            },
+        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+
+        # Start the job processing in background
+        background_tasks.add_task(process_job, job.id)
+
+        return {
+            "job_id": job.id,
+            "status": "pending",
+            "message": "Analysis queued. Use /api/v1/jobs/{job_id} to check progress.",
+        }
+
+    # Synchronous execution (original behavior)
     try:
         record, frame = _frame_for(db, dataset, payload.dataset_version)
         result = stats_engine.run_analysis(

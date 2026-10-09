@@ -16,9 +16,9 @@ from sqlalchemy.orm import Session
 from app.config import API_PREFIX
 from app.database import SessionLocal, get_db
 from app.deps import get_current_user, get_owned_dataset
-from app.models import AnalysisRun, Chart, Dataset, DatasetVersion, ExportedReport, User
+from app.models import AnalysisRun, Chart, Dataset, DatasetVersion, ExportedReport, Job, User
 from app.rbac import ORG_ROLE_VIEWER
-from app.schemas import ExportRequest, ExportResponse, ReportStatusResponse
+from app.schemas import ExportRequest, ExportResponse, ReportStatusResponse, JobType
 from app.services.chart_service import build_chart_data
 from app.services.export_service import build_report
 from app.statflow import version_store
@@ -196,7 +196,6 @@ def _authorized_report(
 def create_export(
     dataset_id: int,
     payload: ExportRequest,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
@@ -232,14 +231,35 @@ def create_export(
     db.commit()
     db.refresh(report)
 
-    background_tasks.add_task(
-        generate_report_task,
-        report.id,
-        payload.format,
-        list(payload.include_analysis_ids),
-        list(payload.include_chart_ids),
+    # Create a job for the report export
+    job = Job(
+        user_id=user.id,
+        job_type=JobType.REPORT_EXPORT,
+        dataset_id=dataset.id,
+        status="pending",
+        progress=0,
+        payload={
+            "report_id": report.id,
+            "file_format": payload.format,
+            "analysis_ids": list(payload.include_analysis_ids),
+            "chart_ids": list(payload.include_chart_ids),
+        },
     )
-    return {"report_id": report.id, "status": report.status}
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    # Start the job processing in background
+    from app.services.job_processor import process_job
+    from fastapi import BackgroundTasks
+    # We can't easily inject BackgroundTasks here since we removed it,
+    # so we'll process synchronously for now or the user can call /jobs/{id}/start
+    # For backward compatibility, let's process it in a simple thread
+    import threading
+    thread = threading.Thread(target=process_job, args=(job.id,), daemon=True)
+    thread.start()
+
+    return {"report_id": report.id, "job_id": job.id, "status": report.status}
 
 
 @router.get("/reports/{report_id}/status", response_model=ReportStatusResponse)

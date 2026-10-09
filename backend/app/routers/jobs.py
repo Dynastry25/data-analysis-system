@@ -4,18 +4,21 @@ Provides a background job queue with progress tracking for long-running operatio
 """
 
 import json
+import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
 from app.models import Job, User
-from app.schemas import JobCreate, JobListResponse, JobResponse, JobStatus, JobUpdate
+from app.schemas import JobCreate, JobListResponse, JobResponse, JobStatus, JobType, JobUpdate
+from app.services.job_processor import process_job
 
 router = APIRouter(tags=["jobs"])
+logger = logging.getLogger(__name__)
 
 
 def _job_payload(record: Job) -> Dict[str, Any]:
@@ -25,13 +28,15 @@ def _job_payload(record: Job) -> Dict[str, Any]:
 @router.post("", response_model=JobResponse, status_code=status.HTTP_201_CREATED)
 def create_job(
     payload: JobCreate,
+    background_tasks: BackgroundTasks,
+    auto_start: bool = Query(default=True, description="Automatically start processing the job"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """Create a new background job.
 
-    The job starts in pending status. A background worker should pick it up
-    and update its status to running, then completed/failed.
+    The job starts in pending status. If auto_start is true (default), a background
+    task will begin processing it immediately.
     """
     job = Job(
         user_id=user.id,
@@ -44,6 +49,10 @@ def create_job(
     db.add(job)
     db.commit()
     db.refresh(job)
+
+    if auto_start:
+        background_tasks.add_task(process_job, job.id)
+
     return _job_payload(job)
 
 
@@ -201,6 +210,42 @@ def cancel_job(
     from datetime import datetime, timezone
     job.completed_at = datetime.now(timezone.utc)
     db.commit()
+
+
+@router.post("/{job_id}/start", response_model=JobResponse)
+def start_job(
+    job_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Start processing a pending job."""
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Check ownership (unless platform admin)
+    from app.models import User as UserModel
+    from app.platform_rbac import PLATFORM_ROLE_ADMIN, require_platform_role
+
+    is_platform_admin = False
+    try:
+        require_platform_role(db, user, PLATFORM_ROLE_ADMIN)
+        is_platform_admin = True
+    except HTTPException:
+        pass
+
+    if not is_platform_admin and job.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to start this job")
+
+    if job.status != JOB_STATUS_PENDING:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot start job in status '{job.status}'",
+        )
+
+    background_tasks.add_task(process_job, job.id)
+    return _job_payload(job)
 
 
 # ---------------------------------------------------------------- WebSocket for real-time progress
