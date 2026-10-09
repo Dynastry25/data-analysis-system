@@ -48,6 +48,7 @@ export type IconName =
   | "grid"
   | "lightbulb"
   | "target"
+  | "activity"
   | "lock"
   | "mail"
   | "eye"
@@ -212,6 +213,11 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <polyline points="1 4 1 10 7 10" />
       <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+    </>
+  ),
+  activity: (
+    <>
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
     </>
   ),
   search: (

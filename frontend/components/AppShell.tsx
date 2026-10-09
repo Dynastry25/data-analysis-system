@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { useAuthGuard } from "@/lib/useAuth";
 import { AiSidePanel } from "./AiSidePanel";
 import { CommandPalette } from "./CommandPalette";
+import { JobQueueToast } from "./JobQueueToast";
 import { api, DatasetSummary, UserProfile } from "@/lib/api";
 import {
   PIPELINE_PHASES,
@@ -96,6 +97,13 @@ const PHASE_ICON: Record<PipelinePhaseKey, IconName> = {
  */
 const SECONDARY_NAV: SidebarEntry[] = [
   {
+    key: "jobs",
+    labelKey: "nav.jobs",
+    descriptionKey: "nav.jobs.desc",
+    href: "/jobs",
+    icon: "activity",
+  },
+  {
     key: "profile",
     labelKey: "nav.profile",
     descriptionKey: "nav.profile.desc",
@@ -135,6 +143,7 @@ function activeNavKey(pathname: string, stage: number | null): string | null {
   if (pathname === "/datasets" || pathname === "/upload") return "data";
   if (pathname === "/templates") return "templates";
   if (pathname === "/activity") return "activity";
+  if (pathname === "/jobs") return "jobs";
   if (pathname === "/profile") return "profile";
   if (pathname === "/settings") return "settings";
   if (pathname === "/help") return "help";
@@ -647,6 +656,9 @@ export function AppShell({
           onClose={() => setCommandOpen(false)}
           datasets={datasets}
         />
+
+        {/* Job Queue Toast Notifications */}
+        <JobQueueToast />
       </div>
     </div>
   );
