@@ -24,6 +24,10 @@ from app.models import (
 from app.rbac import ORG_ROLE_ANALYST, ORG_ROLE_VIEWER, require_org_role
 from app.schemas import (
     BatchUploadResponse,
+    DatasetDataRequest,
+    DatasetDataResponse,
+    DatasetDataUpdateRequest,
+    DatasetDataUpdateResponse,
     DatasetDetailResponse,
     DatasetProjectRequest,
     DatasetSummary,
@@ -345,6 +349,88 @@ def get_dataset(
         "dataset_version": int(version_record.version),
         "columns": profiles,
         "preview_rows": dataframe_records(frame, PREVIEW_ROWS),
+    }
+
+
+@router.get("/{dataset_id}/data", response_model=DatasetDataResponse)
+def get_dataset_data(
+    dataset_id: int,
+    page: int = 1,
+    page_size: int = 50,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Get paginated rows of a dataset."""
+    dataset = get_owned_dataset(dataset_id, db, user, min_role=ORG_ROLE_VIEWER)
+    version_record, frame = _load_current_frame(db, dataset)
+
+    total_rows = int(frame.shape[0])
+    total_pages = max(1, (total_rows + page_size - 1) // page_size)
+    page = max(1, min(page, total_pages))
+
+    start = (page - 1) * page_size
+    end = min(start + page_size, total_rows)
+    rows = dataframe_records(frame.iloc[start:end])
+
+    return {
+        "dataset_id": dataset.id,
+        "dataset_version": int(version_record.version),
+        "row_count": total_rows,
+        "column_count": int(frame.shape[1]),
+        "columns": list(frame.columns),
+        "rows": rows,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+    }
+
+
+@router.put("/{dataset_id}/data", response_model=DatasetDataUpdateResponse)
+def update_dataset_row(
+    dataset_id: int,
+    payload: DatasetDataUpdateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Update a single row in the dataset."""
+    dataset = get_owned_dataset(dataset_id, db, user, min_role=ORG_ROLE_ANALYST)
+    version_record, frame = _load_current_frame(db, dataset)
+
+    row_index = payload.row_index
+    if row_index < 0 or row_index >= frame.shape[0]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Row index {row_index} out of bounds (0-{frame.shape[0] - 1})",
+        )
+
+    changes = payload.changes
+    for col, value in changes.items():
+        if col not in frame.columns:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Column '{col}' not found in dataset",
+            )
+        frame.iloc[row_index, frame.columns.get_loc(col)] = value
+
+    # Write back to storage
+    from app.services.data_service import write_dataframe
+    try:
+        write_dataframe(frame, dataset.storage_path)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to write changes: {exc}",
+        )
+
+    # Update row_count in case columns were added/removed (unlikely here)
+    dataset.row_count = int(frame.shape[0])
+    dataset.column_count = int(frame.shape[1])
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Row updated successfully",
+        "row_index": row_index,
     }
 
 

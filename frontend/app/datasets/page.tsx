@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
+import { DatasetDataModal } from "@/components/DatasetDataModal";
 import { EmptyState } from "@/components/Card";
 import { Icon } from "@/components/Icon";
 import { InlineSearch } from "@/components/InlineSearch";
@@ -49,6 +50,7 @@ export default function DatasetsPage() {
   const [loading, setLoading] = useState(true);
   const [pendingDelete, setPendingDelete] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [modalDataset, setModalDataset] = useState<{ id: number; name: string; mode: "view" | "edit" } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -396,6 +398,24 @@ export default function DatasetsPage() {
                           <Icon name="file-text" size={16} />
                         </Button>
                       </Link>
+                      <Button
+                        variant="ghost"
+                        size="small"
+                        aria-label={`Angalia ${dataset.original_filename}`}
+                        onClick={() => setModalDataset({ id: dataset.id, name: dataset.original_filename, mode: "view" })}
+                      >
+                        <Icon name="eye" size={16} />
+                        Angalia
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="small"
+                        aria-label={`Hariri ${dataset.original_filename}`}
+                        onClick={() => setModalDataset({ id: dataset.id, name: dataset.original_filename, mode: "edit" })}
+                      >
+                        <Icon name="edit" size={16} />
+                        Hariri
+                      </Button>
                       {canDelete &&
                         (confirming ? (
                           <span className="flex items-center gap-1 rounded-md border border-danger/30 bg-danger-bg px-1.5 py-0.5">
@@ -436,6 +456,13 @@ export default function DatasetsPage() {
           </div>
         )}
       </div>
+      <DatasetDataModal
+        isOpen={modalDataset !== null}
+        onClose={() => setModalDataset(null)}
+        datasetId={modalDataset?.id ?? 0}
+        datasetName={modalDataset?.name ?? ""}
+        mode={modalDataset?.mode ?? "view"}
+      />
     </AppShell>
   );
 }

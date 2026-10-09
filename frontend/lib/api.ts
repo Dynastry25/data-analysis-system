@@ -171,6 +171,34 @@ export interface DatasetDetailResponse {
   preview_rows: Record<string, unknown>[];
 }
 
+export interface DatasetDataRequest {
+  page?: number;
+  page_size?: number;
+}
+
+export interface DatasetDataResponse {
+  dataset_id: number;
+  dataset_version: number;
+  row_count: number;
+  column_count: number;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface DatasetDataUpdateRequest {
+  row_index: number;
+  changes: Record<string, unknown>;
+}
+
+export interface DatasetDataUpdateResponse {
+  success: boolean;
+  message: string;
+  row_index: number;
+}
+
 export interface ProfileResponse {
   dataset_id: number;
   dataset_version: number;
@@ -717,6 +745,10 @@ export const api = {
       http.get<ValidationResponse>(`/datasets/${id}/validate`).then((r) => r.data),
     explore: (id: number) =>
       http.get<ExploreResponse>(`/datasets/${id}/explore`).then((r) => r.data),
+    getData: (id: number, params?: { page?: number; page_size?: number }) =>
+      http.get<DatasetDataResponse>(`/datasets/${id}/data`, { params }).then((r) => r.data),
+    updateRow: (id: number, payload: DatasetDataUpdateRequest) =>
+      http.put<DatasetDataUpdateResponse>(`/datasets/${id}/data`, payload).then((r) => r.data),
     remove: (id: number) => http.delete(`/datasets/${id}`).then((r) => r.data),
   },
   scrape: {

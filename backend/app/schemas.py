@@ -204,6 +204,34 @@ class DatasetDetailResponse(BaseModel):
     preview_rows: List[Dict[str, Any]]
 
 
+class DatasetDataRequest(BaseModel):
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=50, ge=1, le=1000)
+
+
+class DatasetDataResponse(BaseModel):
+    dataset_id: int
+    dataset_version: int
+    row_count: int
+    column_count: int
+    columns: List[str]
+    rows: List[Dict[str, Any]]
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class DatasetDataUpdateRequest(BaseModel):
+    row_index: int
+    changes: Dict[str, Any]
+
+
+class DatasetDataUpdateResponse(BaseModel):
+    success: bool
+    message: str
+    row_index: int
+
+
 class ProfileResponse(BaseModel):
     dataset_id: int
     dataset_version: int
