@@ -566,7 +566,7 @@ export interface JobUpdatePayload {
 }
 
 export interface ExportPayload {
-  format: "pdf" | "xlsx";
+  format: "pdf" | "xlsx" | "docx" | "pptx" | "html";
   dataset_version?: number;
   include_analysis_ids: number[];
   include_chart_ids: number[];

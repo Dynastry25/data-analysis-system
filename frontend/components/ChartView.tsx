@@ -195,8 +195,12 @@ export function ChartView({ data, height = 380, format, title }: ChartViewProps)
       const graph = hostRef.current?.firstElementChild as any;
       if (!graph || typeof Plotly === "undefined") return;
       try {
+        // Plotly's types list the raster formats only, but `toImage` takes a
+        // "pdf" value at runtime and it has been offered since the studio added
+        // the download menu. The cast keeps that feature rather than deleting it
+        // over a typing gap.
         const url = await Plotly.toImage(graph, {
-          format: imageFormat,
+          format: imageFormat as "png" | "svg" | "jpeg" | "webp",
           height,
           width: graph.clientWidth || 900,
         });
@@ -223,6 +227,45 @@ export function ChartView({ data, height = 380, format, title }: ChartViewProps)
     ]);
   }, [data]);
 
+  // Zoom is a camera on fixed data: narrowing the visible window never changes
+  // the series. Ranges are recomputed from the drawn points, so zooming works
+  // identically for bars, lines, scatters, histograms and boxes. Pie and
+  // heatmap have no meaningful cartesian window, so the buttons stay hidden
+  // for them rather than doing nothing.
+  //
+  // These sit above the early return below on purpose: hooks must run in the
+  // same order on every render, and "no data yet" is a render like any other.
+  const zoomable = data?.chart_type !== "pie" && data?.chart_type !== "heatmap";
+  const numericExtent = useMemo(() => {
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (const series of data?.series ?? []) {
+      for (const value of series.x ?? []) {
+        if (typeof value === "number" && Number.isFinite(value)) xs.push(value);
+      }
+      for (const value of series.y ?? []) {
+        if (typeof value === "number" && Number.isFinite(value)) ys.push(value);
+      }
+    }
+    return { xs, ys };
+  }, [data]);
+  const zoomWindow = useMemo(() => {
+    if (!zoomable || zoomLevel === 1 || data?.chart_type === "box") {
+      return { xRange: undefined as undefined | number[], yRange: undefined as undefined | number[] };
+    }
+    const focus = (values: number[]) => {
+      if (values.length === 0) return undefined;
+      const low = Math.min(...values);
+      const high = Math.max(...values);
+      const span = high - low || Math.abs(high) || 1;
+      const pad = span * 0.05;
+      const window = span / zoomLevel;
+      const centre = (low + high) / 2;
+      return [centre - window / 2 - pad, centre + window / 2 + pad];
+    };
+    return { xRange: focus(numericExtent.xs), yRange: focus(numericExtent.ys) };
+  }, [zoomable, zoomLevel, numericExtent, data?.chart_type]);
+
   if (!data || traces.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-surface-border-strong bg-surface-sunken px-6 py-10 text-center">
@@ -241,41 +284,6 @@ export function ChartView({ data, height = 380, format, title }: ChartViewProps)
   const showGrid = format?.show_grid !== false;
   const xType = format?.x_scale === "log" ? "log" : undefined;
   const yType = format?.y_scale === "log" ? "log" : undefined;
-  // Zoom is a camera on fixed data: narrowing the visible window never changes
-  // the series. Ranges are recomputed from the drawn points, so zooming works
-  // identically for bars, lines, scatters, histograms and boxes. Pie and
-  // heatmap have no meaningful cartesian window, so the buttons stay hidden
-  // for them rather than doing nothing.
-  const zoomable = data.chart_type !== "pie" && data.chart_type !== "heatmap";
-  const numericExtent = useMemo(() => {
-    const xs: number[] = [];
-    const ys: number[] = [];
-    for (const series of data.series) {
-      for (const value of series.x ?? []) {
-        if (typeof value === "number" && Number.isFinite(value)) xs.push(value);
-      }
-      for (const value of series.y ?? []) {
-        if (typeof value === "number" && Number.isFinite(value)) ys.push(value);
-      }
-    }
-    return { xs, ys };
-  }, [data]);
-  const zoomWindow = useMemo(() => {
-    if (!zoomable || zoomLevel === 1 || data.chart_type === "box") {
-      return { xRange: undefined as undefined | number[], yRange: undefined as undefined | number[] };
-    }
-    const focus = (values: number[]) => {
-      if (values.length === 0) return undefined;
-      const low = Math.min(...values);
-      const high = Math.max(...values);
-      const span = high - low || Math.abs(high) || 1;
-      const pad = span * 0.05;
-      const window = span / zoomLevel;
-      const centre = (low + high) / 2;
-      return [centre - window / 2 - pad, centre + window / 2 + pad];
-    };
-    return { xRange: focus(numericExtent.xs), yRange: focus(numericExtent.ys) };
-  }, [zoomable, zoomLevel, numericExtent, data.chart_type]);
 
   const layout: Partial<Layout> = {
     height,

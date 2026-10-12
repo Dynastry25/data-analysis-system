@@ -3,15 +3,15 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 
-import { Icon } from "./Icon";
+import { Icon, IconName } from "./Icon";
 import { useLanguage } from "@/lib/i18n";
-import { api, DatasetSummary, ProjectSummary } from "@/lib/api";
+import { api, DatasetSummary } from "@/lib/api";
 
 interface CommandItem {
   id: string;
   label: string;
   description: string;
-  icon: string;
+  icon: IconName;
   category: string;
   action: () => void;
   keywords: string[];
@@ -382,7 +382,7 @@ export function CommandPalette({ isOpen, onClose, datasets }: CommandPaletteProp
         staticItems.push({
           id: `dataset-${ds.id}`,
           label: `${ds.original_filename}`,
-          description: `Dataset #${ds.id} · v${ds.current_version} · ${ds.rows} rows`,
+          description: `Dataset #${ds.id} · v${ds.current_version} · ${ds.row_count.toLocaleString()} rows`,
           icon: "database",
           category: t("cmd.category.datasets"),
           action: () => window.location.href = `/datasets/${ds.id}`,

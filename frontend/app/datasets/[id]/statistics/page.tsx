@@ -10,8 +10,9 @@ import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
 import { CheckboxGroup, SelectInput, TextInput } from "@/components/Field";
-import { ResearchBrief } from "@/components/AnalysisStudio";
-import { MethodPicker } from "@/components/MethodPicker";
+import { Icon } from "@/components/Icon";
+import { Modal } from "@/components/Modal";
+import { MethodPickerContent } from "@/components/MethodPicker";
 import { RecommendationPanel } from "@/components/RecommendationPanel";
 import { TableSkeleton } from "@/components/Skeleton";
 import { StandardResultView } from "@/components/StandardResultView";
@@ -21,6 +22,7 @@ import {
   AnalysisRunRecord,
   AnalysisTypeInfo,
   MethodCatalog,
+  PlanningVariable,
   apiErrorMessage,
   PlanningProfileResponse,
   Recommendation,
@@ -170,6 +172,20 @@ function humanize(name: string): string {
   return PARAM_LABELS[name] ?? name.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 
+/** Human label for a engine-detected variable's kind, for the summary lists. */
+function variableKindLabel(variable: PlanningVariable | null): string {
+  if (!variable) return "—";
+  const type = String(variable.semantic_type ?? "");
+  const labels: Record<string, string> = {
+    numeric: "Numeric",
+    categorical: "Categorical",
+    datetime: "Date",
+    boolean: "Yes/No",
+  };
+  const label = labels[type];
+  return label ?? (type || "—");
+}
+
 /** Parse a `requires` entry like "columns (optional)" into name + required flag. */
 function parseRequirement(raw: string): { name: string; optional: boolean } {
   const optional = raw.includes("(optional)");
@@ -277,6 +293,20 @@ export default function StatisticsPage() {
   const [question, setQuestion] = useState("");
   const [confidenceLevel, setConfidenceLevel] = useState("0.95");
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
+
+  /*
+    Everything the reader does not need on every keystroke sits behind a button.
+    The method guide is 156 rows, the stage plan is a wall of prose, the
+    assumption checks are a diagnostics table, and the run history is the one
+    thing you open after the run. Inline they pushed the form and the results
+    down the page; here the page leads with the task and each of these is one
+    click away with the whole viewport to itself.
+  */
+  const [methodBrowserOpen, setMethodBrowserOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [recommendationOpen, setRecommendationOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [questionOpen, setQuestionOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(datasetId)) return;
@@ -650,11 +680,16 @@ export default function StatisticsPage() {
       title="Statistical Analysis Studio"
       description="Endesha uchambuzi wowote wa engine moja ya takwimu — matokeo yote yana muundo mmoja."
       actions={
-        <Link href={`/datasets/${datasetId}`}>
-          <Button variant="secondary" icon="arrow-right">
-            Rudi kwenye dataset
+        <>
+          <Button variant="secondary" icon="history" onClick={() => setHistoryOpen(true)}>
+            Historia
           </Button>
-        </Link>
+          <Link href={`/datasets/${datasetId}`}>
+            <Button variant="ghost" icon="arrow-right">
+              Rudi kwenye dataset
+            </Button>
+          </Link>
+        </>
       }
     >
       {loading ? (
@@ -667,127 +702,192 @@ export default function StatisticsPage() {
         </Card>
       ) : (
         <>
-          <ResearchBrief
-            question={question}
-            onQuestionChange={setQuestion}
-            outcome={outcomeVariable}
-            predictor={predictorVariable}
-            confidenceLevel={confidenceLevel}
-            onConfidenceChange={setConfidenceLevel}
-            recommendation={recommendation}
-            canRun={canRun}
-            running={running}
-            onRun={runAnalysis}
-          />
-
           {/*
-            Method list and configuration form are one workspace, as in the
-            prototype. The columns stack on narrow screens rather than switching
-            to a fixed two-column grid, because a 22rem method list beside a form
-            is unusable at that width.
-
-            The wrapper renders whether or not a catalog loaded: the form is the
-            part that has to work, so it must not disappear with the list beside
-            it. Without a catalog the form spans the full width.
+            The bar says what the run will use and holds the doors to everything
+            else. The method the reader picked is the one line that has to stay
+            visible, so repeating it here costs nothing and saves them scrolling
+            back down to confirm what is about to run.
           */}
-          <div
-            className={`overflow-hidden rounded-xl border border-surface-border bg-surface-panel shadow-card ${
-              catalog ? "xl:grid xl:grid-cols-[22rem_1fr]" : ""
-            }`}
-          >
-            {catalog && (
-              <div className="xl:border-r xl:border-surface-border">
-                <MethodPicker
-                  className="rounded-none border-0 shadow-none hover:shadow-none"
-                  catalog={catalog}
-                  selected={analysisType}
-                  onSelect={chooseMethod}
-                />
-              </div>
-            )}
-            <Card
-              className="rounded-none border-0 shadow-none hover:shadow-none"
-                title="Endesha uchambuzi"
-                icon="calculator"
-                description={
-                  profile
-                    ? `Version v${profile.meta.dataset_version ?? 1} · ${profile.sample_size} rows · ${profile.variable_count} columns`
-                    : undefined
-                }
-              >
-            {/*
-            The research question used to be echoed here as a hardcoded English
-            sentence. ResearchBrief already renders it as an editable field
-            directly above, so this repeated a fixed example on every dataset and
-            made it look like the engine had read the question -- it had not.
-          */}
-            <p className="mb-3 text-overline uppercase tracking-wide text-ink-muted">
-              Variables
-            </p>
-            <div className="grid gap-4 md:grid-cols-2">
-              <SelectInput
-                label="Aina ya uchambuzi"
-                value={analysisType}
-                hint={currentType?.description}
-                options={types.map((entry) => ({
-                  value: entry.analysis_type,
-                  label:
-                    catalog?.methods.find((method) => method.engine === entry.analysis_type)
-                      ?.label_sw ?? entry.analysis_type,
-                }))}
-                onChange={(event) => {
-                  setAnalysisType(event.target.value);
-                  setParamValues({});
-                  setAttempted(false);
-                  setResult(null);
-                }}
-              />
-              {requirements.map((requirement) =>
-                renderParam(requirement)
-              )}
-            </div>
-            {attempted && missingRequired.length > 0 && (
-              <p
-                role="alert"
-                className="mt-4 flex items-start gap-2 rounded-md border border-danger/30 bg-danger-bg px-3 py-2.5 text-body text-danger-700"
-              >
-                <span className="font-medium">
-                  Jaza parameters zote zinazohitajika:{" "}
-                  {missingRequired.map((requirement) => humanize(requirement.name)).join(", ")}.
-                </span>
-              </p>
-            )}
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <Button size="large" loading={running} onClick={runAnalysis}>
-                Endesha uchambuzi
-              </Button>
-              {currentType && (
+          <Card padding="compact">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <Badge tone="primary" icon="database">
+                  Version v{profile?.meta.dataset_version ?? 1}
+                </Badge>
                 <span className="text-caption text-ink-muted">
-                  {requirements.filter((entry) => !entry.optional).length} parameters zinazohitajika
-                  · matokeo yatafunguliwa hapa chini
+                  {(profile?.sample_size ?? 0).toLocaleString()} rows · {profile?.variable_count ?? 0} columns
                 </span>
-              )}
+                {currentType && (
+                  <>
+                    <span className="text-caption text-ink-muted">·</span>
+                    <span className="max-w-[18rem] truncate text-caption font-medium text-ink">
+                      {selectedMethod?.label_sw ?? currentType.analysis_type}
+                    </span>
+                  </>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="small"
+                  icon="message-circle"
+                  onClick={() => setQuestionOpen(true)}
+                >
+                  Swali & variables
+                  {question.trim() && (
+                    <span className="text-primary-600" aria-hidden="true">
+                      ✓
+                    </span>
+                  )}
+                </Button>
+                {selectedMethod && (
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    icon="layers"
+                    onClick={() => setGuideOpen(true)}
+                  >
+                    Hatua za uchambuzi
+                  </Button>
+                )}
+                {recommendation && (
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    icon="sparkles"
+                    onClick={() => setRecommendationOpen(true)}
+                  >
+                    Pendekezo la method
+                  </Button>
+                )}
+                {catalog && (
+                  <Button size="small" icon="sliders" onClick={() => setMethodBrowserOpen(true)}>
+                    {currentType ? "Badilisha method" : "Chagua method"}
+                  </Button>
+                )}
+              </div>
             </div>
           </Card>
-          </div>
 
-          {selectedMethod && selectedStages.length > 0 && (
-            <AnalysisStageRail
-              method={selectedMethod}
-              stages={selectedStages}
-              completedThrough={completedThrough}
-            />
-          )}
+          {/* Step 1 — the method. One row, swap it out with one click. */}
+          <Card
+            title="1. Method ya uchambuzi"
+            icon="calculator"
+            description={
+              catalog
+                ? `Mwongozo kamili: ${catalog.counts.methods} methods katika ${catalog.categories.length} makundi.`
+                : "Chagua njia ya uchambuzi inayofaa data na swali lako."
+            }
+          >
+            {currentType ? (
+              <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-primary-200 bg-primary-50/40 px-3.5 py-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-body-lg font-semibold text-ink">
+                      {selectedMethod?.label_sw ?? currentType.analysis_type}
+                    </span>
+                    {selectedMethod && (
+                      <span className="text-caption text-ink-muted">{selectedMethod.label}</span>
+                    )}
+                    <Badge tone={selectedMethod?.implemented ? "success" : "neutral"} size="sm">
+                      {selectedMethod?.implemented ? "Inaweza kufanyika" : "Maelezo tu"}
+                    </Badge>
+                    {selectedMethod?.dv && (
+                      <Badge tone="info" size="sm" icon={null}>
+                        {selectedMethod.dv}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-1 text-caption text-ink-secondary">
+                    {selectedMethod?.purpose ?? currentType.description}
+                  </p>
+                </div>
+                {catalog && (
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    icon="sliders"
+                    onClick={() => setMethodBrowserOpen(true)}
+                  >
+                    Badilisha
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <EmptyState
+                title="Hakuna method iliyochaguliwa"
+                description="Pakua mwongozo kamili wa methods, tafuta kwa lengo au aina ya data, kisha chagua njia inayofaa."
+                icon="sliders"
+                action={
+                  catalog ? (
+                    <Button icon="sliders" onClick={() => setMethodBrowserOpen(true)}>
+                      Chagua method
+                    </Button>
+                  ) : undefined
+                }
+              />
+            )}
+          </Card>
 
-          <RecommendationPanel
-            datasetId={datasetId}
-            datasetVersion={datasetVersion}
-            outcome={pair.outcome}
-            predictor={pair.predictor}
-            selectedAnalysisType={analysisType || null}
-            provided={recommendation}
-            onApply={applyRecommendation}
-          />
+          {/* Step 2 — the variables the chosen method actually needs. */}
+          <Card
+            title="2. Variables"
+            icon="sliders"
+            description="Chagua columns zinazohitajika na method hii; engine hukagua aina yake."
+          >
+            {currentType ? (
+              <>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {requirements.map((requirement) => renderParam(requirement))}
+                </div>
+                {attempted && missingRequired.length > 0 && (
+                  <p
+                    role="alert"
+                    className="mt-4 flex items-start gap-2 rounded-md border border-danger/30 bg-danger-bg px-3 py-2.5 text-body text-danger-700"
+                  >
+                    <span className="font-medium">
+                      Jaza parameters zote zinazohitajika:{" "}
+                      {missingRequired.map((requirement) => humanize(requirement.name)).join(", ")}.
+                    </span>
+                  </p>
+                )}
+              </>
+            ) : (
+              <EmptyState
+                title="Chagua method kwanza"
+                description="Variables zinazohitajika zinategemea method uliyochagua."
+                icon="sliders"
+              />
+            )}
+          </Card>
+
+          {/* Step 3 — the settings a run needs, and the button. */}
+          <Card title="3. Endesha uchambuzi" icon="sparkles">
+            <div className="grid gap-4 sm:grid-cols-[12rem_1fr] sm:items-end">
+              <SelectInput
+                label="Kiwango cha uhakika"
+                value={confidenceLevel}
+                options={["0.90", "0.95", "0.99"].map((level) => ({
+                  value: level,
+                  label: `${Math.round(Number(level) * 100)}%`,
+                }))}
+                onChange={(event) => setConfidenceLevel(event.target.value)}
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <Button size="large" loading={running} disabled={!canRun} onClick={runAnalysis}>
+                  Endesha uchambuzi
+                </Button>
+                <span className="text-caption text-ink-muted">
+                  {requirements.filter((entry) => !entry.optional).length} parameters
+                  zinazohitajika · Version v{profile?.meta.dataset_version ?? 1}
+                </span>
+              </div>
+            </div>
+            <p className="mt-3 flex items-start gap-1.5 text-caption text-ink-muted">
+              <Icon name="info" size={13} className="mt-0.5 shrink-0" />
+              Bootstrap estimates zinapatikana kwa regression, si kwa kila njia.
+            </p>
+          </Card>
 
           <Card
             title="Matokeo"
@@ -830,71 +930,230 @@ export default function StatisticsPage() {
               />
             )}
           </Card>
-
-          <Card
-            title="Historia ya uchambuzi"
-            description="Kila run inarekodi aina, parameters, toleo la data na wakati — hivyo matokeo yanaweza kurudiwa."
-            icon="history"
-          >
-            {runs.length === 0 ? (
-              <EmptyState
-                title="Hakuna uchambuzi uliohifadhiwa"
-                description="Uchambuzi wote unaofanywa hapa huhifadhiwa na unaweza kufunguliwa tena baadaye."
-                icon="history"
-              />
-            ) : (
-              <ul className="divide-y divide-surface-border">
-                {runs.map((run) => {
-                  const chips = parameterChips(run.parameters);
-                  return (
-                    <li key={run.analysis_id} className="py-3 first:pt-0 last:pb-0">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="flex flex-wrap items-center gap-2">
-                          <Badge tone="primary">{run.analysis_type}</Badge>
-                          <Badge tone={run.status === "success" ? "success" : "warning"}>
-                            {run.status}
-                          </Badge>
-                          <span className="text-caption text-ink-muted">
-                            <span className="font-mono font-medium text-ink">
-                              v{run.dataset_version}
-                            </span>
-                            {run.created_at
-                              ? ` · ${new Date(run.created_at).toLocaleString()}`
-                              : ""}
-                          </span>
-                        </span>
-                        <Button
-                          variant="secondary"
-                          size="small"
-                          icon="table"
-                          onClick={() => openRun(run)}
-                        >
-                          Fungua
-                        </Button>
-                      </div>
-                      {chips.length > 0 && (
-                        <ul className="mt-2 flex flex-wrap gap-1.5">
-                          {chips.map((chip) => (
-                            <li
-                              key={chip.name}
-                              className="inline-flex items-center gap-1 rounded border border-surface-border bg-surface-sunken px-2 py-0.5 text-caption"
-                            >
-                              <span className="text-ink-muted">{chip.name}:</span>
-                              <span className="truncate font-medium text-ink">
-                                {chip.value}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Card>
         </>
       )}
+
+      {/*
+        The guide, the recommendation, the question and the history each get the
+        whole viewport when asked for. They are the parts of the engine a reader
+        consults in the middle of a run, not the parts they work in.
+      */}
+      <Modal
+        open={methodBrowserOpen}
+        onClose={() => setMethodBrowserOpen(false)}
+        title="Chagua method ya uchambuzi"
+        icon="sliders"
+        widthClass="sm:max-w-5xl"
+        description={
+          catalog
+            ? `${catalog.counts.methods} methods katika ${catalog.categories.length} makundi. ${catalog.counts.implemented} zina hesabu inayofanyika kwenye data yako sasa hivi.`
+            : undefined
+        }
+      >
+        {catalog ? (
+          <MethodPickerContent
+            catalog={catalog}
+            selected={analysisType}
+            onSelect={(method) => {
+              chooseMethod(method);
+              setMethodBrowserOpen(false);
+            }}
+          />
+        ) : (
+          <p className="text-body text-ink-muted">Mwongozo haujapatikana kwa sasa.</p>
+        )}
+      </Modal>
+
+      <Modal
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        title={selectedMethod ? `Hatua za uchambuzi: ${selectedMethod.label_sw}` : "Hatua za uchambuzi"}
+        icon="layers"
+        widthClass="sm:max-w-3xl"
+        description="Hatua hizi zinatoka kwenye mwongozo kwa method uliyochagua, si orodha ya kawaida."
+      >
+        {selectedMethod && selectedStages.length > 0 ? (
+          <AnalysisStageRail
+            method={selectedMethod}
+            stages={selectedStages}
+            completedThrough={completedThrough}
+          />
+        ) : (
+          <p className="text-body text-ink-muted">Hakuna mpango wa hatua kwa method hii.</p>
+        )}
+      </Modal>
+
+      <Modal
+        open={recommendationOpen}
+        onClose={() => setRecommendationOpen(false)}
+        title="Pendekezo la method"
+        icon="sparkles"
+        widthClass="sm:max-w-3xl"
+        description="Engine inapima data yako na kukupa njia inayofaa, pamoja na ukaguzi wa vigezo."
+      >
+        <RecommendationPanel
+          datasetId={datasetId}
+          datasetVersion={datasetVersion}
+          outcome={pair.outcome}
+          predictor={pair.predictor}
+          selectedAnalysisType={analysisType || null}
+          provided={recommendation}
+          onApply={(method) => {
+            applyRecommendation(method);
+            setRecommendationOpen(false);
+          }}
+        />
+      </Modal>
+
+      <Modal
+        open={questionOpen}
+        onClose={() => setQuestionOpen(false)}
+        title="Swali la utafiti & variables"
+        icon="message-circle"
+        description="Tunga swali la utafiti, chagua variables, kisha endesha. Engine ndiye anayopendekeza njia na kuangalia vigezo."
+      >
+        <div className="space-y-5">
+          <div>
+            <p className="text-overline uppercase tracking-wide text-ink-muted">
+              Swali la utafiti
+            </p>
+            <textarea
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              rows={3}
+              className="control mt-1.5 resize-y"
+              placeholder="mf. Je, kukamilisha onboarding inaathiri retention ya siku 90?"
+            />
+            <p className="mt-1.5 text-caption text-ink-muted">
+              Swali hili linaeleza kile unachotaka kujua. Linawa kuchagua variables, si
+              kubadilisha matokeo.
+            </p>
+          </div>
+
+          <div>
+            <p className="text-overline uppercase tracking-wide text-ink-muted">Variables</p>
+            <dl className="mt-2 space-y-2">
+              <div className="rounded-md border border-surface-border px-3 py-2.5">
+                <dt className="text-caption text-ink-muted">Variable inayo tegosiwa</dt>
+                <dd className="mt-0.5 flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-body font-medium text-ink">
+                    {outcomeVariable?.name ?? "— chagua kwenye fomu —"}
+                  </span>
+                  <span className="text-caption text-ink-muted">
+                    · {variableKindLabel(outcomeVariable)}
+                  </span>
+                </dd>
+              </div>
+              <div className="rounded-md border border-surface-border px-3 py-2.5">
+                <dt className="text-caption text-ink-muted">Variable ya kujibu</dt>
+                <dd className="mt-0.5 flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-body font-medium text-ink">
+                    {predictorVariable?.name ?? "— chagua kwenye fomu —"}
+                  </span>
+                  <span className="text-caption text-ink-muted">
+                    · {variableKindLabel(predictorVariable)}
+                  </span>
+                </dd>
+              </div>
+            </dl>
+          </div>
+
+          <div>
+            <p className="text-overline uppercase tracking-wide text-ink-muted">
+              Pendekezo la smart
+            </p>
+            {recommendation ? (
+              <div className="mt-2 rounded-md border border-primary-200 bg-primary-50 px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Icon name="sparkles" size={15} className="text-primary-600" />
+                  <span className="text-body font-medium text-primary-800">
+                    {recommendation.recommendation.label}
+                  </span>
+                  <Badge tone="primary" size="sm">
+                    {recommendation.recommendation.family}
+                  </Badge>
+                </div>
+                <p className="mt-1.5 text-caption text-ink-secondary">
+                  {recommendation.recommendation.why}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-2 rounded-md border border-dashed border-surface-border-strong bg-surface-sunken px-3 py-3 text-caption text-ink-muted">
+                Chagua variable inayo tegosiwa na ya kujibu ili kupendekezwa njia.
+              </p>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title="Historia ya uchambuzi"
+        icon="history"
+        widthClass="sm:max-w-3xl"
+        description="Kila run inarekodi aina, parameters, toleo la data na wakati — hivyo matokeo yanaweza kurudiwa."
+      >
+        {runs.length === 0 ? (
+          <EmptyState
+            title="Hakuna uchambuzi uliohifadhiwa"
+            description="Uchambuzi wote unaofanywa hapa huhifadhiwa na unaweza kufunguliwa tena baadaye."
+            icon="history"
+          />
+        ) : (
+          <ul className="divide-y divide-surface-border">
+            {runs.map((run) => {
+              const chips = parameterChips(run.parameters);
+              return (
+                <li key={run.analysis_id} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <Badge tone="primary">{run.analysis_type}</Badge>
+                      <Badge tone={run.status === "success" ? "success" : "warning"}>
+                        {run.status}
+                      </Badge>
+                      <span className="text-caption text-ink-muted">
+                        <span className="font-mono font-medium text-ink">
+                          v{run.dataset_version}
+                        </span>
+                        {run.created_at
+                          ? ` · ${new Date(run.created_at).toLocaleString()}`
+                          : ""}
+                      </span>
+                    </span>
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      icon="table"
+                      onClick={() => {
+                        openRun(run);
+                        setHistoryOpen(false);
+                      }}
+                    >
+                      Fungua
+                    </Button>
+                  </div>
+                  {chips.length > 0 && (
+                    <ul className="mt-2 flex flex-wrap gap-1.5">
+                      {chips.map((chip) => (
+                        <li
+                          key={chip.name}
+                          className="inline-flex items-center gap-1 rounded border border-surface-border bg-surface-sunken px-2 py-0.5 text-caption"
+                        >
+                          <span className="text-ink-muted">{chip.name}:</span>
+                          <span className="truncate font-medium text-ink">
+                            {chip.value}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Modal>
     </AppShell>
   );
 }

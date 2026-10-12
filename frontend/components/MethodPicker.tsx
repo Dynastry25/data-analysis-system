@@ -39,6 +39,34 @@ export function MethodPicker({
   onSelect,
   className = "",
 }: MethodPickerProps) {
+  return (
+    <Card
+      className={className}
+      title="Chagua method ya uchambuzi"
+      icon="sliders"
+      description={`Mwongozo kamili: ${catalog.counts.methods} methods katika ${catalog.categories.length} makundi. ${catalog.counts.implemented} zina hesabu inayofanyika kwenye data yako sasa hivi.`}
+    >
+      <MethodPickerContent
+        catalog={catalog}
+        selected={selected}
+        onSelect={onSelect}
+      />
+    </Card>
+  );
+}
+
+/**
+ * The picker without its card, for hosting it in a dialog.
+ *
+ * The guide is reference material: the analysis studio puts it behind a
+ * "Chagua method" button so the page leads with the task rather than with
+ * 156 rows, and the modal supplies the card of its own.
+ */
+export function MethodPickerContent({
+  catalog,
+  selected,
+  onSelect,
+}: MethodPickerProps) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
   const [goal, setGoal] = useState("all");
@@ -74,13 +102,8 @@ export function MethodPicker({
   }, [catalog, query, category, goal, onlyImplemented]);
 
   return (
-    <Card
-      className={className}
-      title="Chagua method ya uchambuzi"
-      icon="sliders"
-      description={`Mwongozo kamili: ${catalog.counts.methods} methods katika ${catalog.categories.length} makundi. ${catalog.counts.implemented} zina hesabu inayofanyika kwenye data yako sasa hivi.`}
-    >
-      <ol className="mb-4 space-y-2">
+    <div className="space-y-4">
+      <ol className="space-y-2">
         {catalog.questions.map((item, index) => (
           <li key={item.question} className="flex gap-2 text-caption text-ink-secondary">
             <span className="font-medium text-ink-muted">{index + 1}.</span>
@@ -131,7 +154,7 @@ export function MethodPicker({
           Hakuna method inayolingana. Ongeza neno lingine la utafutaji au ondoa vichujio.
         </p>
       )}
-    </Card>
+    </div>
   );
 }
 

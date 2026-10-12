@@ -195,6 +195,11 @@ export const en = {
   "label.noLabel": "no label in the file",
   "label.moreCodes": "more codes",
 
+  // Visualisation studio
+  "viz.filter.invalid": "Filter conditions are not complete yet.",
+  "viz.created": "Chati imetengenezwa.",
+  "viz.annotation.required": "Andika maandishi ya annotation kwanza.",
+
   // Project and access
   "project.title": "Data access",
   "project.description":
@@ -726,6 +731,11 @@ export const sw: Record<TranslationKey, string> = {
   "label.codedValues": "Thamani zilizowekwa lebo",
   "label.noLabel": "hakuna lebo ndani ya faili",
   "label.moreCodes": "mimbo zaidi",
+
+  // Visualisation studio
+  "viz.filter.invalid": "Masharti ya kuchuja hayajakamilika.",
+  "viz.created": "Chati imetengenezwa.",
+  "viz.annotation.required": "Andika maandishi ya annotation kwanza.",
 
   // Project and access
   "project.title": "Ufikiaji wa data",
