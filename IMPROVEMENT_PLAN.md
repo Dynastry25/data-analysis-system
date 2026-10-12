@@ -12,6 +12,39 @@ assumption checks already exist.
 
 ---
 
+## Where the product strategy is wrong
+
+The strategic document describes an "AI-powered, end-to-end data intelligence
+platform." Two of its pillars do not survive contact with the codebase, and
+both are load-bearing for the positioning, so they are corrected here rather
+than left to fail at the first demo.
+
+**"AI assistance" — not AI, and should not be sold as such.**
+`statflow/assistant.py:11` says in its own docstring that the intent parser and
+explanation generator are *rule-based* and that the interfaces are "isolated so
+an LLM can be plugged in later." It is a keyword/synonym matcher over
+English and Swahili. That is a genuinely useful feature — bilingual,
+deterministic, no hallucination surface — but it is not an LLM, and a demo
+question outside its keyword tables will fail. Sell it as *a statistical
+consultant that never invents*, not as AI. The contract it already enforces is
+the real differentiator: "the assistant plans and explains; it never performs
+statistical calculations itself. Every number comes from the `stats_engine`."
+
+**"Connect an organizational database" — does not exist.**
+The only ingest paths are file upload (CSV, XLSX, JSON, and Stata/SPSS/SAS via
+`stat_file_readers`) and web scraping (`scrape_service`). There is no database
+connector, no API connector, no scheduled sync. For an organization whose data
+lives in Postgres or Salesforce this is the difference between a product and a
+pilot, so it is a Phase 3 item rather than a footnote.
+
+**What the strategy gets right and this plan should defend:** statistical rigor,
+reproducible results, and the "show how an answer was obtained, how reliable it
+is, and what evidence supports it" framing. Those are built, they are what the
+market data says is missing, and they are defensible against incumbents who
+cannot retrofit them.
+
+---
+
 ## Phase 1 — Trust & guidance (highest leverage, mostly already built)
 
 | # | Item | Why it wins | Status here |
@@ -38,6 +71,15 @@ assumption checks already exist.
 | 3.1 | One-click remediation from validate findings | Prep is >65% of project time and 10–11 hrs/week; automating it is the biggest single saving available |
 | 3.2 | Source-to-analysis lineage view | Lets a non-technical user trace where a number came from |
 | 3.3 | Templates for common org questions | Donor reporting, program evaluation, crop yield, retention |
+| 3.4 | **Database + API connectors** (Postgres, MySQL, REST, plus scheduled sync) | The strategy's "connect an organizational database" is unbuilt. Ingest is files and scraping only, which caps StatFlow at personal-data analysis rather than organisational analysis |
+
+## Phase 3b — The assistant, honestly
+
+| # | Item | Why |
+|---|------|-----|
+| 3b.1 | Keep the rule-based assistant; label it *bilingual guide*, not AI | It is deterministic and hallucination-free, which is the opposite of an LLM's failure mode. Claiming "AI" invites a demo question it cannot answer |
+| 3b.2 | Plug an LLM behind `parse_intent`/`explain`, keeping the rule-based one as fallback | The docstring already reserves these interfaces. The gain is coverage of questions the keyword tables miss — not accuracy, which must stay with `stats_engine` |
+| 3b.3 | Publish the assistant's coverage | A list of the question shapes it handles turns a limitation into specification |
 
 ## Phase 4 — GTM and positioning
 
