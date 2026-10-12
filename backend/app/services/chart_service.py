@@ -641,7 +641,12 @@ def describe_chart(chart_type: str, config: Dict[str, Any]) -> str:
         description += f" grouped by {group}"
     if config.get("facet_by"):
         description += f" faceted by {config.get('facet_by')}"
-    if config.get("filters", {}).get("conditions"):
+    # `filters` is present but null on most saved charts, and
+    # `.get("filters", {})` only falls back when the key is absent -- so a null
+    # value reaches `.get` and raises. The description is one line of a report;
+    # it must not be the reason the whole export fails.
+    filters = config.get("filters")
+    if isinstance(filters, dict) and filters.get("conditions"):
         description += " (filtered)"
     return description
 

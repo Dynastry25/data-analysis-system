@@ -1048,6 +1048,12 @@ export interface StandardResult {
   effect_size: ResultEffectSize | null;
   diagnostics: Record<string, unknown>;
   warnings: string[];
+  /**
+   * The engine's verdict on whether the data meets this method's assumptions.
+   * Present on every result, so a run the reader configured by hand is judged
+   * the same way as one the engine recommended.
+   */
+  assumption_checks?: AssumptionCheck[];
   tables: Record<string, unknown>;
   meta: Record<string, unknown>;
 }
@@ -1125,6 +1131,13 @@ export interface AssumptionCheck {
   detail: string;
   evidence?: string;
 }
+
+/**
+ * Assumption checks are attached to every standard result, not only to a
+ * recommendation. An analysis the reader configured by hand is judged by the
+ * same engine verdicts as one the engine suggested.
+ */
+export interface AssumptionCheckList extends Array<AssumptionCheck> {}
 
 export interface Recommendation {
   question: string | null;

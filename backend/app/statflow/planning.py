@@ -835,6 +835,245 @@ def assumption_checks(
     return checks
 
 
+# ------------------------------------------------- assumptions, for a direct run
+
+# A shared vocabulary of the hypotheses each statistic rests on, used by methods
+# that arrive without a recommendation alongside them.
+#
+# The recommendation path already has checks, because it passes through
+# `pair_diagnostics`. A direct run does not: `run_analysis` dispatches to a
+# handler and never sees which columns the reader chose, so its result carries
+# warnings but no verdict on whether the data meets the method's assumptions.
+
+def analysis_assumption_checks(
+    analysis_type: str, frame: pd.DataFrame, columns: List[str]
+) -> List[Dict[str, Any]]:
+    """Evidence-backed assumption checks for an analysis the reader configured by hand.
+
+    The recommendation path already carries checks, because it passes through
+    `pair_diagnostics`. A direct run does not: `run_analysis` is dispatched to a
+    handler and never sees which columns the reader chose, so a result produced
+    this way has a warnings list but no verdict on whether the data meets the
+    method's assumptions -- the one thing the whole engine is arranged to report.
+
+    Rather than thread a column contract through every handler, this reads the
+    columns back out of the parameters the reader actually sent, and reuses the
+    same primitives the recommendation path uses. It only reports what it can
+    evidence from the data, so the verdicts mean the same thing either way.
+
+    `columns` is the list of columns the analysis actually consumed, in frame
+    order; it is never empty when the analysis ran on something.
+    """
+    checks: List[Dict[str, Any]] = []
+    sample_size = int(frame.shape[0])
+
+    if sample_size < 3:
+        checks.append(
+            _check(
+                "Sample size",
+                ASSUMPTION_FAIL,
+                f"Only {sample_size} valid observation(s); this test needs at least 3.",
+            )
+        )
+    elif sample_size < 30:
+        checks.append(
+            _check(
+                "Sample size",
+                ASSUMPTION_WARN,
+                f"{sample_size} observations: estimates will be unstable below 30.",
+            )
+        )
+    else:
+        checks.append(
+            _check(
+                "Sample size",
+                ASSUMPTION_PASS,
+                f"{sample_size} observations is enough for a stable estimate.",
+            )
+        )
+
+    # Missingness across the columns the analysis actually read. Reading a column
+    # the analysis did not use would report a warning the reader cannot act on.
+    used = [column for column in columns if column in frame.columns]
+    if not used:
+        return checks
+    missing = max(
+        float(frame[column].isna().mean() * 100) for column in used
+    )
+    worst = max(used, key=lambda column: float(frame[column].isna().mean()))
+    if missing > 20:
+        checks.append(
+            _check(
+                "Missing values",
+                ASSUMPTION_WARN,
+                f"'{worst}' is missing in {missing}% of the rows, so the analysed subset is smaller than the dataset.",
+            )
+        )
+    else:
+        checks.append(
+            _check(
+                "Missing values",
+                ASSUMPTION_PASS,
+                f"At most {missing}% missing, so the analysed subset stays representative.",
+            )
+        )
+
+    if analysis_type not in NORMALITY_SENSITIVE:
+        checks.append(
+            _check(
+                "Normality",
+                ASSUMPTION_NA,
+                "This method does not require a normal outcome.",
+            )
+        )
+        return checks
+
+    numerics = [
+        column
+        for column in used
+        if semantic_type(frame[column]) == SEMANTIC_NUMERIC
+    ]
+    if not numerics:
+        checks.append(
+            _check(
+                "Normality",
+                ASSUMPTION_NA,
+                "No numeric column in this analysis, so there is no distribution to check.",
+            )
+        )
+        return checks
+
+    # The outcome is the numeric column; with several, the first is representative
+    # and saying so is more honest than silently checking only one of them.
+    outcome = numerics[0]
+    where = "" if len(numerics) == 1 else f" (checking '{outcome}')"
+    clean = pd.to_numeric(frame[outcome], errors="coerce").dropna()
+    normality = stats_engine.normality_diagnostics(clean.to_numpy(dtype=float))
+    if normality.get("flag") == "non_normal":
+        checks.append(
+            _check(
+                "Normality",
+                ASSUMPTION_WARN,
+                f"The outcome looks non-normal{where}: a rank based test may fit better.",
+                f"Jarque-Bera p = {normality.get('p_value')}",
+            )
+        )
+    else:
+        checks.append(
+            _check(
+                "Normality",
+                ASSUMPTION_PASS,
+                f"The outcome is consistent with a normal distribution{where}.",
+                f"Jarque-Bera p = {normality.get('p_value')}",
+            )
+        )
+
+    if analysis_type not in GROUPED_METHODS:
+        return checks
+
+    # A grouped comparison: the group is the categorical column among those used.
+    groups = [
+        column
+        for column in used
+        if semantic_type(frame[column])
+        in {SEMANTIC_CATEGORICAL, SEMANTIC_BOOLEAN}
+    ]
+    if not groups:
+        checks.append(
+            _check(
+                "Group sizes",
+                ASSUMPTION_NA,
+                "No grouping column in this analysis, so there are no groups to size.",
+            )
+        )
+        return checks
+
+    grouping = groups[0]
+    samples = stats_engine.group_samples(
+        frame, grouping, outcome
+    )
+    sizes = {label: int(values.size) for label, values in samples.items()}
+    smallest = min(sizes.values()) if sizes else 0
+    if smallest < 5:
+        checks.append(
+            _check(
+                "Group sizes",
+                ASSUMPTION_FAIL,
+                f"The smallest group of '{grouping}' has only {smallest} observation(s); at least 5 are needed.",
+                ", ".join(f"{label}: {size}" for label, size in sizes.items()),
+            )
+        )
+    else:
+        checks.append(
+            _check(
+                "Group sizes",
+                ASSUMPTION_PASS,
+                f"All {len(sizes)} groups of '{grouping}' have at least {smallest} observations.",
+            )
+        )
+
+    if analysis_type in EQUAL_VARIANCE_REQUIRED and sizes:
+        levene = stats_engine.levene_test(list(samples.values()))
+        flag = (levene or {}).get("flag")
+        if flag == "unequal_variances":
+            checks.append(
+                _check(
+                    "Equal variance",
+                    ASSUMPTION_WARN,
+                    f"Variances differ between groups of '{grouping}': Welch's ANOVA is the safer choice.",
+                    f"Levene p = {levene.get('p_value')}",
+                )
+            )
+        else:
+            checks.append(
+                _check(
+                    "Equal variance",
+                    ASSUMPTION_PASS,
+                    f"Group variances of '{grouping}' look comparable.",
+                    f"Levene p = {(levene or {}).get('p_value')}",
+                )
+            )
+
+    return checks
+
+
+def columns_used(parameters: Dict[str, Any], frame: pd.DataFrame) -> List[str]:
+    """The columns an analysis consumed, recovered from the parameters it was given.
+
+    `run_analysis` dispatches to a handler and does not know which parameters are
+    column names, so this reads them back: any parameter that names a real column
+    of this frame is one the analysis read. Order follows the frame, not the
+    parameters, so the same call always produces the same list.
+    """
+    mentioned: List[str] = []
+    for value in (parameters or {}).values():
+        if isinstance(value, str):
+            if value in frame.columns:
+                mentioned.append(value)
+        elif isinstance(value, (list, tuple)):
+            mentioned.extend(
+                item
+                for item in value
+                if isinstance(item, str) and item in frame.columns
+            )
+    ordered = [column for column in frame.columns if column in set(mentioned)]
+    return ordered
+
+
+def assumption_checks_for_result(
+    analysis_type: str, frame: pd.DataFrame, parameters: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Assumption checks for a stored standard result.
+
+    A thin wrapper over `analysis_assumption_checks` that resolves the columns
+    first, so callers that hold a result and the parameters that produced it do
+    not have to know how the two are related.
+    """
+    return analysis_assumption_checks(
+        analysis_type, frame, columns_used(parameters, frame)
+    )
+
+
 ANALYSIS_PARAMETER_MAP = {
     "welch_t_test": lambda outcome, predictor: {
         "value_column": outcome,

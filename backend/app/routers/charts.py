@@ -9,7 +9,7 @@ from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
 from app.models import Chart, Job, User
 from app.rbac import ORG_ROLE_VIEWER
-from app.schemas import ChartListItem, ChartRequest, ChartResponse, JobType
+from app.schemas import ChartListItem, ChartRequest, ChartResponse
 from app.services.chart_service import build_chart_data
 from app.services.job_processor import process_job
 from app.statflow import version_store
@@ -58,7 +58,7 @@ def create_chart(
         # Create a job for the chart rendering
         job = Job(
             user_id=user.id,
-            job_type=JobType.CHART_RENDER,
+            job_type="chart_render",
             dataset_id=dataset.id,
             status="pending",
             progress=0,

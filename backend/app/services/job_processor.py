@@ -10,8 +10,19 @@ from sqlalchemy.orm import Session
 
 from app.config import REPORTS_DIR
 from app.database import SessionLocal
-from app.models import AnalysisRun, Chart, Dataset, DatasetVersion, ExportedReport, Job
-from app.schemas import JobStatus, JobType
+from app.models import (
+    JOB_STATUS_CANCELLED,
+    JOB_STATUS_COMPLETED,
+    JOB_STATUS_FAILED,
+    JOB_STATUS_RUNNING,
+    AnalysisRun,
+    Chart,
+    Dataset,
+    DatasetVersion,
+    ExportedReport,
+    Job,
+    User,
+)
 from app.services.chart_service import build_chart_data
 from app.services.export_service import build_report
 from app.statflow import stats_engine, version_store
@@ -34,9 +45,9 @@ def update_job_progress(job_id: int, progress: int, status: JobStatus, result: O
                 job.result = result
             if error:
                 job.error_message = error
-            if status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
+            if status in (JOB_STATUS_COMPLETED, JOB_STATUS_FAILED, JOB_STATUS_CANCELLED):
                 job.completed_at = datetime.now(timezone.utc)
-            elif status == JobStatus.RUNNING and job.started_at is None:
+            elif status == JOB_STATUS_RUNNING and job.started_at is None:
                 job.started_at = datetime.now(timezone.utc)
             db.commit()
     finally:
@@ -58,19 +69,19 @@ def process_analysis_job(job_id: int) -> None:
         dataset_version = payload.get("dataset_version")
         save = payload.get("save", True)
 
-        update_job_progress(job_id, 10, JobStatus.RUNNING)
+        update_job_progress(job_id, 10, JOB_STATUS_RUNNING)
 
         dataset = db.get(Dataset, dataset_id)
         if not dataset:
-            update_job_progress(job_id, 100, JobStatus.FAILED, error="Dataset not found")
+            update_job_progress(job_id, 100, JOB_STATUS_FAILED, error="Dataset not found")
             return
 
         try:
             record, frame = version_store.load_version_frame(db, dataset, dataset_version)
-            update_job_progress(job_id, 30, JobStatus.RUNNING)
+            update_job_progress(job_id, 30, JOB_STATUS_RUNNING)
 
             result = stats_engine.run_analysis(frame, analysis_type, parameters)
-            update_job_progress(job_id, 80, JobStatus.RUNNING)
+            update_job_progress(job_id, 80, JOB_STATUS_RUNNING)
 
             response = {
                 "dataset_id": dataset.id,
@@ -99,10 +110,10 @@ def process_analysis_job(job_id: int) -> None:
                 response["analysis_id"] = run.id
                 response["created_at"] = run.created_at.isoformat() if run.created_at else None
 
-            update_job_progress(job_id, 100, JobStatus.COMPLETED, result=response)
+            update_job_progress(job_id, 100, JOB_STATUS_COMPLETED, result=response)
 
         except (stats_engine.AnalysisError, VersionError, ValueError) as exc:
-            update_job_progress(job_id, 100, JobStatus.FAILED, error=str(exc))
+            update_job_progress(job_id, 100, JOB_STATUS_FAILED, error=str(exc))
 
     finally:
         db.close()
@@ -122,16 +133,16 @@ def process_report_export_job(job_id: int) -> None:
         analysis_ids = payload.get("analysis_ids", [])
         chart_ids = payload.get("chart_ids", [])
 
-        update_job_progress(job_id, 10, JobStatus.RUNNING)
+        update_job_progress(job_id, 10, JOB_STATUS_RUNNING)
 
         report = db.get(ExportedReport, report_id)
         if not report:
-            update_job_progress(job_id, 100, JobStatus.FAILED, error="Report not found")
+            update_job_progress(job_id, 100, JOB_STATUS_FAILED, error="Report not found")
             return
 
         dataset = db.get(Dataset, report.dataset_id)
         if not dataset:
-            update_job_progress(job_id, 100, JobStatus.FAILED, error="Dataset no longer exists")
+            update_job_progress(job_id, 100, JOB_STATUS_FAILED, error="Dataset no longer exists")
             report.status = "failed"
             report.error_message = "Dataset no longer exists"
             db.commit()
@@ -144,7 +155,7 @@ def process_report_export_job(job_id: int) -> None:
             if not report_version or report_version.dataset_id != dataset.id:
                 raise VersionError("Report source version is unavailable")
 
-            update_job_progress(job_id, 20, JobStatus.RUNNING)
+            update_job_progress(job_id, 20, JOB_STATUS_RUNNING)
 
             analyses: List[Dict[str, Any]] = []
             if analysis_ids:
@@ -160,7 +171,7 @@ def process_report_export_job(job_id: int) -> None:
                 )
                 analyses = [record.to_dict() for record in records]
 
-            update_job_progress(job_id, 40, JobStatus.RUNNING)
+            update_job_progress(job_id, 40, JOB_STATUS_RUNNING)
 
             charts: List[Dict[str, Any]] = []
             frames: Dict[int, Any] = {}
@@ -176,27 +187,31 @@ def process_report_export_job(job_id: int) -> None:
                     .all()
                 )
                 for record in records:
-                    config = record.config or {}
-                    payload_config = {
-                        key: value for key, value in config.items() if key != "_chart_data"
+                    payload = record.to_dict()
+                    payload["config"] = {
+                        key: value
+                        for key, value in (record.config or {}).items()
+                        if key != "_chart_data"
                     }
-                    chart_data = config.get("_chart_data")
+                    chart_data = (record.config or {}).get("_chart_data")
                     if not chart_data:
                         frame = frames.get(report_version.id)
                         if frame is None:
                             frame = version_store.read_version_file(report_version)
                             frames[report_version.id] = frame
                         try:
-                            chart_data = build_chart_data(frame, record.chart_type, payload_config)
+                            chart_data = build_chart_data(
+                                frame, record.chart_type, payload["config"]
+                            )
                         except (ValueError, TypeError):
                             chart_data = {}
-                    payload_config["_chart_data"] = chart_data
-                    charts.append({
-                        **record.to_dict(),
-                        "config": payload_config,
-                    })
+                    # `build_report` reads `chart_data` as a sibling of `config`,
+                    # not nested inside it. Keeping the original payload shape
+                    # matters: a report with charts silently drops them otherwise.
+                    payload["chart_data"] = chart_data
+                    charts.append(payload)
 
-            update_job_progress(job_id, 60, JobStatus.RUNNING)
+            update_job_progress(job_id, 60, JOB_STATUS_RUNNING)
 
             dataset_summary = {
                 "id": dataset.id,
@@ -211,20 +226,20 @@ def process_report_export_job(job_id: int) -> None:
 
             path = build_report(report_id, file_format, dataset_summary, analyses, charts)
 
-            update_job_progress(job_id, 90, JobStatus.RUNNING)
+            update_job_progress(job_id, 90, JOB_STATUS_RUNNING)
 
             report.storage_path = str(path)
             report.status = "completed"
             db.commit()
 
-            update_job_progress(job_id, 100, JobStatus.COMPLETED, result={"download_url": f"/api/v1/reports/{report_id}/download"})
+            update_job_progress(job_id, 100, JOB_STATUS_COMPLETED, result={"download_url": f"/api/v1/reports/{report_id}/download"})
 
         except Exception as exc:
             logger.exception("Report generation failed for report %s", report_id)
             report.status = "failed"
             report.error_message = REPORT_FAILURE_MESSAGE
             db.commit()
-            update_job_progress(job_id, 100, JobStatus.FAILED, error=str(exc))
+            update_job_progress(job_id, 100, JOB_STATUS_FAILED, error=str(exc))
 
     finally:
         db.close()
@@ -245,19 +260,19 @@ def process_chart_render_job(job_id: int) -> None:
         dataset_version = payload.get("dataset_version")
         save = payload.get("save", True)
 
-        update_job_progress(job_id, 10, JobStatus.RUNNING)
+        update_job_progress(job_id, 10, JOB_STATUS_RUNNING)
 
         dataset = db.get(Dataset, dataset_id)
         if not dataset:
-            update_job_progress(job_id, 100, JobStatus.FAILED, error="Dataset not found")
+            update_job_progress(job_id, 100, JOB_STATUS_FAILED, error="Dataset not found")
             return
 
         try:
             version_record, frame = version_store.load_version_frame(db, dataset, dataset_version)
-            update_job_progress(job_id, 30, JobStatus.RUNNING)
+            update_job_progress(job_id, 30, JOB_STATUS_RUNNING)
 
             chart_data = build_chart_data(frame, chart_type, config)
-            update_job_progress(job_id, 60, JobStatus.RUNNING)
+            update_job_progress(job_id, 60, JOB_STATUS_RUNNING)
 
             chart_data.setdefault("meta", {})
             chart_data["meta"].update({
@@ -290,10 +305,10 @@ def process_chart_render_job(job_id: int) -> None:
                 response["chart_id"] = record.id
                 response["created_at"] = record.created_at.isoformat() if record.created_at else None
 
-            update_job_progress(job_id, 100, JobStatus.COMPLETED, result=response)
+            update_job_progress(job_id, 100, JOB_STATUS_COMPLETED, result=response)
 
         except (VersionError, ValueError) as exc:
-            update_job_progress(job_id, 100, JobStatus.FAILED, error=str(exc))
+            update_job_progress(job_id, 100, JOB_STATUS_FAILED, error=str(exc))
 
     finally:
         db.close()
@@ -314,19 +329,19 @@ def process_ml_training_job(job_id: int) -> None:
         dataset_version = payload.get("dataset_version")
         save = payload.get("save", True)
 
-        update_job_progress(job_id, 10, JobStatus.RUNNING)
+        update_job_progress(job_id, 10, JOB_STATUS_RUNNING)
 
         dataset = db.get(Dataset, dataset_id)
         if not dataset:
-            update_job_progress(job_id, 100, JobStatus.FAILED, error="Dataset not found")
+            update_job_progress(job_id, 100, JOB_STATUS_FAILED, error="Dataset not found")
             return
 
         try:
             record, frame = version_store.load_version_frame(db, dataset, dataset_version)
-            update_job_progress(job_id, 30, JobStatus.RUNNING)
+            update_job_progress(job_id, 30, JOB_STATUS_RUNNING)
 
             result = stats_engine.run_analysis(frame, analysis_type, parameters)
-            update_job_progress(job_id, 80, JobStatus.RUNNING)
+            update_job_progress(job_id, 80, JOB_STATUS_RUNNING)
 
             response = {
                 "dataset_id": dataset.id,
@@ -355,10 +370,10 @@ def process_ml_training_job(job_id: int) -> None:
                 response["analysis_id"] = run.id
                 response["created_at"] = run.created_at.isoformat() if run.created_at else None
 
-            update_job_progress(job_id, 100, JobStatus.COMPLETED, result=response)
+            update_job_progress(job_id, 100, JOB_STATUS_COMPLETED, result=response)
 
         except (stats_engine.AnalysisError, VersionError, ValueError) as exc:
-            update_job_progress(job_id, 100, JobStatus.FAILED, error=str(exc))
+            update_job_progress(job_id, 100, JOB_STATUS_FAILED, error=str(exc))
 
     finally:
         db.close()
@@ -373,7 +388,7 @@ def process_dataset_clean_job(job_id: int) -> None:
         if not job:
             return
 
-        update_job_progress(job_id, 100, JobStatus.COMPLETED, result={"message": "Dataset cleaning not yet implemented"})
+        update_job_progress(job_id, 100, JOB_STATUS_COMPLETED, result={"message": "Dataset cleaning not yet implemented"})
     finally:
         db.close()
 
@@ -387,7 +402,7 @@ def process_dataset_transform_job(job_id: int) -> None:
         if not job:
             return
 
-        update_job_progress(job_id, 100, JobStatus.COMPLETED, result={"message": "Dataset transformation not yet implemented"})
+        update_job_progress(job_id, 100, JOB_STATUS_COMPLETED, result={"message": "Dataset transformation not yet implemented"})
     finally:
         db.close()
 
@@ -413,7 +428,7 @@ def process_job(job_id: int) -> None:
 
         processor = JOB_PROCESSORS.get(job.job_type)
         if not processor:
-            update_job_progress(job_id, 100, JobStatus.FAILED, error=f"No processor for job type: {job.job_type}")
+            update_job_progress(job_id, 100, JOB_STATUS_FAILED, error=f"No processor for job type: {job.job_type}")
             return
 
         logger.info("Processing job %d (type: %s)", job_id, job.job_type)
@@ -421,6 +436,6 @@ def process_job(job_id: int) -> None:
 
     except Exception as exc:
         logger.exception("Error processing job %d", job_id)
-        update_job_progress(job_id, 100, JobStatus.FAILED, error=f"Internal error: {exc}")
+        update_job_progress(job_id, 100, JOB_STATUS_FAILED, error=f"Internal error: {exc}")
     finally:
         db.close()

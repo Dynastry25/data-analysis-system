@@ -6,7 +6,7 @@ import { Icon } from "@/components/Icon";
 import { ResidualDiagnostic } from "@/components/ResidualDiagnostic";
 import type { ResidualPattern, ResidualPoint } from "@/components/ResidualDiagnostic";
 import { CoefficientTable, ResultHeadline } from "@/components/ResultHeadline";
-import { StandardResult } from "@/lib/api";
+import { AssumptionCheck, StandardResult } from "@/lib/api";
 import { colorForIndex } from "@/lib/constants";
 
 /** Format a scalar value for display. */
@@ -451,6 +451,92 @@ export function CollapsibleDetails({
         {children}
       </div>
     </details>
+  );
+}
+
+/**
+ * The engine's verdict on this method's assumptions, for a directly configured run.
+ *
+ * A `fail` is rendered as a blocking alert, because it changes how every number
+ * below it should be read — it does not stop the run, which stays available so
+ * the reader can see the result and the reason to doubt it together. `warn` is a
+ * note; `pass` is collapsed, since a row of green ticks is noise on every
+ * successful analysis.
+ */
+export function AssumptionsPanel({ checks }: { checks: AssumptionCheck[] }) {
+  if (checks.length === 0) return null;
+
+  const failing = checks.filter((check) => check.status === "fail");
+  const warning = checks.filter((check) => check.status === "warn");
+  const relevant = checks.filter((check) => check.status !== "not_applicable");
+
+  if (relevant.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      {failing.length > 0 && (
+        <div
+          role="alert"
+          className="rounded-md border border-danger/30 bg-danger-bg p-3"
+        >
+          <p className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wide text-danger-700">
+            <Icon name="alert-circle" size={14} />
+            Vigezo {failing.length} havipotikani na data hii
+          </p>
+          <ul className="mt-2 space-y-2">
+            {failing.map((check) => (
+              <li key={check.name} className="text-caption text-danger-700">
+                <span className="font-medium">{check.name}:</span> {check.detail}
+                {check.evidence && (
+                  <span className="block text-ink-muted">
+                    Ushahidi: {check.evidence}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {warning.length > 0 && (
+        <div className="rounded-md border border-warning/40 bg-warning-bg p-3 text-caption text-warning-700">
+          <p className="flex items-center gap-1.5 font-semibold">
+            <Icon name="alert-triangle" size={14} />
+            Tahadhari {warning.length} kwa vigezo vya method
+          </p>
+          <ul className="mt-1.5 space-y-1">
+            {warning.map((check) => (
+              <li key={check.name}>
+                <span className="font-medium">{check.name}:</span> {check.detail}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {failing.length === 0 && warning.length === 0 && (
+        <CollapsibleDetails label={`Vigezo vya method: ${relevant.length} zimethibitishwa`}>
+          <ul className="space-y-2">
+            {relevant.map((check) => (
+              <li key={check.name} className="flex items-start gap-2">
+                <Badge tone="success" size="sm" icon="check" className="mt-0.5 shrink-0">
+                  <span className="sr-only">Imethibitishwa:</span> Imethibitishwa
+                </Badge>
+                <div className="min-w-0">
+                  <p className="text-body font-medium text-ink">{check.name}</p>
+                  <p className="text-caption text-ink-secondary">{check.detail}</p>
+                  {check.evidence && (
+                    <p className="text-caption text-ink-muted">
+                      Ushahidi: {check.evidence}
+                    </p>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </CollapsibleDetails>
+      )}
+    </div>
   );
 }
 
@@ -905,6 +991,16 @@ export function StandardResultView({
       <ResultHeadline result={result} question={question} />
 
       <ProvenanceStrip result={result} authorName={authorName} />
+
+      {/*
+        The engine's verdict on whether the data meets this method's assumptions.
+        It sits above the headline numbers because a `fail` changes how every
+        number below it should be read: it is the difference between a result
+        and a result that happens to have been produced. The recommendation path
+        already showed these; a directly configured run now does too.
+      */}
+      <AssumptionsPanel checks={result.assumption_checks ?? []} />
+
       {result.warnings.length > 0 && (
         <div
           role="alert"

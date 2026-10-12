@@ -14,7 +14,6 @@ from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
 from app.models import AnalysisRun, Dataset, Job, User
 from app.rbac import ORG_ROLE_VIEWER
-from app.schemas import JobType
 from app.services.job_processor import process_job
 from app.statflow import methods, stats_engine, version_store
 from app.statflow.schemas import AnalysisRequest, AnalysisReplayRequest, AnalysisModifyRequest
@@ -88,7 +87,7 @@ def run_analysis_endpoint(
         # Create a job for the analysis
         job = Job(
             user_id=user.id,
-            job_type=JobType.ANALYSIS,
+            job_type="analysis",
             dataset_id=dataset.id,
             status="pending",
             progress=0,

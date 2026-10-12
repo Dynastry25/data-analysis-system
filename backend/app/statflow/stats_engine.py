@@ -20,6 +20,7 @@ report generator and dashboard never have to learn a new shape per method::
 All mathematics is implemented with numpy + ``statflow.distributions`` (no scipy).
 """
 
+import logging
 from datetime import datetime, timezone
 from math import lgamma
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -37,6 +38,8 @@ from app.statflow.distributions import (
     t_critical,
 )
 from app.services.data_service import to_jsonable
+
+logger = logging.getLogger(__name__)
 
 SUCCESS = "success"
 INSUFFICIENT = "insufficient_data"
@@ -3977,7 +3980,23 @@ def run_analysis(
             warnings=["The dataset version has fewer than 3 rows"],
             meta={"parameters": parameters},
         )
-    return handler(frame, parameters or {})
+    result = handler(frame, parameters or {})
+    # Every result carries the engine's verdict on the data, not just the number,
+    # so a directly configured run is checked the same way a recommended one is.
+    # Assumption checks never change the estimate -- they say whether the
+    # estimate should be trusted, which is the reader's call to make.
+    try:
+        from app.statflow.planning import assumption_checks_for_result
+
+        result["assumption_checks"] = assumption_checks_for_result(
+            str(analysis_type), frame, parameters or {}
+        )
+    except Exception:  # pragma: no cover - checks must never break the analysis
+        logger.exception(
+            "Assumption checks failed for %s; the result is still returned",
+            analysis_type,
+        )
+    return result
 
 
 
