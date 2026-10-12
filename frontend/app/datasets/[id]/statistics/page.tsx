@@ -309,6 +309,17 @@ export default function StatisticsPage() {
   const [questionOpen, setQuestionOpen] = useState(false);
 
   /*
+    One-click reproducibility. Every run in the history records its parameters
+    and the dataset version it ran on, so replaying it is a single call -- and
+    modifying one parameter and re-running is the same call with new parameters.
+    This is what makes a recorded result auditable rather than merely stored.
+  */
+  const [reproRun, setReproRun] = useState<AnalysisRunRecord | null>(null);
+  const [reproMode, setReproMode] = useState<"replay" | "modify">("replay");
+  const [reproParams, setReproParams] = useState<Record<string, string | string[]>>({});
+  const [reproLoading, setReproLoading] = useState(false);
+
+  /*
     The assumption gate. `assumption_checks` is computed by the engine, not by
     the UI, and a `fail` is an evidence-backed verdict that this data does not
     meet the recommended method's assumptions. It used to live only inside the
@@ -325,6 +336,16 @@ export default function StatisticsPage() {
   const recommendationInUse =
     recommendation !== null && analysisType === recommendation.recommendation.analysis_type;
   const runBlocked = recommendationInUse && blockingChecks.length > 0;
+
+  /*
+    The same verdict now arrives on a directly configured run, because the engine
+    attaches checks to every standard result. A fail there is shown with the
+    method the guide itself names as the fallback -- the stage plan's
+    interpretation stage lists them for exactly this case -- so the reader is
+    handed the next step rather than only the bad news.
+  */
+  const directChecks = result?.assumption_checks ?? [];
+  const directFailing = directChecks.filter((check) => check.status === "fail");
 
   const load = useCallback(async () => {
     if (!Number.isFinite(datasetId)) return;
@@ -430,6 +451,14 @@ export default function StatisticsPage() {
   const selectedStages = useMemo(() => {
     if (!catalog || !selectedMethod) return [];
     return catalog.stage_plans[selectedMethod.stage_plan] ?? [];
+  }, [catalog, selectedMethod]);
+
+  // The guide's own fallback methods, resolved to catalogue entries so a failed
+  // assumption can offer a concrete next step rather than only bad news.
+  const alternativeMethods = useMemo(() => {
+    if (!catalog || !selectedMethod) return [];
+    const engines = new Set(selectedMethod.alternatives ?? []);
+    return catalog.methods.filter((method) => method.engine !== null && engines.has(method.engine));
   }, [catalog, selectedMethod]);
 
   // How far the reader has actually got. Only steps the product can honestly
@@ -539,6 +568,55 @@ export default function StatisticsPage() {
       `Umefungua uchambuzi wa ${run.analysis_type} kwenye toleo v${run.dataset_version}.`,
       "info"
     );
+  }
+
+  /**
+   * Re-run a recorded analysis, optionally with changed parameters.
+   *
+   * Replaying unchanged is the audit trail in action: the same parameters on the
+   * same version must give the same answer, and being able to press one button
+   * to prove it is the point of recording the runs in the first place.
+   */
+  async function runReproducibility() {
+    if (!reproRun) return;
+    setReproLoading(true);
+    try {
+      const response =
+        reproMode === "replay"
+          ? await statflowApi.replayAnalysis(datasetId, {
+              analysis_id: reproRun.analysis_id,
+              save: true,
+            })
+          : await statflowApi.modifyAnalysis(datasetId, {
+              analysis_id: reproRun.analysis_id,
+              parameters: reproParams,
+              save: true,
+            });
+      setResult(response.result);
+      setAnalysisType(response.analysis_type);
+      // Put the replayed/modified parameters back in the form, so the result on
+      // screen always matches the inputs that produced it.
+      setParamValues(
+        parametersToFormValues(
+          reproMode === "modify"
+            ? (reproParams as Record<string, unknown>)
+            : reproRun.parameters
+        )
+      );
+      showToast(
+        reproMode === "replay"
+          ? "Uchambuzi umekurugenziwa tena kwa matokeo yale yale."
+          : "Uchambuzi umebadilishwa na umekurugenziwa tena.",
+        "success"
+      );
+      setReproRun(null);
+      setHistoryOpen(false);
+      setRuns(await statflowApi.analysisRuns(datasetId));
+    } catch (caught) {
+      showToast(apiErrorMessage(caught), "danger");
+    } finally {
+      setReproLoading(false);
+    }
   }
 
   function toggleMulti(name: string, column: string) {
@@ -1000,6 +1078,32 @@ export default function StatisticsPage() {
                     </Button>
                   </>
                 }
+                footer={
+                  directFailing.length > 0 && alternativeMethods.length > 0 ? (
+                    <div className="rounded-md border border-danger/30 bg-danger-bg p-3.5">
+                      <p className="text-body font-medium text-danger-700">
+                        Engine inapendekeza njia mbadala kwa data hii
+                      </p>
+                      <p className="mt-1 text-caption text-ink-secondary">
+                        Kwa sababu vigezo {directFailing.length} havipotikani na
+                        method uliyochagua, mwongozo unaelekeza kwenye:
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {alternativeMethods.map((method) => (
+                          <Button
+                            key={method.key}
+                            variant="secondary"
+                            size="small"
+                            icon="sparkles"
+                            onClick={() => chooseMethod(method)}
+                          >
+                            {method.label_sw}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null
+                }
               />
             ) : (
               <EmptyState
@@ -1220,6 +1324,18 @@ export default function StatisticsPage() {
                     >
                       Fungua
                     </Button>
+                    <Button
+                      variant="ghost"
+                      size="small"
+                      icon="refresh"
+                      onClick={() => {
+                        setReproRun(run);
+                        setReproMode("replay");
+                        setReproParams(parametersToFormValues(run.parameters));
+                      }}
+                    >
+                      Rudia
+                    </Button>
                   </div>
                   {chips.length > 0 && (
                     <ul className="mt-2 flex flex-wrap gap-1.5">
@@ -1240,6 +1356,82 @@ export default function StatisticsPage() {
               );
             })}
           </ul>
+        )}
+
+        {reproRun && (
+          <div className="mt-4 rounded-md border border-primary-200 bg-primary-50/40 p-3.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-body font-medium text-ink">
+                  {reproMode === "replay" ? "Rudia uchambuzi" : "Badilisha na rudia uchambuzi"}
+                </h3>
+                <p className="mt-0.5 text-caption text-ink-secondary">
+                  {reproRun.analysis_type} · toleo v{reproRun.dataset_version} ·{" "}
+                  {reproRun.created_at
+                    ? new Date(reproRun.created_at).toLocaleString()
+                    : "wakati usiojulikana"}
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="small"
+                icon="close"
+                onClick={() => setReproRun(null)}
+              />
+            </div>
+
+            {reproMode === "replay" ? (
+              <p className="mt-2 text-caption text-ink-secondary">
+                Rudia kwa vigezo sawa na toleo lile lile. Matokeo yanapaswa kuwa
+                ya kwanza — hiyo ndiyo uthibitisho wa kurudiwa.
+              </p>
+            ) : (
+              <div className="mt-2.5 space-y-2.5">
+                {Object.entries(reproRun.parameters).map(([name, value]) => (
+                  <TextInput
+                    key={name}
+                    label={humanize(name)}
+                    value={
+                      Array.isArray(value)
+                        ? value.join(", ")
+                        : String(value ?? "")
+                    }
+                    onChange={(event) =>
+                      setReproParams((previous) => {
+                        const next = { ...previous };
+                        const original = reproRun.parameters[name];
+                        if (Array.isArray(original)) {
+                          next[name] = event.target.value
+                            .split(",")
+                            .map((item) => item.trim())
+                            .filter(Boolean);
+                        } else {
+                          next[name] = event.target.value;
+                        }
+                        return next;
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            )}
+
+            <div className="mt-3 flex flex-wrap justify-end gap-2">
+              {reproMode === "replay" && (
+                <Button
+                  variant="secondary"
+                  size="small"
+                  icon="edit"
+                  onClick={() => setReproMode("modify")}
+                >
+                  Badilisha vigezo
+                </Button>
+              )}
+              <Button size="small" loading={reproLoading} onClick={runReproducibility}>
+                {reproMode === "replay" ? "Rudia" : "Badilisha na rudia"}
+              </Button>
+            </div>
+          </div>
         )}
       </Modal>
     </AppShell>

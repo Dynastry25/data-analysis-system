@@ -693,6 +693,12 @@ interface StandardResultViewProps {
   result: StandardResult;
   /** Optional next-step buttons (design system §10 layer 6). */
   actions?: React.ReactNode;
+  /**
+   * Content rendered after the result, for a next step the reader should take
+   * rather than a button they might want — for instance the alternative method
+   * the guide names when an assumption fails.
+   */
+  footer?: React.ReactNode;
   /** The user's own research question, shown as the headline claim. */
   question?: string | null;
   /** Author of the run, for the reproducibility line. */
@@ -963,6 +969,7 @@ function CorrelationMatrixView({ result }: { result: StandardResult }) {
 export function StandardResultView({
   result,
   actions,
+  footer,
   question = null,
   authorName = null,
 }: StandardResultViewProps) {
@@ -1136,6 +1143,13 @@ export function StandardResultView({
 
       {/* Layer 6 — Hatua zinazofuata */}
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+
+      {/*
+        A next step the reader should take, rather than one they might want.
+        Rendered last so it reads as the conclusion of the result, and outside
+        the actions row so it can carry its own explanation.
+      */}
+      {footer && <div className="pt-1">{footer}</div>}
     </div>
   );
 }
