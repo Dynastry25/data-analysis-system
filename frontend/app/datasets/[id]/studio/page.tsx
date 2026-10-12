@@ -69,10 +69,10 @@ type LastResult = {
  * silently drops rows looks like a successful filter.
  */
 const JOIN_OPTIONS = [
-  { value: "left", label: "left â€” kila row ya dataset hii (recommended)" },
-  { value: "inner", label: "inner â€” tu rows zinazopatikana kwenye zote mbili" },
-  { value: "right", label: "right â€” kila row ya dataset ya pili" },
-  { value: "outer", label: "outer â€” zote mbili" },
+  { value: "left", label: "left — kila row ya dataset hii (recommended)" },
+  { value: "inner", label: "inner — tu rows zinazopatikana kwenye zote mbili" },
+  { value: "right", label: "right — kila row ya dataset ya pili" },
+  { value: "outer", label: "outer — zote mbili" },
 ];
 
 const KEEP_OPTIONS = [
@@ -89,7 +89,7 @@ const TYPE_OPTIONS = ["numeric", "integer", "text", "date", "boolean"].map((valu
 
 /** Profiling min/max arrive as `any`, so render them rather than trusting the type. */
 function formatCell(value: unknown): string {
-  if (value === null || value === undefined) return "â€”";
+  if (value === null || value === undefined) return "—";
   if (typeof value === "number" || typeof value === "string") return String(value);
   return String(value);
 }
@@ -605,7 +605,7 @@ export default function StudioPage() {
           label={field.label}
           required={field.required}
           error={error}
-          placeholder="â€” chagua dataset â€”"
+          placeholder="— chagua dataset —"
           value={String(value || "")}
           options={options}
           onChange={(event) =>
@@ -620,7 +620,7 @@ export default function StudioPage() {
           label={field.label}
           required={field.required}
           error={error}
-          placeholder="â€” chagua column â€”"
+          placeholder="— chagua column —"
           value={String(value || "")}
           options={columnNames.map((name) => ({ value: name, label: name }))}
           onChange={(event) =>
@@ -635,7 +635,7 @@ export default function StudioPage() {
           label={field.label}
           required={field.required}
           error={error}
-          placeholder="â€” chagua â€”"
+          placeholder="— chagua —"
           value={String(value || "")}
           options={field.options ?? []}
           onChange={(event) =>
@@ -670,7 +670,7 @@ export default function StudioPage() {
     <AppShell
       eyebrow="Eneo la kazi"
       title="Data studio"
-      description="Profile, safisha na badilisha zinaishi kwenye ukurasa mmoja â€” kila hatua ina kazi na matokeo yake mwenyewe."
+      description="Profile, safisha na badilisha zinaishi kwenye ukurasa mmoja — kila hatua ina kazi na matokeo yake mwenyewe."
       actions={
         <Link href={`/datasets/${datasetId}`}>
           <Button variant="secondary">Rudi kwenye dataset</Button>
@@ -769,9 +769,9 @@ export default function StudioPage() {
                   {columns.map((column) => (
                     <tr key={column.name} className="border-b border-surface-border last:border-0">
                       <td className="py-2.5 pr-4 font-medium text-ink">{column.name}</td>
-                      <td className="py-2.5 pr-4 text-ink-secondary">{column.data_type ?? "â€”"}</td>
+                      <td className="py-2.5 pr-4 text-ink-secondary">{column.data_type ?? "—"}</td>
                       <td className="py-2.5 pr-4 text-ink-secondary">{column.missing_count}</td>
-                      <td className="py-2.5 pr-4 text-ink-secondary">{column.unique_count ?? "â€”"}</td>
+                      <td className="py-2.5 pr-4 text-ink-secondary">{column.unique_count ?? "—"}</td>
                       <td className="py-2.5 font-mono text-caption text-ink-secondary">
                         {formatCell(column.min)} &rarr; {formatCell(column.max)}
                       </td>
@@ -1063,7 +1063,7 @@ export default function StudioPage() {
                             </Badge>
                             <span className="text-caption text-ink-muted">
                               <span className="font-mono font-medium text-ink">
-                                v{operation.source_version} â†’ v{operation.version}
+                                v{operation.source_version} ‘ v{operation.version}
                               </span>
                               {operation.created_at
                                 ? ` Â· ${new Date(operation.created_at).toLocaleString()}`
