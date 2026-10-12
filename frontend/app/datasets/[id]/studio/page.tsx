@@ -9,6 +9,7 @@ import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card, EmptyState } from "@/components/Card";
+import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { CheckboxGroup, SelectInput, TextInput } from "@/components/Field";
 import {
   FilterBuilder,
@@ -264,6 +265,13 @@ export default function StudioPage() {
    */
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
 
+
+  /**
+   * The per-column profile table is reference material, so it starts folded.
+   * With 34 columns it is longer than the data browser above it, and the
+   * browser is the part of the profile section you work in.
+   */
+  const [showProfileTable, setShowProfileTable] = useState(false);
 
   const columnNames = columns.map((column) => column.name);
 
@@ -727,11 +735,19 @@ export default function StudioPage() {
       )}
 
       {section === "profile" && (
-        <Card
+        <CollapsibleCard
           title="Profile ya kila column"
           icon="table"
-          description="Hapa ndani hakuna kitu cha kubadilisha: kuangalia tu. Mabadiliko yafanyaywe chini katika Safisha au Badilisha."
+          description="Hapana kitu cha kubadilisha: kuangalia tu. Mabadiliko yafanywa chini katika Safisha au Badilisha."
+          badge={
+            columns.length > 0 ? (
+              <Badge tone="neutral">{columns.length} columns</Badge>
+            ) : undefined
+          }
+          open={showProfileTable}
+          onToggle={() => setShowProfileTable((current) => !current)}
         >
+          <div className="px-4 py-4 sm:px-5">
           {columns.length === 0 ? (
             <EmptyState
               title="Hakuna columns"
@@ -765,7 +781,8 @@ export default function StudioPage() {
               </table>
             </div>
           )}
-        </Card>
+          </div>
+        </CollapsibleCard>
       )}
 
       {loading ? (
