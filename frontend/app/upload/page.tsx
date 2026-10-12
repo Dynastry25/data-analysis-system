@@ -4,8 +4,10 @@ import { useRouter } from "next/navigation";
 import { DragEvent, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { Badge } from "@/components/Badge";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { SelectInput, TextInput } from "@/components/Field";
 import { Icon } from "@/components/Icon";
 import { useToast } from "@/components/Toast";
@@ -58,6 +60,8 @@ export default function UploadPage() {
   const [scrapeSelection, setScrapeSelection] = useState<number | null>(null);
   const [importing, setImporting] = useState(false);
   const [scrapeError, setScrapeError] = useState<string | null>(null);
+  /** The prep advice is reference material, so it starts folded. */
+  const [showTips, setShowTips] = useState(false);
 
   useEffect(() => {
     api.organizations
@@ -664,19 +668,36 @@ export default function UploadPage() {
         </div>
       </Card>
 
-      <Card
+      {/*
+        Advice, not a step. As an open card this sat below the drop zone and the
+        scrape form, so the page ended with a list nobody reached. Closed by
+        default with a trigger in the drop zone, it is there for the person who
+        wants it and out of the way of the person who does not.
+      */}
+      <CollapsibleCard
         title={t("upload.tips.title")}
-        icon="info"
         description={t("upload.tips.body")}
+        icon="info"
+        badge={
+          ready.length > 0 ? (
+            <Badge tone={rejected.length > 0 ? "warning" : "success"} size="sm">
+              {rejected.length > 0
+                ? t("upload.rejectedNotice", { count: rejected.length })
+                : t("upload.selected", { count: ready.length })}
+            </Badge>
+          ) : undefined
+        }
+        open={showTips}
+        onToggle={() => setShowTips((current) => !current)}
       >
-        <ul className="list-disc space-y-1.5 pl-5 text-body text-ink-secondary">
+        <ul className="list-disc space-y-1.5 px-4 py-4 pl-9 text-body text-ink-secondary sm:px-5">
           <li>{t("upload.tips.header")}</li>
           <li>{t("upload.tips.noMarks")}</li>
           <li>{t("upload.tips.dates")}</li>
           <li>{t("upload.tips.statFiles")}</li>
           <li>{t("upload.tips.large")}</li>
         </ul>
-      </Card>
+      </CollapsibleCard>
     </AppShell>
   );
 }

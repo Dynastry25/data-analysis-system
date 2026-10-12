@@ -308,6 +308,24 @@ export default function StatisticsPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [questionOpen, setQuestionOpen] = useState(false);
 
+  /*
+    The assumption gate. `assumption_checks` is computed by the engine, not by
+    the UI, and a `fail` is an evidence-backed verdict that this data does not
+    meet the recommended method's assumptions. It used to live only inside the
+    recommendation panel -- which is one click away -- so a blocking verdict was
+    invisible on the page it should stop. It is now on the page, and it gates the
+    run when the reader is actually using the method it refers to.
+  */
+  const assumptionChecks = recommendation?.recommendation.assumption_checks ?? [];
+  const blockingChecks = assumptionChecks.filter((check) => check.status === "fail");
+  const warningChecks = assumptionChecks.filter((check) => check.status === "warn");
+  // The checks describe the *recommended* method. If the reader picked a
+  // different one, a fail there does not invalidate their choice, so it is
+  // reported as information and the run stays available.
+  const recommendationInUse =
+    recommendation !== null && analysisType === recommendation.recommendation.analysis_type;
+  const runBlocked = recommendationInUse && blockingChecks.length > 0;
+
   const load = useCallback(async () => {
     if (!Number.isFinite(datasetId)) return;
     setLoading(true);
@@ -769,6 +787,62 @@ export default function StatisticsPage() {
             </div>
           </Card>
 
+          {/*
+            The assumption gate sits between the context bar and the steps
+            because it can stop the run: the engine has weighed the evidence and
+            said this data does not meet the method's assumptions. Only shown
+            when there is something to say, so the common case stays quiet.
+          */}
+          {blockingChecks.length > 0 && (
+            <Card
+              title={
+                runBlocked
+                  ? "Engine inazuia matokeo yasiyoaminika"
+                  : "Njia inayopendekezwa ina vigezo visivyotimika"
+              }
+              icon="alert-circle"
+              tone={runBlocked ? "danger" : "warning"}
+              actions={
+                <Button
+                  variant="secondary"
+                  size="small"
+                  icon="sparkles"
+                  onClick={() => setRecommendationOpen(true)}
+                >
+                  Ona njia mbadala
+                </Button>
+              }
+            >
+              <p className="text-body text-ink-secondary">
+                {runBlocked
+                  ? `Data hii haikidhi vigezo ${blockingChecks.length} vya ${recommendation?.recommendation.label}. Endelea kusahihisha variable au chagua njia mbadala.`
+                  : `Engine inapendekeza ${recommendation?.recommendation.label}, lakini vigezo ${blockingChecks.length} havipotikani na data hii. Unatumia method mwingine, kwa hivyo unaweza kuendelea — lakini angalia uamuzi wako.`}
+              </p>
+              <ul className="mt-3 space-y-2">
+                {blockingChecks.map((check) => (
+                  <li key={check.name} className="flex items-start gap-2">
+                    <Icon name="alert-circle" size={15} className="mt-0.5 shrink-0 text-danger-700" />
+                    <div className="min-w-0">
+                      <p className="text-body font-medium text-ink">{check.name}</p>
+                      <p className="text-caption text-ink-secondary">{check.detail}</p>
+                      {check.evidence && (
+                        <p className="text-caption text-ink-muted">
+                          Ushahidi: {check.evidence}
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {warningChecks.length > 0 && (
+                <p className="mt-3 text-caption text-ink-muted">
+                  Pia kuna tahadhari {warningChecks.length} zinazostahili kusomwa kabla ya
+                  kutafsiri matokeo.
+                </p>
+              )}
+            </Card>
+          )}
+
           {/* Step 1 — the method. One row, swap it out with one click. */}
           <Card
             title="1. Method ya uchambuzi"
@@ -874,8 +948,13 @@ export default function StatisticsPage() {
                 onChange={(event) => setConfidenceLevel(event.target.value)}
               />
               <div className="flex flex-wrap items-center gap-3">
-                <Button size="large" loading={running} disabled={!canRun} onClick={runAnalysis}>
-                  Endesha uchambuzi
+                <Button
+                  size="large"
+                  loading={running}
+                  disabled={!canRun || runBlocked}
+                  onClick={runAnalysis}
+                >
+                  {runBlocked ? "Imzuiliwa hadi vigezo vitimike" : "Endesha uchambuzi"}
                 </Button>
                 <span className="text-caption text-ink-muted">
                   {requirements.filter((entry) => !entry.optional).length} parameters
@@ -1072,6 +1151,15 @@ export default function StatisticsPage() {
                   <Badge tone="primary" size="sm">
                     {recommendation.recommendation.family}
                   </Badge>
+                  {blockingChecks.length > 0 ? (
+                    <Badge tone="danger" size="sm" icon="alert-circle">
+                      {blockingChecks.length} vigezo havitimiki
+                    </Badge>
+                  ) : warningChecks.length > 0 ? (
+                    <Badge tone="warning" size="sm" icon="alert-triangle">
+                      {warningChecks.length} tahadhari
+                    </Badge>
+                  ) : null}
                 </div>
                 <p className="mt-1.5 text-caption text-ink-secondary">
                   {recommendation.recommendation.why}

@@ -17,7 +17,7 @@ assumption checks already exist.
 | # | Item | Why it wins | Status here |
 |---|------|-------------|-------------|
 | 1.1 | **Progressive-disclosure studio UI** | 156 methods inline buried the task | Done — statistics page + explore page now lead with the task; method guide, stage plan, recommendation and history are dialogs |
-| 1.2 | **Assumption gate** | The `fail` state currently only appears in the detail drawer. Blocking a claim is the single clearest "won't let you publish a wrong number" signal | To do — surface `fail` at headline level in `StandardResultView`, and offer the alternative method |
+| 1.2 | **Assumption gate** | The `fail` state was invisible: it lived only inside the recommendation panel, which is one click away, so a blocking verdict could not stop the run it should stop | Done for the recommendation path — the engine's `fail` checks now render on the statistics page and disable the run when the reader is using the method they refer to. **Still open:** the direct-run path has no checks at all (`StandardResult` does not carry `assumption_checks`; only `Recommendation` does), which needs the engine to compute diagnostics inside `run_analysis` — see 2.3 |
 | 1.3 | **Plain-language interpretation per method** | Non-specialists cannot read estimate/CI/effect size | To do — auto-generate "what this means and what it does not mean" from the stage plan |
 | 1.4 | **Reproducibility badge on every result** | `.pbix` files and Excel sheets cannot be diffed or rolled back | Half done — `ProvenanceStrip` exists; needs the replay/parameter-hash affordance promoted to a one-click action |
 | 1.5 | **Result caching** keyed by `(analysis_type, parameters, dataset_version)` | Free speed win; identical re-runs return instantly | To do |
@@ -73,9 +73,31 @@ Established in this cycle and reusable everywhere:
 those gets the whole viewport.
 
 Applied so far: statistics page (guide, stages, recommendation, history,
-question), explore page (per-column profile), studio (per-column profile
-table).
+question, plus the assumption-gate banner), explore page (per-column
+profile), studio (per-column profile table), upload page (prep advice,
+closed by default).
 
-Remaining candidates, in order: help page (255 lines of inline reference),
-admin audit page (277 lines), upload page (651 lines — check what is
-reference vs task).
+Checked and deliberately left alone: the **help** page and the **admin audit**
+page. Both are already short, well-structured reference pages — the help page
+is a search box plus five small cards, the audit page is a filter plus a table.
+Folding either would move content around without removing any.
+
+---
+
+## Known gap: assumption checks on direct runs
+
+`AssumptionCheck` is attached to `Recommendation` only. A `StandardResult`
+from a direct analysis carries `warnings` but no assumption verdicts, so the
+statistics page cannot gate a run the reader configured by hand.
+
+The engine already has everything needed — `pair_diagnostics()` computes
+missingness, sample size, group sizes, normality and outliers, and
+`assumption_checks()` turns those into PASS/WARN verdicts. The gap is that
+`run_analysis()` dispatches to a handler and never sees which columns were
+used, so it has nothing to attach the checks to.
+
+To close it: have each handler (or `run_analysis`, via a declared column
+contract) report the columns it consumed, compute diagnostics for that pair,
+and attach `assumption_checks` to the standard result. Until then the gate
+covers the recommendation path only — which is the path the engine itself
+recommends, and the one most readers use.
