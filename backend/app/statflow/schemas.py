@@ -1,6 +1,6 @@
 """Pydantic request models for the StatFlow v1 API."""
 
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -33,6 +33,37 @@ class DatasetJoinRequest(BaseModel):
         description="Which version of the other dataset (default: its latest)",
     )
     configuration: Dict[str, Any] = Field(default_factory=dict)
+    dataset_version: Optional[int] = Field(
+        default=None, description="Which version of this dataset to start from"
+    )
+    label: Optional[str] = None
+
+
+class RemediationFix(BaseModel):
+    """One validation finding to fix: its code and the column it names.
+
+    A finding without a column (repeated or blank column names) leaves
+    ``column`` null, and the request then matches that finding as it
+    stands on the dataset -- which is why the server re-matches every
+    request against the findings of the version it is about to fix.
+    """
+
+    code: str
+    column: Optional[str] = None
+
+
+class RemediationRequest(BaseModel):
+    """POST /datasets/{id}/remediate.
+
+    Omitting ``fixes`` (or sending an empty list) applies the default
+    set: every finding whose fix is mechanically safe. Sending
+    individual ``{"code", "column"}`` pairs applies those findings
+    only, which is how the opt-in fixes -- a half-empty column, whose
+    removal is a judgment about the analysis -- are requested without
+    a second decision from the default click.
+    """
+
+    fixes: Optional[List[RemediationFix]] = None
     dataset_version: Optional[int] = Field(
         default=None, description="Which version of this dataset to start from"
     )

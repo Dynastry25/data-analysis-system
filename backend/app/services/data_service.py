@@ -346,14 +346,28 @@ def infer_column_type(series: pd.Series) -> str:
 
 def numeric_columns(df: pd.DataFrame) -> List[str]:
     """Columns that can be treated as numeric (real numerics first)."""
-    return [col for col in df.columns if infer_column_type(df[col]) == "numeric"]
+    # Positional read: `df[col]` hands back a whole DataFrame when two
+    # columns share a name, which crashes rather than profiles.
+    return [
+        column
+        for position, column in enumerate(df.columns)
+        if infer_column_type(df.iloc[:, position]) == "numeric"
+    ]
 
 
 def profile_columns(df: pd.DataFrame) -> List[Dict[str, Any]]:
-    """Per-column profiling: type, missing count, unique count, min/max."""
+    """Per-column profiling: type, missing count, unique count, min/max.
+
+    Each column is read by position, not by name. A file whose two
+    columns share a name -- what a merged or repeated header in a
+    spreadsheet produces -- would hand ``df[name]`` back a whole
+    DataFrame and crash the profile, and it is precisely the file
+    that needs profiling so the duplicate-name finding can reach
+    the reader at all.
+    """
     profiles: List[Dict[str, Any]] = []
-    for column in df.columns:
-        series = df[column]
+    for position, column in enumerate(df.columns):
+        series = df.iloc[:, position]
         data_type = infer_column_type(series)
         profile: Dict[str, Any] = {
             "name": column,

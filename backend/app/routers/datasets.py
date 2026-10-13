@@ -52,6 +52,7 @@ from app.services.data_service import (
 from app.services.explore_service import explore_frame
 from app.services.stat_file_readers import VariableLabels
 from app.services.validation_service import validate_frame
+from app.statflow.remediation import remediable_fixes
 from app.statflow import version_store
 from app.statflow.version_store import VersionError
 
@@ -502,6 +503,10 @@ def validate_dataset(
         "dataset_id": dataset.id,
         "dataset_version": int(version_record.version),
         **report,
+        # The remediable findings, published from the same catalog the
+        # remediation endpoint runs, so a button on this page is worded
+        # exactly as the fix it applies.
+        "remediable": remediable_fixes(report),
     }
 
 

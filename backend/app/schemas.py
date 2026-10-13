@@ -258,6 +258,22 @@ class ValidationIssue(BaseModel):
     detail: Dict[str, Any] = {}
 
 
+class RemediableFix(BaseModel):
+    """A finding that one click can fix, as the Validate page shows it.
+
+    ``default`` marks the fixes that are mechanically safe: they are
+    what the one-click button applies. The rest -- a half-empty
+    column, whose removal is a judgment about the analysis -- are
+    offered per finding instead.
+    """
+
+    code: str
+    column: Optional[str] = None
+    label: str
+    default: bool = False
+    message: str = ""
+
+
 class ValidationResponse(BaseModel):
     """Deterministic data-quality findings for the Validate stage."""
 
@@ -271,6 +287,7 @@ class ValidationResponse(BaseModel):
     info_count: int
     summary: str
     issues: List[ValidationIssue]
+    remediable: List[RemediableFix] = []
 
 
 # --------------------------------------------------------------- Explore

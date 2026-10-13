@@ -211,8 +211,59 @@ export interface ValidationIssue {
   code: string;
   severity: "error" | "warning" | "info";
   message: string;
-  column: string | null;
+  column?: string | null;
   detail: Record<string, unknown>;
+}
+
+/**
+ * A finding one click can fix, published by the Validate endpoint from
+ * the same catalog the remediation endpoint runs. `default` marks the
+ * fixes that are mechanically safe -- what the one-click button
+ * applies; the rest are offered per finding instead.
+ */
+export interface RemediableFix {
+  code: string;
+  column?: string | null;
+  label: string;
+  default: boolean;
+  message: string;
+}
+
+/** What one applied fix did, in the shape the operation history stores. */
+export interface AppliedRemediation {
+  code: string;
+  column: string | null;
+  columns: (string | null)[];
+  label: string;
+  summary: Record<string, unknown>;
+  warnings: string[];
+}
+
+/** A fix that matched no finding on this version, and why. */
+export interface SkippedRemediation {
+  code: string;
+  column?: string | null;
+  reason: string;
+}
+
+/**
+ * The result of a one-click remediation. A new immutable version is
+ * written when anything was applied -- the original file stays exactly
+ * as uploaded -- and the report of the new version comes back with it,
+ * so the reader sees what is left rather than having to trust it.
+ */
+export interface RemediationResponse {
+  dataset_id: number;
+  remediated: boolean;
+  version: number | null;
+  current_version: number;
+  operation?: Record<string, unknown>;
+  applied: AppliedRemediation[];
+  skipped: SkippedRemediation[];
+  warnings: string[];
+  row_count: number;
+  column_count: number;
+  validation_after: ValidationResponse;
 }
 
 /** Data-quality findings, all computed in the backend. */
@@ -227,6 +278,8 @@ export interface ValidationResponse {
   info_count: number;
   summary: string;
   issues: ValidationIssue[];
+  /** The findings one click can fix, with their button labels. */
+  remediable: RemediableFix[];
 }
 
 export interface ExploreColumn {
@@ -1376,6 +1429,21 @@ export const statflowApi = {
   operationsHistory: (datasetId: number) =>
     http
       .get<OperationsHistoryResponse>(`/v1/datasets/${datasetId}/operations`)
+      .then((r) => r.data),
+  /**
+   * Fix what the Validate stage found, in one click. Omitted `fixes`
+   * applies the default set: every finding whose fix is mechanically
+   * safe. A half-empty column is opt-in by code, because whether to
+   * drop it is the reader's call about the analysis.
+   */
+  remediate: (
+    datasetId: number,
+    fixes?: { code: string; column?: string | null }[]
+  ) =>
+    http
+      .post<RemediationResponse>(`/v1/datasets/${datasetId}/remediate`, {
+        fixes: fixes && fixes.length > 0 ? fixes : undefined,
+      })
       .then((r) => r.data),
   versionDetail: (datasetId: number, version: number) =>
     http

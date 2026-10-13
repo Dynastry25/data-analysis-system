@@ -11,7 +11,8 @@ from app.deps import get_current_user, get_owned_dataset
 from app.models import Dataset, User
 from app.rbac import ORG_ROLE_VIEWER
 from app.services.data_service import dataframe_records
-from app.statflow import version_store
+from app.services.validation_service import validate_frame
+from app.statflow import remediation, version_store
 from app.statflow.operations import (
     CLEAN,
     TRANSFORM,
@@ -22,7 +23,11 @@ from app.statflow.operations import (
     merge_frames,
     operation_group,
 )
-from app.statflow.schemas import DatasetJoinRequest, OperationRequest
+from app.statflow.schemas import (
+    DatasetJoinRequest,
+    OperationRequest,
+    RemediationRequest,
+)
 from app.statflow.version_store import VersionError
 
 router = APIRouter(prefix="/datasets", tags=["statflow-v1-operations"])
@@ -108,6 +113,94 @@ def transform(
 ) -> Dict[str, Any]:
     """Apply a transformation operation -> new dataset version."""
     return _apply(dataset_id, payload, db, user, TRANSFORM)
+
+
+@router.post("/{dataset_id}/remediate")
+def remediate(
+    dataset_id: int,
+    payload: RemediationRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Fix what the Validate stage found -> new dataset version.
+
+    One click over the mundane findings: an empty column, a number
+    read as text, a few duplicated rows. The fixes are the ordinary
+    cleaning operations, so the history records a real sequence of
+    steps rather than a bypass of them, and the original version
+    stays exactly as uploaded -- which is what keeps the finding it
+    produced recomputable.
+
+    A finding whose fix would be a guess (negative values, identifier
+    columns) is never applied by the default click; it is opt-in per
+    finding. The response re-validates the new version and returns
+    what is left, so the reader sees the result rather than having
+    to trust it.
+    """
+    dataset = get_owned_dataset(dataset_id, db, user)
+    try:
+        version_record, frame = _load_frame(db, dataset, payload.dataset_version)
+        report = validate_frame(frame)
+        result = remediation.remediate_frame(
+            frame, report, [fix.model_dump() for fix in (payload.fixes or [])] if payload.fixes else None
+        )
+        validation_after = validate_frame(result["frame"])
+
+        if not result["changed"]:
+            return {
+                "dataset_id": dataset.id,
+                "remediated": False,
+                "version": None,
+                "current_version": int(version_record.version),
+                "applied": [],
+                "skipped": result["skipped"],
+                "warnings": result["warnings"],
+                "row_count": result["rows_after"],
+                "column_count": result["columns_after"],
+                "validation_after": validation_after,
+            }
+
+        new_version, operation = version_store.create_version(
+            db,
+            dataset,
+            result["frame"],
+            operation_group=CLEAN,
+            operation_type="remediate",
+            configuration={
+                "fixes": [
+                    {"code": fix["code"], "column": fix["column"]}
+                    for fix in result["applied"]
+                ]
+            },
+            source_version=int(version_record.version),
+            summary={
+                "applied": result["applied"],
+                "rows_before": result["rows_before"],
+                "rows_after": result["rows_after"],
+                "columns_before": result["columns_before"],
+                "columns_after": result["columns_after"],
+                "findings_remaining": len(validation_after.get("issues") or []),
+            },
+            warnings=result["warnings"],
+            label=payload.label or "Usafishaji otomatiki",
+            created_by=user.id,
+        )
+    except (VersionError, OperationError) as exc:
+        raise _fail(exc)
+
+    return {
+        "dataset_id": dataset.id,
+        "remediated": True,
+        "version": new_version.version,
+        "current_version": new_version.version,
+        "operation": operation.to_dict(),
+        "applied": result["applied"],
+        "skipped": result["skipped"],
+        "warnings": result["warnings"],
+        "row_count": new_version.row_count,
+        "column_count": new_version.column_count,
+        "validation_after": validation_after,
+    }
 
 
 @router.post("/{dataset_id}/join")

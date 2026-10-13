@@ -168,17 +168,23 @@ def _check_columns(
 
 
 def _check_identifiers(frame: pd.DataFrame) -> List[Dict[str, Any]]:
-    """A column that is unique and complete is probably the row identifier."""
+    """A column that is unique and complete is probably the row identifier.
+
+    Columns are read by position: when two columns share a name,
+    ``frame[name]`` is a whole DataFrame rather than one column, and
+    a file with a repeated header is exactly the kind of file that
+    needs these findings.
+    """
     row_count = int(frame.shape[0])
     if row_count == 0:
         return []
     identifiers = []
-    for name in frame.columns:
-        series = frame[name]
+    for position in range(frame.shape[1]):
+        series = frame.iloc[:, position]
         if series.isna().any():
             continue
         if series.nunique(dropna=True) == row_count:
-            identifiers.append(str(name))
+            identifiers.append(str(frame.columns[position]))
     if not identifiers:
         return []
     return [
@@ -193,10 +199,16 @@ def _check_identifiers(frame: pd.DataFrame) -> List[Dict[str, Any]]:
 
 
 def _check_mixed_types(frame: pd.DataFrame) -> List[Dict[str, Any]]:
-    """Text columns that look numeric or date-like but were read as text."""
+    """Text columns that look numeric or date-like but were read as text.
+
+    Positional reads again, for the same reason as
+    ``_check_identifiers``: a repeated column name must not turn the
+    whole check into a crash.
+    """
     issues: List[Dict[str, Any]] = []
-    for name in frame.columns:
-        series = frame[name].dropna()
+    for position in range(frame.shape[1]):
+        name = str(frame.columns[position])
+        series = frame.iloc[:, position].dropna()
         if series.empty or not all(isinstance(value, str) for value in series.head(200)):
             continue
         sample = series.head(200)
