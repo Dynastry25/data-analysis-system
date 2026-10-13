@@ -2879,10 +2879,20 @@ def _design_matrix(
     return design, ["const", *[str(feature) for feature in features]]
 
 
-def _binary_frame(
+def _positive_flags(
     frame: pd.DataFrame, target_column: str, positive_value: Any
 ) -> np.ndarray:
-    """Encode a two-class column as 0/1 against an explicit positive class."""
+    """Encode a two-class column as 0/1 against an explicit positive class.
+
+    Named apart from ``_binary_frame`` because it answers a different
+    question: that one builds a working frame of (group, value,
+    success) rows for a two-group comparison, and this one returns
+    only the outcome flags a model fits against. The two once shared
+    a name and the second definition silently won, so the
+    two-proportion z-test -- which calls ``_binary_frame`` -- was
+    handed the group column's *name* as the positive class and
+    raised "must contain both classes" for every input it was given.
+    """
     series = frame[target_column]
     if series.isna().any():
         raise AnalysisError(f"'{target_column}' contains missing values; impute them first")
@@ -2993,7 +3003,7 @@ def logistic_regression_analysis(
                 f"'{target_column}' is evenly split, so there is no obvious event class; "
                 "pass positive_value to say which value counts as 1"
             )
-    outcome = _binary_frame(frame, target_column, positive_value)
+    outcome = _positive_flags(frame, target_column, positive_value)
 
     usable = np.ones(outcome.shape[0], dtype=bool)
     for feature in features:

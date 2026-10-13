@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Dataset, DatasetOperation, DatasetVersion
 from app.services.data_service import read_dataframe, to_jsonable
+from app.statflow.frame_cache import FRAME_CACHE
 
 try:  # parquet is preferred; CSV is a transparent fallback
     from importlib.util import find_spec
@@ -110,18 +111,65 @@ def publish_version_file(
     return final_path
 
 
-def read_version_file(version: DatasetVersion) -> pd.DataFrame:
-    """Read the DataFrame behind one version."""
-    path = Path(version.storage_path)
-    if not path.exists():
-        raise VersionError(f"File for version {version.version} is missing")
-    if version.file_format == "parquet":
+def _normalise_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    """Column names as readers see them: stripped of stray whitespace."""
+    return frame.set_axis(
+        [str(column).strip() for column in frame.columns], axis=1
+    )
+
+
+def _read_version_frame(path: Path, file_format: str) -> pd.DataFrame:
+    """Read and normalise one version file from disk."""
+    if file_format == "parquet":
         frame = pd.read_parquet(path)
-    elif version.file_format == "source":
+    elif file_format == "source":
         frame = read_dataframe(path)
     else:
         frame = pd.read_csv(path, low_memory=False)
-    frame.columns = [str(column).strip() for column in frame.columns]
+    return _normalise_columns(frame)
+
+
+def _stat_or_none(path: Path) -> Optional[os.stat_result]:
+    try:
+        return path.stat()
+    except OSError:  # pragma: no cover - the file existed a moment ago
+        return None
+
+
+def cache_frame(path: Path, frame: pd.DataFrame) -> None:
+    """Seed the frame cache for a file that was just written.
+
+    The frame is normalised first so a cached write and a cached read
+    of the same version are the same object: the code that produced a
+    version never reads it back to find out what it produced.
+    """
+    stat_result = _stat_or_none(path)
+    if stat_result is None:  # pragma: no cover - defensive
+        return
+    FRAME_CACHE.put(path, stat_result, _normalise_columns(frame))
+
+
+def read_version_file(version: DatasetVersion) -> pd.DataFrame:
+    """Read the DataFrame behind one version.
+
+    The parquet parse is cached per file identity (path + mtime +
+    size), so a version read many times in a session -- profile,
+    preview, validate, chart, analysis -- is decoded once. The stat
+    that validates the entry costs a fraction of a read, and a file
+    replaced underneath its path is a cache miss rather than a stale
+    frame.
+    """
+    path = Path(version.storage_path)
+    if not path.exists():
+        raise VersionError(f"File for version {version.version} is missing")
+    stat_result = _stat_or_none(path)
+    if stat_result is not None:
+        cached = FRAME_CACHE.get(path, stat_result)
+        if cached is not None:
+            return cached
+    frame = _read_version_frame(path, version.file_format)
+    if stat_result is not None:
+        FRAME_CACHE.put(path, stat_result, frame)
     return frame
 
 
@@ -201,6 +249,7 @@ def ensure_base_version(db: Session, dataset: Dataset) -> DatasetVersion:
                 db.add(version)
                 db.flush()
                 publish_version_file(temporary_path, dataset, 1, file_format)
+                cache_frame(final_path, frame)
                 temporary_path = None
                 db.commit()
             except FileExistsError:
@@ -347,6 +396,10 @@ def create_version(
                 publish_version_file(
                     temporary_path, dataset, new_number, file_format
                 )
+                # The writer already holds the frame it just wrote, so
+                # it seeds the cache instead of making the next reader
+                # decode what it produced.
+                cache_frame(final_path, frame)
                 temporary_path = None
                 db.commit()
             except FileExistsError:
