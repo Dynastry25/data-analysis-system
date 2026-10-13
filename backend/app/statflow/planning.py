@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from app.statflow import stats_engine
+from app.statflow import methods, stats_engine
 from app.services.data_service import looks_like_dates, to_jsonable
 
 SEMANTIC_NUMERIC = "numeric"
@@ -833,6 +833,282 @@ def assumption_checks(
         )
 
     return checks
+
+
+# ------------------------------------------------- interpretation, in plain language
+
+# Family-level guidance on what a result does and does not license.
+#
+# The "does not mean" row is the one that earns its place: every one of these is
+# the mistake a non-specialist reader actually makes, and the engine is the only
+# part of the product positioned to catch it.
+_FAMILY_GUIDANCE: Dict[str, Dict[str, str]] = {
+    "description": {
+        "claim": "Huu ni muhtasari wa data uliyo nazo, si jaribio dhidi ya hypothesis.",
+        "does_not_mean": "Haiwezi kukwambia kama tofauti ni ya kweli au ya bahati — haipimi kitu chochote dhidi ya wastani wa jamii.",
+    },
+    "comparison": {
+        "claim": "Makundi yanalinganishwa kwa wastani/mgawanyo, na p inaonyesha ikiwa tofauti inaweza kutokea kwa bahati.",
+        "does_not_mean": "p kubwa haimaanishi makundi ni sawa kabisa — inaweza kuwa sample ni ndogo.",
+    },
+    "association": {
+        "claim": "Inapima nguvu na mwelekeo wa uhusiano kati ya vigezo viwili.",
+        "does_not_mean": "Uhusiano si ushahidi wa sababu. Kigezo cha tatu kinaweza kusababisha vyote viwili.",
+    },
+    "regression": {
+        "claim": "Inaonyesha jinsi Y inavyobadilika X ikibadilika, ukidhibiti vigezo vingine.",
+        "does_not_mean": "Kurahisisha: coefficients ni uhusiano, si athari ya kisababu, isipokuwa muundo wa data unaiwezesha.",
+    },
+    "ml": {
+        "claim": "Model inayoweza kutabiri, na usahihi wake unaonyeshwa kama confusion matrix au metrics.",
+        "does_not_mean": "Usahihi kwenye data ya mafunzo si usahihi wa dunia halisi. Hakikishi accuracy inatumia data isiyofunzwa.",
+    },
+    "timeseries": {
+        "claim": "Inaonyesha mwenendo na mizunguko kwa wakati, na inaweza kutabiri siku zijazo.",
+        "does_not_mean": "Mwenendo wa zamani haudumu mile mile. Mabadiliko ya muktadha yanaweza kuuvunja.",
+    },
+    "survey": {
+        "claim": "Matokeo yana uzito wa sampuli, kwa hiyo yanawakilishia watu wengi kuliko waliokubalika kujibu.",
+        "does_not_mean": "Uzito haukosei upendeleo wa kuchagua — watu waliokataa kujibu wanaweza kutofautiana.",
+    },
+    "bayesian": {
+        "claim": "Inatoa uwezekano wa moja kwa moja, ukiwezesha maarifa yako ya awali kuingizwa.",
+        "does_not_mean": "Hakuna orthogonal 'p-value' hapa — credits ni uwezekano, si kiwango cha mkasa.",
+    },
+    "causal": {
+        "claim": "Inajaribu kutenga athari ya kisababu, si uhusiano tu.",
+        "does_not_mean": "Matokeo yanategemea sana dhana za utambulisho zilizowekwa. Hali mbaya ya uainishaji inaweza kupindua kila kitu.",
+    },
+    "survival": {
+        "claim": "Inapima muda hadi tukio, ikiruhusu data iliyokatwa (censored).",
+        "does_not_mean": "Kiwango cha hatari kinadumu daima — kinaweza kubadilika kwa wakati au kwa watu.",
+    },
+    "panel": {
+        "claim": "Inazingatia watu/muda, ikitenga mabadiliko yaliyojumuisha kutoka yaliyo binafsi.",
+        "does_not_mean": "Inahitaji data ya mara kwa mara kwa watu wale wale; watu walioingia/kuondoka wanaweza kupunguza nguvu.",
+    },
+    "multivariate": {
+        "claim": "Inachunguza vigezo vingi kwa pamoja, ikizingatia kwamba vinahusiana.",
+        "does_not_mean": "Muundo uliopatikana si sababu — ni mpangilio wa kiasa unaofaa kuitikia.",
+    },
+    "mixed": {
+        "claim": "Inachanganya mifano tofauti au vigezo vya aina mseto, kwa hiyo muundo unahitaji kuchaguliwa kwa bidii.",
+        "does_not_mean": "Mchanganyiko usioeleweka unaweza kuficha tofauti halisi au kuunda zisizokuwa.",
+    },
+    "clustering": {
+        "claim": "Inagawa vitu vinavyofanana, bila kuwapa maana.",
+        "does_not_mean": "Makundi ni yaliyopatikana, si yaliyo halisi. Majina yanapaswa kuwekwa na binadamu.",
+    },
+    "efficiency": {
+        "claim": "Inapima uwezo wa kitu kufanya kazi, mara nyingi kwa kulinganisha njia mbalimbali.",
+        "does_not_mean": "Ufanisi hausemi juu ya uadilifu — kitu chenye ufanisi mkubwa kinaweza kuwa cha udanganyifu.",
+    },
+    "reliability": {
+        "claim": "Inapima uthabiti wa kipimo, la sivyo inaweza kurudiwa.",
+        "does_not_mean": "Uthabiti si uhalali — kitu kinaweza kupima kikomo kwa uthabiti bila kupima kile kinachotakiwa.",
+    },
+    "spatial": {
+        "claim": "Inaonyesha pembejeo za kijiografia na mifumo ya eneo.",
+        "does_not_mean": "Uhusiano wa eneo si uhusiano wa watu — unaweza kuwa mgawanyo wa kiuchumi.",
+    },
+    "nlp": {
+        "claim": "Inavyo maandishi yenye mpangilio wa kiasa, ikiruhusu kuhesabu mada na hisia.",
+        "does_not_mean": "Mikakati ya lugha inaweza kukosa mazingatio, kwa hiyo hakiki mifano kwa mkono.",
+    },
+    "qualitative": {
+        "claim": "Inatoa mpangilio wa mifano iliyochaguliwa kwa ajili ya kuelewa, si kwa ajili ya kupima.",
+        "does_not_mean": "Si sampuli ya kuwakilisha — mifano haipaswi kuchukuliwa kama asilimia.",
+    },
+}
+
+# A generic fallback for families not named above.
+_FAMILY_GUIDANCE_DEFAULT = {
+    "claim": "Matokeo haya yamehesabiwa na engine kwa njia iliyowekwa kwa method hii.",
+    "does_not_mean": "Hakikishi mbinu inafaa data yako kabla ya kuitumia kwa maamuzi makubwa.",
+}
+
+
+def interpret_result(
+    analysis_type: str, result: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Plain-language reading of a completed analysis, in the reader's own terms.
+
+    Every sentence is derived from the numbers that are actually on screen, and
+    the family-level guidance says which inferential licence the method does and
+    does not grant -- the mistake a non-specialist makes is nearly always one of
+    those two, not arithmetic.
+
+    ``next_steps`` is deliberate: guidance that only says "be careful" leaves the
+    reader nowhere to go. Each step is something they can act on from the result
+    in front of them.
+    """
+    guidance = _FAMILY_GUIDANCE.get(
+        _family_for(analysis_type), _FAMILY_GUIDANCE_DEFAULT
+    )
+
+    sentences: List[str] = [guidance["claim"]]
+
+    test = result.get("test") or {}
+    p_value = test.get("p_value") if isinstance(test, dict) else None
+    significant = test.get("significant") if isinstance(test, dict) else None
+    if significant is True:
+        sentences.append(
+            "Tofauti au uhusiano huonekana ni wa kweli kwenye data hii, si bahati tu "
+            "(kwa kiwango cha uhakika kilichowekwa)."
+        )
+    elif significant is False:
+        sentences.append(
+            "Hatuna ushahidi wa kutosha kusema tofauti au uhusiano upo. Hii inaweza "
+            "kumaanisha hakuna tofauti, au kwamba sample ni ndogo kuisadia."
+        )
+    elif p_value is None:
+        sentences.append(
+            "Method hii haitoi p-value, kwa hiyo usome makadirio na vipimo vya "
+            "uhakika badala yake."
+        )
+
+    effect = result.get("effect_size") or {}
+    effect_value = (
+        effect.get("value")
+        if isinstance(effect, dict) and effect.get("value") is not None
+        else None
+    )
+    if effect_value is not None:
+        band = effect.get("interpretation") if isinstance(effect, dict) else None
+        sentences.append(
+            f"Ukubwa wa athari ni {effect_value!r}"
+            + (f" — {band}" if band else "")
+            + ". Huu ndio uzito wa matokeo katika ulimwengu halisi, tofauti na p-value."
+        )
+
+    ci = result.get("confidence_interval") or {}
+    if isinstance(ci, dict) and ci.get("lower") is not None and ci.get("upper") is not None:
+        level = int(round(float(ci.get("level") or 0.95) * 100))
+        sentences.append(
+            f"Kwa kiwango cha {level}%, thamani halisi inaweza kuwa kati ya "
+            f"{ci.get('lower')} na {ci.get('upper')}."
+        )
+
+    sample_size = result.get("sample_size")
+    if isinstance(sample_size, int) and sample_size < 30:
+        sentences.append(
+            f"Sample ni ndogo (n = {sample_size}): chukulia matokeo haya kama ya "
+            "kuchunguza, si ya kuthibitisha."
+        )
+
+    warnings = result.get("warnings") or []
+    if warnings:
+        sentences.append(
+            f"Engine imetoa tahadhari {len(warnings)} kuhusu data hii; ziko kwenye "
+            "ukurasa wa matokeo."
+        )
+
+    checks = result.get("assumption_checks") or []
+    failing = [c for c in checks if isinstance(c, dict) and c.get("status") == "fail"]
+    if failing:
+        sentences.append(
+            f"Vigezo {len(failing)} vya method havipotikani na data hii, kwa hiyo "
+            "matokeo yanapaswa kusomwa kwa tahadhari."
+        )
+
+    limitations: List[str] = [guidance["does_not_mean"]]
+    for name in _assumptions_for(analysis_type):
+        limitations.append(f"Unapaswa kuthibitisha: {name}.")
+
+    next_steps: List[str] = []
+    if failing:
+        alternatives = _alternatives_for(analysis_type)
+        if alternatives:
+            names = ", ".join(alternatives)
+            next_steps.append(f"Jaribu njia mbadala inayostahili: {names}.")
+        next_steps.append(
+            "Safisha data (ondoa missing/outliers) auongeza sample, kisha rudia."
+        )
+    if significant is False and sample_size is not None and sample_size < 30:
+        next_steps.append(
+            "Ongeza data kabla ya kuhitimisha — p kubwa kwa sample ndogo si ushahidi wa kutokuwepo."
+        )
+    if analysis_type in ("descriptive", "frequency"):
+        next_steps.append(
+            "Endelea kwenye uchambuzi unaolingana (mfano t-test, ANOVA, regression) baada ya kuelezea data."
+        )
+    if not next_steps:
+        next_steps.append(
+            "Hamisha matokeo kwenye ripoti, kisha jadili na watu wanaohusika."
+        )
+
+    return {
+        "summary": " ".join(sentences),
+        "meaning": guidance["claim"],
+        "does_not_mean": guidance["does_not_mean"],
+        "limitations": limitations,
+        "next_steps": next_steps,
+        "evidence": _evidence_for(result),
+    }
+
+
+def _family_for(analysis_type: str) -> str:
+    found = methods.method(_method_key_for(analysis_type))
+    return str((found or {}).get("family") or "other")
+
+
+def _method_key_for(analysis_type: str) -> str:
+    """The catalogue key whose ``engine`` is this analysis type."""
+    for key in methods.engine_keys():
+        record = methods.method(key)
+        if record and record.get("engine") == analysis_type:
+            return key
+    return analysis_type
+
+
+def _assumptions_for(analysis_type: str) -> List[str]:
+    found = methods.method(_method_key_for(analysis_type))
+    if not found:
+        return []
+    items = found.get("assumptions") or []
+    return [str(item) for item in items if "hakuna" not in str(item).lower()]
+
+
+def _alternatives_for(analysis_type: str) -> List[str]:
+    found = methods.method(_method_key_for(analysis_type))
+    if not found:
+        return []
+    keys = [str(item) for item in (found.get("alternatives") or [])]
+    labels = []
+    for key in keys:
+        record = methods.method(key)
+        if record:
+            labels.append(str(record.get("label_sw") or record.get("label") or key))
+    return labels
+
+
+def _evidence_for(result: Dict[str, Any]) -> List[str]:
+    """Every number the interpretation leans on, so a reader can check it.
+
+    Deduplicated against the effect size: a correlation's test method already
+    reads "Pearson r", so repeating it under the effect-size row would list the
+    same number twice and imply two pieces of evidence.
+    """
+    evidence: List[str] = []
+    if result.get("sample_size") is not None:
+        evidence.append(f"n = {result['sample_size']}")
+    test = result.get("test") or {}
+    effect = result.get("effect_size") or {}
+    effect_name = effect.get("name") if isinstance(effect, dict) else None
+    if isinstance(test, dict):
+        if test.get("statistic") is not None:
+            evidence.append(f"{test.get('method') or 'statistic'} = {test.get('statistic')}")
+        if test.get("p_value") is not None:
+            evidence.append(f"p = {test.get('p_value')}")
+    if isinstance(effect, dict) and effect.get("value") is not None:
+        label = effect_name or "effect"
+        # The test row already carries this number when the names coincide.
+        if not any(f"= {effect.get('value')}" in item for item in evidence):
+            evidence.append(f"{label} = {effect.get('value')}")
+    ci = result.get("confidence_interval") or {}
+    if isinstance(ci, dict) and ci.get("lower") is not None:
+        evidence.append(f"CI = [{ci.get('lower')}, {ci.get('upper')}]")
+    return evidence
 
 
 # ------------------------------------------------- assumptions, for a direct run

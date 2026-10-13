@@ -246,6 +246,79 @@ def test_fewer_than_three_rows_still_returns_a_standard_result() -> None:
     )
 
 
+def test_interpretation_names_what_the_result_does_not_license() -> None:
+    print("\n8) Interpretation is derived from the numbers, and says what it does not mean")
+    rng = np.random.default_rng(23)
+    frame = pd.DataFrame(
+        {"spend": rng.normal(50, 10, 120), "sales": rng.normal(100, 20, 120)}
+    )
+    correlation = stats_engine.run_analysis(
+        frame, "pearson", {"x": "spend", "y": "sales"}
+    )
+    reading = correlation["interpretation"]
+
+    check(
+        "Uhusiano si ushahidi wa sababu" in reading["does_not_mean"],
+        "a correlation's reading states it is not causation",
+    )
+    check("n = 120" in reading["evidence"], "the reading cites the sample size")
+    check(
+        any("p = " in item for item in reading["evidence"]),
+        "the reading cites the p-value it is interpreting",
+    )
+    # The evidence list must not repeat one number under two labels, or it
+    # implies two pieces of evidence where there is one.
+    values = [item.split("=")[-1].strip() for item in reading["evidence"]]
+    check(
+        len(values) == len(set(values)),
+        "the reading lists each number once",
+    )
+
+    # Same method, different family: a description does not license a comparison.
+    described = stats_engine.run_analysis(
+        frame, "descriptive", {"columns": ["sales"]}
+    )["interpretation"]
+    check(
+        "si jaribio" in described["meaning"],
+        "a description is not presented as a test",
+    )
+    check(
+        described["does_not_mean"] != reading["does_not_mean"],
+        "different families get different limitations",
+    )
+
+
+def test_next_step_follows_the_failure() -> None:
+    print("\n9) A failed assumption changes the next step, not just the warning")
+    rng = np.random.default_rng(29)
+    frame = pd.DataFrame(
+        {
+            "value": list(rng.normal(10, 2, 40)) + [999.0] * 2,
+            "group": ["a"] * 40 + ["b"] * 2,
+        }
+    )
+    reading = stats_engine.run_analysis(
+        frame, "one_way_anova", {"value_column": "value", "group_column": "group"}
+    )["interpretation"]
+
+    steps = " ".join(reading["next_steps"])
+    check(
+        "njia mbadala" in steps,
+        "a failed assumption names the alternative method as the next step",
+    )
+    failing = [
+        check_item
+        for check_item in stats_engine.run_analysis(
+            frame, "one_way_anova", {"value_column": "value", "group_column": "group"}
+        )["assumption_checks"]
+        if check_item["status"] == "fail"
+    ]
+    check(
+        f"{len(failing)}" in reading["summary"],
+        "the summary reports how many checks failed",
+    )
+
+
 def main() -> int:
     print("ASSUMPTION GATE TESTS")
     test_blocks_a_group_too_small_to_compare()
@@ -255,6 +328,8 @@ def main() -> int:
     test_checks_never_change_the_estimate()
     test_unequal_variance_is_warned_for_anova()
     test_fewer_than_three_rows_still_returns_a_standard_result()
+    test_interpretation_names_what_the_result_does_not_license()
+    test_next_step_follows_the_failure()
     print(f"\nALL ASSUMPTION-GATE TESTS PASSED ({PASSED} checks)")
     return 0
 

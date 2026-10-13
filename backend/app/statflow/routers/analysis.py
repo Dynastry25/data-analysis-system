@@ -16,6 +16,7 @@ from app.models import AnalysisRun, Dataset, Job, User
 from app.rbac import ORG_ROLE_VIEWER
 from app.services.job_processor import process_job
 from app.statflow import methods, stats_engine, version_store
+from app.statflow import result_cache
 from app.statflow.schemas import AnalysisRequest, AnalysisReplayRequest, AnalysisModifyRequest
 from app.statflow.version_store import VersionError
 
@@ -114,9 +115,21 @@ def run_analysis_endpoint(
     # Synchronous execution (original behavior)
     try:
         record, frame = _frame_for(db, dataset, payload.dataset_version)
-        result = stats_engine.run_analysis(
-            frame, payload.analysis_type, payload.parameters
+        parameters = payload.parameters or {}
+        key = result_cache.cache_key(
+            record.id, payload.analysis_type, parameters
         )
+        cached = result_cache.get_cached(key)
+        if cached is not None:
+            result = dict(cached)
+        else:
+            result = stats_engine.run_analysis(
+                frame, payload.analysis_type, parameters
+            )
+            # Only cache a computation that actually ran. A cache entry is a copy
+            # because the stored result is shared with every later caller, and a
+            # response is not supposed to be mutated on its way out.
+            result_cache.store(key, dict(result))
     except (stats_engine.AnalysisError, VersionError) as exc:
         raise _fail(exc)
 
@@ -136,7 +149,7 @@ def run_analysis_endpoint(
             dataset_version_id=record.id,
             analysis_type=payload.analysis_type,
             status=str(result.get("status")),
-            parameters=payload.parameters or {},
+            parameters=parameters,
             result=result,
         )
         db.add(run)

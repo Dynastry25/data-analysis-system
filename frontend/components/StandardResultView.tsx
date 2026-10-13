@@ -540,15 +540,66 @@ export function AssumptionsPanel({ checks }: { checks: AssumptionCheck[] }) {
   );
 }
 
-/** Layer 5 — practical meaning in plain language, in an info box. */
-export function InterpretationBox({ children }: { children: React.ReactNode }) {
+/**
+ * Layer 5 — the engine's plain-language reading of the result.
+ *
+ * The engine generates this from the numbers on screen, so the claim, the
+ * limitation and the next step all describe *this* result rather than the method
+ * in the abstract. The "does not license" row is the one that earns its place:
+ * it names the inference the reader is most likely to take away wrongly, and it
+ * is the part no canned per-method text could keep honest as numbers change.
+ */
+export function InterpretationBox({ result }: { result: StandardResult }) {
+  const interpretation = result.interpretation;
+  // Results stored before the engine produced an interpretation still read fine
+  // from the numbers themselves, so the fallback is not a dead end.
+  const summary = interpretation?.summary ?? buildInterpretation(result);
+
   return (
-    <div className="rounded-md border border-info/30 bg-info-bg p-4">
-      <p className="flex items-center gap-1.5 text-overline font-semibold uppercase tracking-wide text-info-700">
-        <Icon name="sparkles" size={14} />
-        Tafsiri kwa lugha rahisi
-      </p>
-      <p className="mt-1.5 text-body text-ink">{children}</p>
+    <div className="space-y-2.5">
+      <div className="rounded-md border border-info/30 bg-info-bg p-4">
+        <p className="flex items-center gap-1.5 text-overline font-semibold uppercase tracking-wide text-info-700">
+          <Icon name="sparkles" size={14} />
+          Tafsiri kwa lugha rahisi
+        </p>
+        <p className="mt-1.5 text-body text-ink">{summary}</p>
+
+        {interpretation && interpretation.evidence.length > 0 && (
+          <ul className="mt-2.5 flex flex-wrap gap-1.5">
+            {interpretation.evidence.map((item) => (
+              <li
+                key={item}
+                className="rounded border border-info/30 bg-white/60 px-2 py-0.5 font-mono text-caption text-ink-secondary"
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {interpretation && interpretation.does_not_mean && (
+        <p className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning-bg px-3.5 py-2.5 text-body text-warning-700">
+          <Icon name="alert-triangle" size={16} className="mt-0.5 shrink-0" />
+          <span>
+            <span className="font-medium">Matokeo haya hayamaanishi:</span>{" "}
+            {interpretation.does_not_mean}
+          </span>
+        </p>
+      )}
+
+      {interpretation && interpretation.next_steps.length > 0 && (
+        <div className="rounded-md border border-surface-border bg-surface-panel p-3.5">
+          <p className="text-overline font-semibold uppercase tracking-wide text-ink-muted">
+            Hatua zinazofuata
+          </p>
+          <ul className="mt-1.5 list-disc space-y-1 pl-5 text-body text-ink-secondary">
+            {interpretation.next_steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -1139,7 +1190,7 @@ export function StandardResultView({
       </CollapsibleDetails>
 
       {/* Layer 5 — Tafsiri kwa lugha rahisi */}
-      <InterpretationBox>{buildInterpretation(result)}</InterpretationBox>
+      <InterpretationBox result={result} />
 
       {/* Layer 6 — Hatua zinazofuata */}
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}

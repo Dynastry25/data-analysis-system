@@ -3986,14 +3986,21 @@ def run_analysis(
     # Assumption checks never change the estimate -- they say whether the
     # estimate should be trusted, which is the reader's call to make.
     try:
-        from app.statflow.planning import assumption_checks_for_result
+        from app.statflow.planning import (
+            assumption_checks_for_result,
+            interpret_result,
+        )
 
         result["assumption_checks"] = assumption_checks_for_result(
             str(analysis_type), frame, parameters or {}
         )
+        # A plain-language reading of the result, including what it does not
+        # license. Generated from the numbers on screen rather than canned per
+        # method, so it stays true if a number changes.
+        result["interpretation"] = interpret_result(str(analysis_type), result)
     except Exception:  # pragma: no cover - checks must never break the analysis
         logger.exception(
-            "Assumption checks failed for %s; the result is still returned",
+            "Interpretation failed for %s; the result is still returned",
             analysis_type,
         )
     return result
