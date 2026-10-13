@@ -1056,6 +1056,8 @@ export interface StandardResult {
   assumption_checks?: AssumptionCheck[];
   /** Plain-language reading, including what the result does not license. */
   interpretation?: ResultInterpretation;
+  /** Present when three or more hypothesis tests are reported. */
+  multiple_comparisons?: MultipleComparisonsInfo;
   tables: Record<string, unknown>;
   meta: Record<string, unknown>;
 }
@@ -1145,6 +1147,36 @@ export interface ResultInterpretation {
   limitations: string[];
   next_steps: string[];
   evidence: string[];
+}
+
+/**
+ * One reported hypothesis test, with its p-value after the two
+ * standard corrections. `label` names what was tested (two
+ * variables, a coefficient term); it falls back to the p-value's
+ * path in the result when the test carries no name of its own.
+ */
+export interface MultipleComparisonTest {
+  label: string;
+  path: string;
+  p_value: number;
+  bonferroni_p_value: number;
+  benjamini_hochberg_p_value: number;
+  significant_after_bonferroni: boolean;
+  significant_after_bh: boolean;
+}
+
+/**
+ * Attached when a result reports three or more hypothesis tests.
+ * Testing k hypotheses at alpha = 0.05 carries a family-wise
+ * error rate of 1 - (1 - 0.05)**k, so a scan of the raw
+ * p-values overstates how many findings are real. The adjusted
+ * columns let a reader check which findings survive.
+ */
+export interface MultipleComparisonsInfo {
+  test_count: number;
+  alpha: number;
+  familywise_error_rate: number;
+  tests: MultipleComparisonTest[];
 }
 
 /**

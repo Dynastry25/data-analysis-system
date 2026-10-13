@@ -6,7 +6,11 @@ import { Icon } from "@/components/Icon";
 import { ResidualDiagnostic } from "@/components/ResidualDiagnostic";
 import type { ResidualPattern, ResidualPoint } from "@/components/ResidualDiagnostic";
 import { CoefficientTable, ResultHeadline } from "@/components/ResultHeadline";
-import { AssumptionCheck, StandardResult } from "@/lib/api";
+import {
+  AssumptionCheck,
+  MultipleComparisonsInfo,
+  StandardResult,
+} from "@/lib/api";
 import { colorForIndex } from "@/lib/constants";
 
 /** Format a scalar value for display. */
@@ -536,6 +540,85 @@ export function AssumptionsPanel({ checks }: { checks: AssumptionCheck[] }) {
           </ul>
         </CollapsibleDetails>
       )}
+    </div>
+  );
+}
+
+/**
+ * Layer 1.5 — multiple-comparison corrections, when the result
+ * reports three or more hypothesis tests.
+ *
+ * Testing k hypotheses at alpha = 0.05 carries a family-wise
+ * error rate of 1 - (1 - 0.05)**k, so a reader who scans a
+ * table and remembers the p < 0.05 rows is overstating how
+ * many findings are real -- the multiple-comparison mistake
+ * the analysis guide warns about, made without meaning to.
+ * The panel states the inflated rate up front and lets each
+ * finding be checked against both standard corrections, so
+ * "significant" becomes a question the reader can answer
+ * honestly rather than a label the engine hands over.
+ */
+function MultipleComparisonsPanel({
+  info,
+}: {
+  info: MultipleComparisonsInfo;
+}) {
+  const percent = Math.round(info.familywise_error_rate * 100);
+  return (
+    <div className="rounded-md border border-warning/40 bg-warning-bg p-3">
+      <p className="flex items-center gap-1.5 text-caption font-semibold uppercase tracking-wide text-warning-700">
+        <Icon name="alert-triangle" size={14} />
+        Marekebisho ya multiple comparisons — kansa ya false positive{" "}
+        {percent}%
+      </p>
+      <p className="mt-1 text-caption text-warning-700">
+        Matokeo haya yana p-value {info.test_count}. Kwenye alpha ={" "}
+        {info.alpha}, kansa ya kosa angalau moja la false positive ni{" "}
+        {percent}%, sio {info.alpha}. Jedwali linaonyesha p-value baada ya
+        marekebisho ya Bonferroni (ngumu, inahifadhi kansa ya family-wise)
+        na Benjamini-Hochberg (inadhibiti kiasi cha false discovery): matokeo
+        ni imara tu yakipita.
+      </p>
+      <CollapsibleDetails label={`Marekebisho ya p-value (${info.tests.length} tests)`}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-caption">
+            <thead>
+              <tr className="text-left text-overline uppercase tracking-wide text-ink-muted">
+                <th className="px-2 py-1">Test</th>
+                <th className="px-2 py-1 text-right">p</th>
+                <th className="px-2 py-1 text-right">Bonferroni</th>
+                <th className="px-2 py-1 text-right">Benjamini-Hochberg</th>
+                <th className="px-2 py-1 text-right">Imepita</th>
+              </tr>
+            </thead>
+            <tbody>
+              {info.tests.map((test) => (
+                <tr key={test.path} className="border-t border-surface-border">
+                  <td className="px-2 py-1 font-medium text-ink">{test.label}</td>
+                  <td className="px-2 py-1 text-right tabular-nums text-ink-secondary">
+                    {pFmt(test.p_value)}
+                  </td>
+                  <td className="px-2 py-1 text-right tabular-nums text-ink-secondary">
+                    {pFmt(test.bonferroni_p_value)}
+                  </td>
+                  <td className="px-2 py-1 text-right tabular-nums text-ink-secondary">
+                    {pFmt(test.benjamini_hochberg_p_value)}
+                  </td>
+                  <td className="px-2 py-1 text-right">
+                    {test.significant_after_bonferroni ? (
+                      <Badge tone="success" size="sm" icon="check" className="ml-auto">
+                        <span className="sr-only">Imepita:</span>Imepita
+                      </Badge>
+                    ) : (
+                      <span className="text-ink-muted">hapana</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CollapsibleDetails>
     </div>
   );
 }
@@ -1074,6 +1157,14 @@ export function StandardResultView({
             ))}
           </ul>
         </div>
+      )}
+
+      {/* Layer 1.5 — marekebisho ya multiple comparisons. Sits with the
+          warnings because it changes how every p-value below it should
+          be read: a raw p < 0.05 is not a finding when the family
+          holds three or more tests. */}
+      {result.multiple_comparisons && (
+        <MultipleComparisonsPanel info={result.multiple_comparisons} />
       )}
 
       {/* Layer 2 — Namba muhimu */}

@@ -4003,6 +4003,18 @@ def run_analysis(
             "Interpretation failed for %s; the result is still returned",
             analysis_type,
         )
+    # P-value guardrails run in their own try so a failure here
+    # cannot cost the assumption checks or the interpretation:
+    # every layer must fail independently of the others.
+    try:
+        from app.statflow.guardrails import apply_guardrails
+
+        apply_guardrails(str(analysis_type), result, parameters or {})
+    except Exception:  # pragma: no cover - guardrails must never break the analysis
+        logger.exception(
+            "P-value guardrails failed for %s; the result is still returned",
+            analysis_type,
+        )
     return result
 
 
