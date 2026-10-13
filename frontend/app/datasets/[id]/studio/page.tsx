@@ -1007,6 +1007,16 @@ export default function StudioPage() {
           onDownload={downloadVersion}
           downloading={downloading}
         />
+        {/* The versions drawer answers *what* exists; the lineage page
+            answers *what ran on it*, which is the question a reader
+            asks about a result rather than about the file. */}
+        <Link
+          href={`/datasets/${datasetId}/lineage`}
+          className="mt-3 flex min-h-[40px] items-center justify-between gap-2 rounded-md border border-surface-border px-3 text-caption text-ink-secondary transition-colors duration-150 ease-standard hover:bg-surface-sunken"
+        >
+          Asili ya matokeo: kila uchambuzi kwenye kila version
+          <Icon name="arrow-right" size={14} />
+        </Link>
       </PanelDrawer>
 
       <PanelDrawer

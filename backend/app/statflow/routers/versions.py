@@ -1,5 +1,6 @@
 """MVP-18 endpoints: clean / transform with immutable versions + operation history."""
 
+from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
-from app.models import Dataset, User
+from app.models import AnalysisRun, Chart, Dataset, ExportedReport, User
 from app.rbac import ORG_ROLE_VIEWER
 from app.services.data_service import dataframe_records
 from app.services.validation_service import validate_frame
@@ -343,3 +344,163 @@ def download_version(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/{dataset_id}/lineage")
+def dataset_lineage(
+    dataset_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """The chain from the uploaded file to every number computed from it.
+
+    "Where did this number come from?" deserves an answer that does
+    not stop at "an analysis". This assembles, for every version in
+    order: what produced it -- the operation, its configuration and
+    its summary, with the row and column deltas against its parent
+    -- and what it produced: the analyses, charts and reports
+    computed from that exact version. A reader can trace a result
+    down to the file it came from, and a reader wondering why two
+    results disagree can see they ran on different versions.
+
+    Everything here is read from the records the platform already
+    wrote: nothing is recomputed, so the lineage cannot claim a step
+    the history does not have. A result whose version record was
+    pruned falls back to the version number it was saved with, which
+    keeps the answer honest rather than silently dropping the item.
+    """
+    dataset = get_owned_dataset(
+        dataset_id, db, user, require_file=False, min_role=ORG_ROLE_VIEWER
+    )
+    try:
+        version_store.ensure_base_version(db, dataset)
+        versions = version_store.list_versions(db, dataset)
+        operations = version_store.list_operations(db, dataset)
+    except VersionError as exc:
+        raise _fail(exc)
+
+    ordered = sorted(versions, key=lambda record: int(record.version))
+    number_for_id = {record.id: int(record.version) for record in ordered}
+    operation_by_version = {
+        int(operation.result_version): operation for operation in operations
+    }
+
+    analyses: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    for run in (
+        db.query(AnalysisRun)
+        .filter(AnalysisRun.dataset_id == dataset.id)
+        .order_by(AnalysisRun.id)
+        .all()
+    ):
+        number = number_for_id.get(run.dataset_version_id, run.dataset_version)
+        if number is None:
+            continue
+        analyses[int(number)].append(
+            {
+                "id": run.id,
+                "analysis_type": run.analysis_type,
+                "status": run.status,
+                "parameters": run.parameters or {},
+                "created_at": (
+                    run.created_at.isoformat() if run.created_at else None
+                ),
+            }
+        )
+
+    charts: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    for chart in (
+        db.query(Chart)
+        .filter(Chart.dataset_id == dataset.id)
+        .order_by(Chart.id)
+        .all()
+    ):
+        number = number_for_id.get(chart.dataset_version_id)
+        if number is None:
+            continue
+        charts[int(number)].append(
+            {
+                "id": chart.id,
+                "chart_type": chart.chart_type,
+                "title": (chart.config or {}).get("title"),
+                "created_at": (
+                    chart.created_at.isoformat() if chart.created_at else None
+                ),
+            }
+        )
+
+    reports: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+    for report in (
+        db.query(ExportedReport)
+        .filter(ExportedReport.dataset_id == dataset.id)
+        .order_by(ExportedReport.id)
+        .all()
+    ):
+        number = number_for_id.get(report.dataset_version_id)
+        if number is None:
+            continue
+        reports[int(number)].append(
+            {
+                "id": report.id,
+                "file_format": report.file_format,
+                "status": report.status,
+                "created_at": (
+                    report.created_at.isoformat() if report.created_at else None
+                ),
+            }
+        )
+
+    chain: List[Dict[str, Any]] = []
+    for record in ordered:
+        number = int(record.version)
+        operation = operation_by_version.get(number)
+        parent = next(
+            (entry for entry in ordered if int(entry.version) == record.parent_version),
+            None,
+        )
+        entry = {
+            "version": number,
+            "parent_version": record.parent_version,
+            "row_count": record.row_count or 0,
+            "column_count": record.column_count or 0,
+            "row_delta": (record.row_count or 0) - (parent.row_count or 0)
+            if parent is not None
+            else None,
+            "column_delta": (record.column_count or 0) - (parent.column_count or 0)
+            if parent is not None
+            else None,
+            "is_current": bool(record.is_current),
+            "label": record.label,
+            "created_by": record.created_by,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
+            "produced_by": operation.to_dict() if operation else None,
+            "analyses": analyses.get(number, []),
+            "charts": charts.get(number, []),
+            "reports": reports.get(number, []),
+        }
+        entry["result_count"] = (
+            len(entry["analyses"]) + len(entry["charts"]) + len(entry["reports"])
+        )
+        chain.append(entry)
+
+    return {
+        "dataset": {
+            "id": dataset.id,
+            "name": dataset.original_filename,
+            "file_type": dataset.file_type,
+            "row_count": dataset.row_count or 0,
+            "column_count": dataset.column_count or 0,
+            "status": dataset.status,
+            "uploaded_at": (
+                dataset.uploaded_at.isoformat() if dataset.uploaded_at else None
+            ),
+            "current_version": chain[-1]["version"] if chain else None,
+        },
+        "versions": chain,
+        "totals": {
+            "versions": len(chain),
+            "operations": len(operations),
+            "analyses": sum(len(entry["analyses"]) for entry in chain),
+            "charts": sum(len(entry["charts"]) for entry in chain),
+            "reports": sum(len(entry["reports"]) for entry in chain),
+        },
+    }

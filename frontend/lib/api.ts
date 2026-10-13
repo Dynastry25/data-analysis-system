@@ -221,6 +221,65 @@ export interface ValidationIssue {
  * fixes that are mechanically safe -- what the one-click button
  * applies; the rest are offered per finding instead.
  */
+/** One analysis run on a version, as the lineage page lists it. */
+export interface LineageAnalysis {
+  id: number;
+  analysis_type: string;
+  status: string;
+  parameters: Record<string, unknown>;
+  created_at: string | null;
+}
+
+/** One version in the chain, with what made it and what it produced. */
+export interface LineageVersion {
+  version: number;
+  parent_version: number | null;
+  row_count: number;
+  column_count: number;
+  row_delta: number | null;
+  column_delta: number | null;
+  is_current: boolean;
+  label: string | null;
+  created_by: number | null;
+  created_at: string | null;
+  produced_by: Record<string, unknown> | null;
+  analyses: LineageAnalysis[];
+  charts: { id: number; chart_type: string; title?: string; created_at: string | null }[];
+  reports: {
+    id: number;
+    file_format: string;
+    status: string;
+    created_at: string | null;
+  }[];
+  result_count: number;
+}
+
+/**
+ * The chain from the uploaded file to every number computed from it:
+ * each version, the operation that produced it, and the analyses,
+ * charts and reports computed from that exact version.
+ */
+export interface LineageResponse {
+  dataset: {
+    id: number;
+    name: string;
+    file_type: string;
+    row_count: number;
+    column_count: number;
+    status: string;
+    uploaded_at: string | null;
+    current_version: number | null;
+  };
+  versions: LineageVersion[];
+  totals: {
+    versions: number;
+    operations: number;
+    analyses: number;
+    charts: number;
+    reports: number;
+  };
+}
+
 export interface RemediableFix {
   code: string;
   column?: string | null;
@@ -1429,6 +1488,11 @@ export const statflowApi = {
   operationsHistory: (datasetId: number) =>
     http
       .get<OperationsHistoryResponse>(`/v1/datasets/${datasetId}/operations`)
+      .then((r) => r.data),
+  /** The chain from the uploaded file to every number computed from it. */
+  lineage: (datasetId: number) =>
+    http
+      .get<LineageResponse>(`/v1/datasets/${datasetId}/lineage`)
       .then((r) => r.data),
   /**
    * Fix what the Validate stage found, in one click. Omitted `fixes`
