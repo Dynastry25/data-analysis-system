@@ -1338,6 +1338,45 @@ export interface AssistantIdentity {
 }
 
 /** The assistant's published coverage, as a specification. */
+/** One saved database or API connection, credentials stripped. */
+export interface DataConnection {
+  id: number;
+  name: string;
+  kind: "postgres" | "mysql" | "rest";
+  config: Record<string, unknown>;
+  has_secret: boolean;
+  status: string;
+  last_error?: string | null;
+  last_sync_at: string | null;
+  dataset_id?: number | null;
+  sync_every_minutes?: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+/** What one pull did, and the version it produced. */
+export interface ConnectionSyncRecord {
+  id: number;
+  connection_id: number;
+  status: "ok" | "error" | "running";
+  row_count: number;
+  column_count: number;
+  dataset_version: number | null;
+  duration_ms: number | null;
+  error_message?: string | null;
+  created_at: string | null;
+}
+
+/** What a test pull saw, before the connection is trusted. */
+export interface ConnectionPreview {
+  ok: boolean;
+  row_count: number;
+  column_count: number;
+  columns: Record<string, unknown>[];
+  preview_rows: Record<string, unknown>[];
+  elapsed_ms: number;
+}
+
 export interface AssistantCoverage {
   identity: string;
   never_does: string[];
@@ -1682,8 +1721,7 @@ export const statflowApi = {
   templates: () =>
     http
       .get<{ templates: AnalysisTemplate[]; note: string }>("/v1/templates")
-      .then((r) => r.data),
-  runTemplate: (
+      .then((r) => r.data),  runTemplate: (
     datasetId: number,
     templateKey: string,
     choices?: Record<string, Record<string, string | string[]>>,
@@ -1693,6 +1731,55 @@ export const statflowApi = {
       .post<TemplateRunResponse>(
         `/v1/templates/datasets/${datasetId}/${templateKey}/run`,
         { choices: choices ?? {}, dataset_version: datasetVersion }
+      )
+      .then((r) => r.data),
+  /** The reader's database and API connections (plan 3.4). */
+  connections: () =>
+    http
+      .get<{ connections: DataConnection[]; kinds: Record<string, unknown> }>(
+        "/v1/connections"
+      )
+      .then((r) => r.data),
+  createConnection: (payload: {
+    name: string;
+    kind: string;
+    config: Record<string, unknown>;
+    secret?: string;
+    project_id?: number;
+    sync_every_minutes?: number | null;
+    test?: boolean;
+  }) =>
+    http
+      .post<{ connection: DataConnection }>("/v1/connections", payload)
+      .then((r) => r.data),
+  testConnection: (connectionId: number, secret?: string) =>
+    http
+      .post<ConnectionPreview>(`/v1/connections/${connectionId}/test`, {
+        secret: secret ?? null,
+      })
+      .then((r) => r.data),
+  syncConnection: (connectionId: number, background = false) =>
+    http
+      .post<{
+        ok?: boolean;
+        queued?: boolean;
+        job_id?: number;
+        dataset_id?: number;
+        dataset_version?: number;
+        row_count?: number;
+        column_count?: number;
+      }>(`/v1/connections/${connectionId}/sync?background=${background}`)
+      .then((r) => r.data),
+  connectionSyncs: (connectionId: number) =>
+    http
+      .get<{ syncs: ConnectionSyncRecord[] }>(
+        `/v1/connections/${connectionId}/syncs`
+      )
+      .then((r) => r.data),
+  deleteConnection: (connectionId: number) =>
+    http
+      .delete<{ deleted: boolean; dataset_id: number | null }>(
+        `/v1/connections/${connectionId}`
       )
       .then((r) => r.data),
   // Job Queue (Feature 25)

@@ -23,7 +23,13 @@ import { Card, EmptyState } from "@/components/Card";
 import { Icon, IconName } from "@/components/Icon";
 import { TableSkeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
-import { apiErrorMessage, statflowApi } from "@/lib/api";
+import {
+  api,
+  apiErrorMessage,
+  AnalysisTemplate,
+  DatasetSummary,
+  statflowApi,
+} from "@/lib/api";
 
 interface Template {
   key: string;
@@ -121,6 +127,9 @@ const TEMPLATES: Template[] = [
 export default function TemplatesPage() {
   const { showToast } = useToast();
   const [implemented, setImplemented] = useState<Set<string>>(new Set());
+  const [orgTemplates, setOrgTemplates] = useState<AnalysisTemplate[]>([]);
+  const [datasets, setDatasets] = useState<{ id: number; name: string }[]>([]);
+  const [chosen, setChosen] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -145,6 +154,35 @@ export default function TemplatesPage() {
     };
   }, [showToast]);
 
+  // The org-question templates (plan 3.3): questions a reader already
+  // has, translated into variables and the analyses that answer them.
+  // They are listed first because they are the ones a reader can act
+  // on directly -- the method groupings below are the raw material.
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      statflowApi.templates(),
+      api.datasets.list().catch(() => [] as DatasetSummary[]),
+    ])
+      .then(([catalog, list]) => {
+        if (cancelled) return;
+        setOrgTemplates(catalog.templates);
+        setDatasets(
+          (Array.isArray(list) ? list : []).map((entry) => ({
+            id: entry.id,
+            name: entry.original_filename,
+          }))
+        );
+      })
+      .catch(() => {
+        // The method groupings below stand alone; a failure here takes
+        // the org-question section with it and nothing else.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const resolved = useMemo(
     () =>
       TEMPLATES.map((template) => ({
@@ -161,6 +199,72 @@ export default function TemplatesPage() {
       title="Makadirio"
       description="Mipangilio inayoweza kutumika kwa kazi ya kawaida ya uchambuzi."
     >
+      {/* Plan 3.3: the questions organisations actually ask. Each one is
+          a real sequence of analyses over the reader's own columns --
+          pick the dataset and the template page runs it. */}
+      {orgTemplates.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-overline uppercase tracking-wide text-ink-muted">
+            Maswali ya kawaida ya shirika
+          </h2>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {orgTemplates.map((template) => (
+              <Card key={template.key} className="flex flex-col">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-h3 text-ink">{template.label}</h3>
+                    <p className="mt-0.5 text-caption text-ink-muted">
+                      {template.label_swahili}
+                    </p>
+                  </div>
+                  <Badge tone="neutral" size="sm">
+                    {template.steps.length} hatua
+                  </Badge>
+                </div>
+                <p className="mt-3 text-body text-ink-secondary">
+                  {template.question}
+                </p>
+                <p className="mt-1 text-caption text-ink-muted">
+                  {template.when_to_use}
+                </p>
+                <div className="mt-4 flex-1" />
+                <div className="mt-4 flex flex-wrap items-end gap-2">
+                  <label className="flex-1 text-caption text-ink-secondary">
+                    Dataset
+                    <select
+                      value={chosen[template.key] ?? ""}
+                      onChange={(event) =>
+                        setChosen((previous) => ({
+                          ...previous,
+                          [template.key]: event.target.value,
+                        }))
+                      }
+                      className="mt-1 min-h-[36px] w-full rounded-md border border-surface-border bg-surface-panel px-2 text-caption text-ink"
+                    >
+                      <option value="">Chagua dataset…</option>
+                      {datasets.map((dataset) => (
+                        <option key={dataset.id} value={dataset.id}>
+                          {dataset.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {chosen[template.key] && (
+                    <Link
+                      href={`/datasets/${chosen[template.key]}/templates?template=${template.key}`}
+                    >
+                      <Button size="small" icon="arrow-right">
+                        Endelea
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
+
       {loading ? (
         <Card>
           <TableSkeleton rows={4} columns={2} />

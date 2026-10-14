@@ -69,6 +69,13 @@ const FIXED_NAV: SidebarEntry[] = [
     icon: "clipboard",
   },
   {
+    key: "connections",
+    labelKey: "nav.connections",
+    descriptionKey: "nav.connections.desc",
+    href: "/connections",
+    icon: "database",
+  },
+  {
     key: "activity",
     labelKey: "nav.activity",
     descriptionKey: "nav.activity.desc",

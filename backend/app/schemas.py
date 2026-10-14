@@ -986,3 +986,36 @@ class AdminMeResponse(BaseModel):
     email: str
     system_role: str
     status: str
+
+
+class ConnectionCreateRequest(BaseModel):
+    """POST /connections — a database or API to read from (plan 3.4).
+
+    ``config`` is the connection's shape, and which fields matter
+    depends on ``kind``: a database needs host/port/database/user, a
+    REST endpoint needs a URL. ``secret`` is the password or the
+    Authorization header value, encrypted before it is stored and
+    never returned by any endpoint.
+
+    ``test`` (the default) proves the connection reads before the row
+    is saved, so a typo is a 400 now rather than a failed sync later.
+    """
+
+    name: str
+    kind: str  # postgres | mysql | rest
+    config: Dict[str, Any] = Field(default_factory=dict)
+    secret: Optional[str] = None
+    project_id: Optional[int] = None
+    sync_every_minutes: Optional[int] = None
+    test: bool = True
+
+
+class ConnectionTestRequest(BaseModel):
+    """POST /connections/{id}/test — re-prove a saved connection.
+
+    ``secret`` is optional and only used to try a rotated password
+    without overwriting the stored one; when absent the stored
+    credential is used.
+    """
+
+    secret: Optional[str] = None

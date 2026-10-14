@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -33,6 +33,7 @@ import {
  */
 export default function TemplatesPage() {
   const params = useParams<{ id: string }>();
+  const search = useSearchParams();
   const datasetId = Number(params?.id);
   const { showToast } = useToast();
 
@@ -62,6 +63,14 @@ export default function TemplatesPage() {
       cancelled = true;
     };
   }, [showToast]);
+
+  // The templates library sends the reader here with the question they
+  // picked already chosen, so one click starts the flow instead of a
+  // second search through the same list.
+  useEffect(() => {
+    const requested = search.get("template");
+    if (requested) setSelected(requested);
+  }, [search]);
 
   // The reader's own columns, so a picker offers the dataset rather
   // than a type. If the profile cannot be read the template still

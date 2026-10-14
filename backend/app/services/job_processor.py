@@ -407,6 +407,52 @@ def process_dataset_transform_job(job_id: int) -> None:
         db.close()
 
 
+def process_connection_sync_job(job_id: int) -> None:
+    """Pull a connection's data in the background (plan 3.4).
+
+    A scheduled sync runs the same ``connection_service.sync_connection``
+    the synchronous endpoint runs, so a background pull is not a
+    second implementation that can drift: the version write, the
+    history row and the error handling are one code path either way.
+    """
+    db: Session = SessionLocal()
+    try:
+        job = db.get(Job, job_id)
+        if not job:
+            return
+
+        payload = job.payload or {}
+        connection_id = payload.get("connection_id")
+        update_job_progress(job_id, 10, JOB_STATUS_RUNNING)
+
+        from app.models import DataConnection
+        from app.services import connection_service
+
+        connection = db.get(DataConnection, int(connection_id)) if connection_id else None
+        if connection is None:
+            update_job_progress(
+                job_id, 100, JOB_STATUS_FAILED, error="Connection not found"
+            )
+            return
+
+        update_job_progress(job_id, 40, JOB_STATUS_RUNNING)
+        outcome = connection_service.sync_connection(db, connection)
+        if not outcome.get("ok"):
+            update_job_progress(
+                job_id,
+                100,
+                JOB_STATUS_FAILED,
+                error=outcome["sync"].get("error_message") or "The sync failed",
+            )
+            return
+
+        update_job_progress(job_id, 100, JOB_STATUS_COMPLETED, result=outcome)
+    except Exception as exc:
+        update_job_progress(job_id, 100, JOB_STATUS_FAILED, error=str(exc))
+    finally:
+        db.close()
+
+
 JOB_PROCESSORS = {
     "analysis": process_analysis_job,
     "report_export": process_report_export_job,
@@ -414,6 +460,7 @@ JOB_PROCESSORS = {
     "ml_training": process_ml_training_job,
     "dataset_clean": process_dataset_clean_job,
     "dataset_transform": process_dataset_transform_job,
+    "connection_sync": process_connection_sync_job,
 }
 
 

@@ -286,6 +286,9 @@ class User(Base):
     datasets = relationship(
         "Dataset", back_populates="user", cascade="all, delete-orphan"
     )
+    data_connections = relationship(
+        "DataConnection", back_populates="user", cascade="all, delete-orphan"
+    )
     reports = relationship(
         "ExportedReport", back_populates="user", cascade="all, delete-orphan"
     )
@@ -365,6 +368,9 @@ class Dataset(Base):
         back_populates="dataset",
         cascade="all, delete-orphan",
         order_by="DatasetVersion.version",
+    )
+    data_connections = relationship(
+        "DataConnection", back_populates="dataset"
     )
     operations = relationship(
         "DatasetOperation",
@@ -936,6 +942,7 @@ JOB_TYPES = [
     "dataset_transform",
     "chart_render",
     "ml_training",
+    "connection_sync",
 ]
 
 
@@ -998,5 +1005,123 @@ class Job(Base):
             "error_message": self.error_message,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ------------------------------------------------ Data connections (plan 3.4)
+
+CONNECTION_KINDS = ["postgres", "mysql", "rest"]
+CONNECTION_STATUSES = ["never_run", "ok", "error", "testing"]
+
+#: How long a connection's data is considered current enough to reuse.
+#: A scheduled sync that finds a recent one is a no-op unless asked
+#: for a fresh pull, because the expensive part of an organisational
+#: database is the query, not the write.
+SYNC_COOLDOWN_SECONDS = 60
+
+
+class DataConnection(Base):
+    """A database or API an organisation connects, so StatFlow reads its data.
+
+    The connection is an *ingest path*, not a data store: every sync
+    pulls a frame and writes it as a new immutable dataset version,
+    exactly like an upload does. That is what keeps a connected
+    database inside the same guarantees as a file -- the version
+    history, the lineage view, the remediation and the analysis
+    cache all work unchanged, and the organisation's database is
+    never the system of record for the analysis.
+
+    Credentials live in ``secret`` encrypted (see
+    ``app.services.connection_secrets``): a connection that exposes
+    its password in an API response or a log line is a breach
+    waiting for a bug. ``config`` holds everything else.
+    """
+
+    __tablename__ = "data_connections"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    project_id = Column(
+        Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name = Column(String(255), nullable=False)
+    kind = Column(String(20), nullable=False)  # postgres | mysql | rest
+    config = Column(JSON, nullable=False, default=dict)
+    # Fernet token: encrypt-then-MAC, keyed from SECRET_KEY. Never
+    # returned by any endpoint.
+    secret = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default="never_run")
+    last_error = Column(Text, nullable=True)
+    last_sync_at = Column(DateTime, nullable=True)
+    # The dataset this connection feeds; created on the first sync.
+    dataset_id = Column(
+        Integer, ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    sync_every_minutes = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    user = relationship("User", back_populates="data_connections")
+    dataset = relationship("Dataset", back_populates="data_connections")
+    syncs = relationship(
+        "DataConnectionSync",
+        back_populates="connection",
+        cascade="all, delete-orphan",
+        order_by="DataConnectionSync.id.desc()",
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """The connection with its credentials removed, never included."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "kind": self.kind,
+            "config": self.config or {},
+            "has_secret": bool(self.secret),
+            "status": self.status,
+            "last_error": self.last_error,
+            "last_sync_at": self.last_sync_at.isoformat() if self.last_sync_at else None,
+            "dataset_id": self.dataset_id,
+            "sync_every_minutes": self.sync_every_minutes,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class DataConnectionSync(Base):
+    """One pull from a connection, and the version it produced."""
+
+    __tablename__ = "data_connection_syncs"
+
+    id = Column(Integer, primary_key=True)
+    connection_id = Column(
+        Integer,
+        ForeignKey("data_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status = Column(String(20), nullable=False, default="running")  # ok | error
+    row_count = Column(Integer, default=0)
+    column_count = Column(Integer, default=0)
+    dataset_version = Column(Integer, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+    connection = relationship("DataConnection", back_populates="syncs")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "connection_id": self.connection_id,
+            "status": self.status,
+            "row_count": self.row_count,
+            "column_count": self.column_count,
+            "dataset_version": self.dataset_version,
+            "duration_ms": self.duration_ms,
+            "error_message": self.error_message,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

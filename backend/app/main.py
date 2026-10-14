@@ -14,6 +14,7 @@ from app.routers import (
     admin,
     auth,
     charts,
+    connections,
     dashboards,
     datasets,
     jobs,
@@ -85,7 +86,9 @@ def health() -> dict:
 
 
 # StatFlow v1 engines (MVP-18/19/20/21): versioning + operations, unified
-# statistics, planning/recommendation and the assistant.
+# statistics, planning/recommendation and the assistant. Connections
+# sits here too: an ingest path into the version system, not a
+# parallel data store of its own.
 V1_PREFIX = "/api/v1"
 for router in (
     v1_versions.router,
@@ -93,6 +96,7 @@ for router in (
     v1_planning.router,
     v1_assistant.router,
     v1_templates.router,
+    connections.router,
 ):
     app.include_router(router, prefix=V1_PREFIX)
 
