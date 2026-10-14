@@ -1384,6 +1384,61 @@ export interface AssistantAnswer {
   dataset_version_id: number;
 }
 
+/** One variable a template step needs, described by role, not by name. */
+export interface TemplateVariable {
+  key: string;
+  label: string;
+  role: string;
+  expected_type: string;
+  optional: boolean;
+  levels?: number | null;
+  min_levels?: number | null;
+  binary: boolean;
+  numeric_only?: boolean;
+}
+
+/** One analysis in the sequence that answers the question. */
+export interface TemplateStep {
+  key: string;
+  label: string;
+  description: string;
+  analysis_type: string;
+  reads: string;
+  variables: TemplateVariable[];
+}
+
+/** A question shape an organisation asks, and the steps that answer it. */
+export interface AnalysisTemplate {
+  key: string;
+  label: string;
+  label_swahili: string;
+  category: string;
+  question: string;
+  when_to_use: string;
+  steps: TemplateStep[];
+}
+
+/** One step's run: the parameters that ran, and the engine's result. */
+export interface TemplateRunStep {
+  key: string;
+  label: string;
+  reads: string;
+  analysis_type: string;
+  parameters: Record<string, unknown>;
+  result: StandardResult;
+  suggested: Record<string, string[]>;
+}
+
+/** The result of running a template against a dataset version. */
+export interface TemplateRunResponse {
+  template: AnalysisTemplate;
+  steps: TemplateRunStep[];
+  meta: { rows: number; columns: number };
+  dataset_id: number;
+  dataset_version: number;
+  dataset_version_id: number;
+}
+
 /**
  * One step of a method's stage plan.
  *
@@ -1622,6 +1677,23 @@ export const statflowApi = {
   assistantCoverage: () =>
     http
       .get<AssistantCoverage>("/v1/assistant/coverage")
+      .then((r) => r.data),
+  /** Analysis templates for common organisational questions (plan 3.3). */
+  templates: () =>
+    http
+      .get<{ templates: AnalysisTemplate[]; note: string }>("/v1/templates")
+      .then((r) => r.data),
+  runTemplate: (
+    datasetId: number,
+    templateKey: string,
+    choices?: Record<string, Record<string, string | string[]>>,
+    datasetVersion?: number
+  ) =>
+    http
+      .post<TemplateRunResponse>(
+        `/v1/templates/datasets/${datasetId}/${templateKey}/run`,
+        { choices: choices ?? {}, dataset_version: datasetVersion }
+      )
       .then((r) => r.data),
   // Job Queue (Feature 25)
   jobs: {

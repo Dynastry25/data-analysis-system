@@ -234,6 +234,11 @@ export default function DatasetDetailPage() {
               {t("dataset.assistant")}
             </Button>
           </Link>
+          <Link href={`/datasets/${datasetId}/templates`}>
+            <Button variant="secondary" icon="clipboard">
+              {t("dataset.templates")}
+            </Button>
+          </Link>
           <Link href={`/datasets/${datasetId}/charts`}>
             <Button variant="secondary" icon="chart">
               {t("dataset.drawChart")}

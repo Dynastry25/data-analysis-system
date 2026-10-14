@@ -24,6 +24,7 @@ from app.routers import (
 from app.statflow.routers import analysis as v1_analysis
 from app.statflow.routers import assistant as v1_assistant
 from app.statflow.routers import planning as v1_planning
+from app.statflow.routers import templates as v1_templates
 from app.statflow.routers import versions as v1_versions
 
 
@@ -91,6 +92,7 @@ for router in (
     v1_analysis.router,
     v1_planning.router,
     v1_assistant.router,
+    v1_templates.router,
 ):
     app.include_router(router, prefix=V1_PREFIX)
 
