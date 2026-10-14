@@ -5,6 +5,12 @@
              -> analysis engine -> verified result -> explanation
 
 The assistant plans and explains; it never computes statistics itself.
+It is rule-based (keyword tables + planner), deterministic, and
+hallucination-free by construction -- it cannot invent a number it
+never computed. An optional language provider may rephrase a question
+the tables do not understand (`app.statflow.assistant_language`), and
+can never touch a statistic; with no provider configured the
+assistant is exactly what it was before.
 """
 
 from typing import Any, Dict
@@ -15,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user, get_owned_dataset
 from app.models import AnalysisRun, User
-from app.statflow import assistant, planning, stats_engine, version_store
+from app.statflow import assistant, assistant_language, planning, stats_engine, version_store
 from app.statflow.schemas import AskRequest
 from app.statflow.version_store import VersionError
 
@@ -73,16 +79,30 @@ def ask_endpoint(
 
 @router.get("/examples")
 def examples(user: User = Depends(get_current_user)) -> Dict[str, Any]:
-    """Example questions the rule-based assistant understands."""
+    """Example questions the rule-based assistant understands, verified."""
     return {
         "examples": [
-            "Does income differ between male and female?",
-            "Je, mauzo yanatofautiana kati ya mikoa?",
-            "What is the relationship between price and sales?",
-            "Can we predict sales from price?",
-            "Describe the age distribution.",
-            "Je, kuna uhusiano kati ya jinsia na malipo?",
+            question
+            for question, _ in assistant.EXAMPLE_QUESTIONS
         ],
-        "note": "The assistant detects the intent (difference/association/prediction/"
-        "distribution) and maps the mentioned variables onto the dataset columns.",
+        "note": (
+            "The assistant is rule-based: it reads the question with keyword tables, "
+            "maps the mentioned variables onto the dataset columns, and lets the "
+            "statistics engine compute every number. It is not an AI model, and every "
+            "example above is verified to parse to the intent it is listed under."
+        ),
     }
+
+
+@router.get("/coverage")
+def coverage(user: User = Depends(get_current_user)) -> Dict[str, Any]:
+    """What the assistant understands, as a specification (plan 3b.3).
+
+    Publishing the coverage turns the limitation into a contract: the
+    intents, the variable words, and the question shapes the keyword
+    tables do NOT handle, all read from the same tables the parser
+    runs, so the list cannot drift from the behaviour. A reader who
+    knows what to ask gets an answer; a reader who asks outside the
+    list is told so instead of being guessed at.
+    """
+    return assistant_language.coverage()

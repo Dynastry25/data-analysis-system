@@ -15,6 +15,7 @@ import { useToast } from "@/components/Toast";
 import {
   apiErrorMessage,
   AssistantAnswer,
+  AssistantCoverage,
   PlanningVariable,
   StandardResult,
   statflowApi,
@@ -34,6 +35,7 @@ export default function AskPage() {
   const { showToast } = useToast();
 
   const [examples, setExamples] = useState<string[]>([]);
+  const [coverage, setCoverage] = useState<AssistantCoverage | null>(null);
   const [profileVariables, setProfileVariables] = useState<PlanningVariable[]>([]);
   const [profileVersion, setProfileVersion] = useState<number | undefined>();
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -63,6 +65,19 @@ export default function AskPage() {
     }
   }, [showToast]);
 
+  // The assistant's own coverage, published as a specification: the
+  // reader learns what it can answer before asking, which is what
+  // makes "I do not understand that" an honest answer rather than a
+  // failure to hide.
+  const loadCoverage = useCallback(async () => {
+    try {
+      setCoverage(await statflowApi.assistantCoverage());
+    } catch {
+      // The page works without it: the identity line still says what
+      // the assistant is, and a missing list is not worth an error.
+    }
+  }, []);
+
   const loadProfile = useCallback(async () => {
     if (!Number.isFinite(datasetId)) return;
     setProfileError(null);
@@ -80,6 +95,10 @@ export default function AskPage() {
   useEffect(() => {
     loadExamples();
   }, [loadExamples]);
+
+  useEffect(() => {
+    loadCoverage();
+  }, [loadCoverage]);
 
   useEffect(() => {
     loadProfile();
@@ -141,8 +160,8 @@ export default function AskPage() {
   return (
     <AppShell
       eyebrow="Msaidizi wa takwimu"
-      title="AI Statistical Copilot"
-      description="Uliza swali kwa lugha ya kawaida — engine hupanga uchambuzi na kujibu kwa takwimu zilizothibitishwa."
+      title="Msaidizi wa takwimu — muongozo wa lugha mbili"
+      description="Uliza swali kwa lugha ya kawaida — msaidizi hupanga uchambuzi na engine hukokotoa kila namba. Msaidizi ni wa kanuni zilizowekwa (rule-based), si AI: hawezi kubuni jibu ambalo halielewi."
       actions={
         <Link href={`/datasets/${datasetId}`}>
           <Button variant="secondary">Rudi kwenye dataset</Button>
@@ -250,6 +269,75 @@ export default function AskPage() {
         )}
       </Card>
 
+      {/* Phase 3b: the assistant says what it is before the reader has
+          to guess. It is rule-based, so it cannot invent a number; it
+          also cannot answer a question its tables miss, which is why
+          the coverage below is published rather than discovered. */}
+      <Card title="Msaidizi huyu ni nini?" icon="info">
+        <p className="text-body leading-relaxed text-ink-secondary">
+          {coverage?.identity ??
+            "Msaidizi huyu ni muongozo wa lugha mbili, wa kanuni zilizowekwa (rule-based): husoma swali lako, huchagua mbinu ya takwimu, na kumpa engine namba za kujibu."}
+        </p>
+        {coverage && coverage.never_does.length > 0 && (
+          <ul className="mt-2 space-y-1">
+            {coverage.never_does.map((item) => (
+              <li key={item} className="flex items-start gap-1.5 text-caption text-ink-muted">
+                <Icon name="minus" size={13} className="mt-0.5 shrink-0" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {coverage && (
+          <details className="mt-3 rounded-md border border-surface-border bg-surface-sunken px-3 py-2">
+            <summary className="cursor-pointer text-caption font-medium text-ink-secondary">
+              Anachoelewa msaidizi — {coverage.intents.length} aina za maswali
+            </summary>
+            <div className="mt-2 space-y-2.5">
+              {coverage.intents.map((intent) => (
+                <div key={intent.intent}>
+                  <p className="text-caption font-medium text-ink">{intent.label}</p>
+                  {intent.examples.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {intent.examples.map((example) => (
+                        <button
+                          key={example}
+                          type="button"
+                          className="rounded-pill border border-surface-border bg-surface-panel px-2 py-0.5 text-[11px] text-ink-secondary transition-colors duration-150 ease-standard hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
+                          onClick={() => setQuestion(example)}
+                        >
+                          {example}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {coverage.not_covered.length > 0 && (
+                <div className="rounded-md bg-warning-bg px-2.5 py-2">
+                  <p className="text-caption font-medium text-warning-700">
+                    Hawezi kujibu (bado):
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {coverage.not_covered.map((item) => (
+                      <li key={item} className="text-caption text-warning-700">
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <p className="text-caption text-ink-muted">
+                Provider wa lugha:{" "}
+                {coverage.language_provider === "rule-based only"
+                  ? "hakuna — kanuni pekee"
+                  : coverage.language_provider}
+              </p>
+            </div>
+          </details>
+        )}
+      </Card>
+
       {turns.length === 0 ? (
         <section className="flex flex-col items-center px-6 py-10 text-center">
           {/* The prototype's welcome orb and explanation. It sits above the
@@ -307,7 +395,7 @@ export default function AskPage() {
               >
                 <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary-600 border-t-transparent" />
                 <span>
-                  Inachambua — engine ya takwimu inafanya kazi, AI inatafsiri baadaye…
+                  Inachambua — msaidizi hupanga swali, engine ya takwimu inakokotoa…
                 </span>
               </div>
             ) : (
@@ -381,6 +469,14 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
         <Badge tone="primary" icon="sparkles">
           ASK STATFLOW
         </Badge>
+        {answer.identity.language_provider === "rule-based only" ? (
+          <Badge tone="neutral">rule-based</Badge>
+        ) : (
+          <Badge tone="info">lugha: LLM imeunganishwa</Badge>
+        )}
+        {answer.language.used && (
+          <Badge tone="info">swali limefafanuliwa kwa LLM</Badge>
+        )}
         {answer.intent.intent && (
           <Badge tone="neutral">intent: {answer.intent.intent}</Badge>
         )}
@@ -393,12 +489,18 @@ function AnswerView({ answer }: { answer: AssistantAnswer }) {
         )}
       </div>
 
+      {answer.introduction && (
+        <p className="text-body italic text-ink-secondary">{answer.introduction}</p>
+      )}
+
       {variables.length > 0 && (
         <p className="text-caption text-ink-muted">Variables: {variables.join(", ")}</p>
       )}
 
       <div className="rounded-lg border border-surface-border border-l-4 border-l-primary-400 bg-surface-panel p-4">
-        <p className="text-overline uppercase tracking-wide text-ink-muted">Jibu la copilot</p>
+        <p className="text-overline uppercase tracking-wide text-ink-muted">
+          Jibu la engine (takwimu zilizothibitishwa)
+        </p>
         <p className="mt-1 text-body-lg font-medium text-ink">{answer.explanation}</p>
 
         {result && (

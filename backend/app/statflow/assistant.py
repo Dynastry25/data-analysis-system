@@ -14,7 +14,7 @@ in later without touching the engines.
 """
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -52,6 +52,28 @@ VARIABLE_SYNONYMS: Dict[str, List[str]] = {
     "score": ["score", "alama", "grade", "points"],
 }
 
+#: The questions the assistant publishes as examples of what it
+#: understands -- each paired with the intent the parser actually
+#: resolves. The pairing is not decoration: ``tests/assistant_coverage_test.py``
+#: asserts every listed example still parses to its stated intent, so the
+#: published coverage can never drift from the parser it describes.
+#: Only questions that VERIFY are listed; a question the tables miss is
+#: published in ``assistant_language.NOT_COVERED`` instead, which is the
+#: honest place for it.
+EXAMPLE_QUESTIONS: List[Tuple[str, str]] = [
+    ("Does income differ between male and female?", "difference"),
+    ("Compare average price across regions", "difference"),
+    ("Je, mauzo yanatofautiana kati ya mikoa?", "difference"),
+    ("What is the relationship between price and sales?", "association"),
+    ("Je, kuna uhusiano kati ya jinsia na malipo?", "association"),
+    ("Are income and age correlated?", "association"),
+    ("Can we predict sales from price?", "prediction"),
+    ("Tabiri mapato kutoka umri", "prediction"),
+    ("Describe the age distribution.", "distribution"),
+    ("Muhtasari wa mapato", "distribution"),
+    ("What is the average income?", "distribution"),
+]
+
 STOPWORDS = {
     "a", "an", "the", "is", "are", "was", "were", "does", "do", "did", "of",
     "in", "on", "at", "to", "for", "and", "or", "with", "by", "between",
@@ -61,11 +83,41 @@ STOPWORDS = {
 }
 
 
+#: Swahili carries tense and person in the verb's prefix, so the same
+#: root appears as "inatofautiana", "yanatofautiana", "zimetofautiana".
+#: A keyword is therefore matched with an optional subject prefix --
+#: but only for roots long enough that a prefix cannot pull in an
+#: unrelated word: "age" must not match "manage", and "price" must not
+#: match "apprice". Short keywords keep strict word boundaries and lose
+#: the conjugations instead; that gap is what the optional language
+#: provider in ``assistant_language`` is for.
+PREFIX_TOLERANT_MIN_LENGTH = 5
+
+#: The Swahili subject and tense markers, closed on purpose: a prefix
+#: is only allowed to be one or two of these, so "yanatofautiana"
+#: matches and "syzygytodeliver" does not.
+BANTU_SUBJECT_PREFIXES = (
+    "ya", "wa", "li", "ta", "ki", "vi", "mi", "ni", "tu", "u", "i", "a", "e", "o", "ha", "na",
+)
+
+_PREFIX_PATTERN = "(?:(?:%s){1,2})?" % "|".join(BANTU_SUBJECT_PREFIXES)
+
+#: English adds -ed/-ing/-d (a root ending in -e takes the bare -d),
+#: Swahili adds verb extensions; a root with any of these is still
+#: that root.
+_SUFFIX_PATTERN = "(?:e?s|ed|ing|d|ana|ia|ika|wa)?"
+
+
 def _find_phrase(text: str, phrase: str) -> Optional[re.Match[str]]:
     term = " ".join(str(phrase).lower().split())
     if not term:
         return None
-    return re.search(rf"(?<!\w){re.escape(term)}(?:e?s)?(?!\w)", text)
+    escaped = re.escape(term)
+    if len(term) >= PREFIX_TOLERANT_MIN_LENGTH:
+        pattern = rf"(?<!\w){_PREFIX_PATTERN}{escaped}{_SUFFIX_PATTERN}(?!\w)"
+    else:
+        pattern = rf"(?<!\w){escaped}(?:e?s|ed|ing)?(?!\w)"
+    return re.search(pattern, text)
 
 
 def parse_intent(question: str) -> Dict[str, Any]:
@@ -292,7 +344,36 @@ def plan_question(
     outcome: Optional[str] = None,
     predictor: Optional[str] = None,
 ) -> Dict[str, Any]:
+    # Imported here rather than at the top: the language layer reads
+    # the keyword tables that live in this module, and a module-level
+    # import would be circular.
+    from app.statflow import assistant_language
+
     parsed = parse_intent(question)
+    # The rule-based parser decides first. A language model is only
+    # asked to rephrase when the tables found nothing at all -- it
+    # widens what the assistant can understand and never overrides an
+    # answer the rules were confident about, so a provider's opinion
+    # is a second reading rather than the verdict.
+    language: Dict[str, Any] = {
+        "used": False,
+        "reason": "intent matched directly from the keyword tables",
+        "text": question,
+    }
+    if parsed["intent"] is None and assistant_language.provider_configured():
+        normalised = assistant_language.normalise_question(question)
+        if normalised["used"]:
+            reparsed = parse_intent(normalised["text"])
+            if reparsed["intent"] is not None:
+                parsed = reparsed
+                language = normalised
+            else:
+                language = {
+                    "used": False,
+                    "reason": "rephrased question still matched no intent",
+                    "text": question,
+                }
+
     mentions = extract_variable_mentions(question, frame)
     types = {str(column): planning.semantic_type(frame[column]) for column in frame.columns}
     explicit_outcome = _resolve_explicit(frame, outcome, "outcome")
@@ -359,6 +440,7 @@ def plan_question(
         "variables": roles,
         "types": types,
         "plan_parameters": plan_parameters,
+        "language": language,
     }
 
 
@@ -608,6 +690,8 @@ def ask(
     outcome: Optional[str] = None,
     predictor: Optional[str] = None,
 ) -> Dict[str, Any]:
+    from app.statflow import assistant_language
+
     plan = plan_question(frame, question, outcome, predictor)
     recommendation = planning.recommend(frame, plan["plan_parameters"])
     result = recommendation.get("result")
@@ -619,8 +703,29 @@ def ask(
         )
     explanation = explain(plan, result)
 
+    # One framing sentence, only when a provider is configured. It is
+    # kept apart from the explanation on purpose: the explanation is
+    # generated from the verified result and is the answer, and this
+    # line is a courtesy the answer does not depend on.
+    introduction = assistant_language.introduce(
+        question,
+        {
+            "method_label": recommendation["recommendation"]["label"],
+            "variables": list(plan["variables"].values()),
+        },
+    )
+
     return {
         "question": question,
+        "identity": {
+            "label": assistant_language.IDENTITY,
+            "never_does": assistant_language.NEVER_DOES,
+            "language_provider": (
+                "configured" if assistant_language.provider_configured() else "rule-based only"
+            ),
+            "coverage_url": "/api/v1/assistant/coverage",
+        },
+        "introduction": introduction,
         "intent": plan["parsed_intent"],
         "plan": {
             "variables": plan["variables"],
@@ -636,6 +741,7 @@ def ask(
         "diagnostics": recommendation["diagnostics"],
         "result": result,
         "explanation": explanation,
+        "language": plan["language"],
         "meta": {
             "engine": "statflow v1 (rule-based assistant)",
             "note": "The assistant plans and explains; the statistical engine computes.",

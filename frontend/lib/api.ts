@@ -1324,8 +1324,41 @@ export interface Recommendation {
   analysis_id?: number;
 }
 
+/**
+ * What the assistant says it is. The assistant is rule-based: it
+ * cannot invent a number it never computed, and it also cannot answer
+ * a question its keyword tables miss. The UI shows this rather than
+ * claiming "AI" -- the honest label is the trust.
+ */
+export interface AssistantIdentity {
+  label: string;
+  never_does: string[];
+  language_provider: "configured" | "rule-based only";
+  coverage_url: string;
+}
+
+/** The assistant's published coverage, as a specification. */
+export interface AssistantCoverage {
+  identity: string;
+  never_does: string[];
+  language_provider: string;
+  intents: {
+    intent: string;
+    label: string;
+    keywords: string[];
+    examples: string[];
+  }[];
+  variable_words: Record<string, string[]>;
+  not_covered: string[];
+  how_it_answers: string[];
+}
+
 export interface AssistantAnswer {
   question: string;
+  identity: AssistantIdentity;
+  /** An optional framing sentence, never a number; absent by default. */
+  introduction: string | null;
+  language: { used: boolean; reason: string; text: string };
   intent: { intent: string | null; confidence: number; keywords: string[] };
   plan: {
     variables: {
@@ -1584,6 +1617,11 @@ export const statflowApi = {
   assistantExamples: () =>
     http
       .get<{ examples: string[]; note: string }>("/v1/assistant/examples")
+      .then((r) => r.data),
+  /** What the assistant understands, as a specification (plan 3b.3). */
+  assistantCoverage: () =>
+    http
+      .get<AssistantCoverage>("/v1/assistant/coverage")
       .then((r) => r.data),
   // Job Queue (Feature 25)
   jobs: {
